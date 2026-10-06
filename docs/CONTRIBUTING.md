@@ -31,6 +31,12 @@ associated gates remain frozen until the plan replaces them with build-8606 refe
   multiplayer, PvP, or professions.
 - A test that silently depends on a developer's install, a host clock, or nondeterministic RNG.
 
+## Launcher crates
+
+Launcher crates that extend the app through `benilla_app::run_with` use
+`benilla_app::config_dir()` for their own files. An addon a launcher ships belongs in that
+`benilla-config/` folder's `AddOns/` directory; the client install remains read-only.
+
 ## How a change is judged
 
 1. The change satisfies a task or acceptance criterion in `PLAN.md` and stays within the current
