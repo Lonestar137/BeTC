@@ -24,7 +24,8 @@ pub use messages::{
 };
 #[cfg(feature = "network")]
 pub use world::{
-    WardenRequired, WorldAuthReject, WorldReader, WorldSession, WorldWriter, WORLD_PORT,
+    observe_sends, SendObserver, WardenRequired, WorldAuthReject, WorldReader, WorldSession,
+    WorldWriter, WORLD_PORT,
 };
 
 #[cfg(feature = "network")]
