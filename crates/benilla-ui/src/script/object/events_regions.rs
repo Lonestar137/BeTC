@@ -33,9 +33,8 @@ pub(super) fn install(lua: &Lua, m: &Table) -> mlua::Result<()> {
                     attributes
                 }
             };
-            if attributes.get::<Value>(name.as_str())? == value {
-                return Ok(());
-            }
+            // Fires on every set, changed or not: `ShowUIPanel` and its kin dispatch through
+            // `FramePositionDelegate:SetAttribute("panel-show", true)`, repeatedly the same value.
             attributes.set(name.as_str(), value.clone())?;
             let handle = frame_handle_of(lua, &this)?;
             let id = lua.app_data_mut::<Model>().expect("model").frame_id(handle);

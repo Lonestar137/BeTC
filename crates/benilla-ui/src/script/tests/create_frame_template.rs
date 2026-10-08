@@ -129,10 +129,9 @@ fn a_nested_frames_child_is_named_against_the_caller() {
     assert!(s.take_warnings().is_empty());
 }
 
-/// The template argument is one name: 1.12's `CreateFrame` hands the string to the XML loader's
-/// lookup (`0x6ee6f0`, called at `0x7061dd`), which has no splitter; comma lists came later.
+/// 2.0's `CreateFrame` splits a comma list and applies each template; a single name still chains.
 #[test]
-fn a_comma_list_is_one_name_and_a_single_name_still_chains() {
+fn a_comma_list_applies_each_template_and_a_single_name_still_chains() {
     let mut s = script();
     register(
         &s,
@@ -162,18 +161,13 @@ fn a_comma_list_is_one_name_and_a_single_name_still_chains() {
     assert!(s.take_errors().is_empty());
     assert!(s.take_warnings().is_empty());
 
-    let err = s
-        .run(r#"Both = CreateFrame("Frame", "Both", nil, "TemplA, TemplB")"#)
-        .expect_err("a comma list is one name, and it misses");
-    let text = err.to_string();
+    s.run(r#"Both = CreateFrame("Frame", "Both", nil, "TemplA, TemplB")"#)
+        .unwrap();
+    assert_eq!(s.eval::<f32>("return Both:GetAlpha()").unwrap(), 0.25);
     assert!(
-        text.contains("TemplA, TemplB"),
-        "the miss must name the literal it looked up, unsplit: {text}"
-    );
-    assert!(
-        s.eval::<bool>(r#"return getglobal("Both") == nil"#)
+        s.eval::<bool>(r#"return getglobal("BothBTex") ~= nil"#)
             .unwrap(),
-        "a missed template must leave no frame behind"
+        "TemplB's texture is on the frame"
     );
 }
 

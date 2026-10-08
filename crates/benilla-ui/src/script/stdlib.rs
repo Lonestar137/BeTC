@@ -349,6 +349,24 @@ function SetModifiedClick(name, key)
     if modifierClickDefaults[name] == nil then return end
     MODIFIER_CLICK[name] = key
 end
+
+-- The 2.4.3 FrameXML routes its secure calls through these (`UIParent.lua`'s `ToggleGameMenu`,
+-- `ShowUIPanel`); the offline client has no taint, so each is a plain call.
+function securecall(func, ...)
+    if type(func) == "string" then func = getglobal(func) end
+    return func(...)
+end
+function hooksecurefunc(a, b, c)
+    local tbl, name, hook = _G, a, b
+    if type(a) == "table" then tbl, name, hook = a, b, c end
+    local orig = tbl[name]
+    if type(orig) ~= "function" or type(hook) ~= "function" then return end
+    tbl[name] = function(...)
+        local r = { orig(...) }
+        hook(...)
+        return unpack(r)
+    end
+end
 function IsModifiedClick(name)
     local modifier = GetModifiedClick(name)
     if modifier == "SHIFT" then return IsShiftKeyDown() end

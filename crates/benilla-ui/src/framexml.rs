@@ -348,12 +348,12 @@ fn expand_inner(
         return element.clone();
     };
 
-    // `inherits` is one name, not a list: `0x6ee6f0` has no splitter, so `"A, B"` misses (later
-    // clients split it). It is used verbatim (`GetAttribute 0x6f2cf0` does not trim; `""` is
-    // skipped, `" "` misses) and matched case-insensitively, ASCII only: `_strnicmp` at
-    // `0x6ee747`, reached despite a mis-cased name because `SStrHash 0x64b3f0` uppercases.
+    // `inherits` is a comma list from 2.0 on (the 2.4.3 FrameXML writes
+    // `inherits="SecureActionButtonTemplate, ActionButtonTemplate"`): each name is trimmed and
+    // applied in order, the most distant first. 1.12 has no splitter and misses the whole string.
+    // Names match case-insensitively, ASCII only.
     let mut base: Option<Element> = None;
-    for name in [inherits].into_iter().filter(|s| !s.is_empty()) {
+    for name in inherits.split(',').map(str::trim).filter(|s| !s.is_empty()) {
         if !active.insert(name.to_string()) {
             warnings.push(format!(
                 "inheritance cycle detected at template '{name}'; skipping this reference"
@@ -633,10 +633,9 @@ print(x)</Script>
         assert!(doc.warnings.is_empty());
     }
 
-    /// All eight callers of `0x6ee6f0` pass `GetAttribute`'s pointer as is, and nothing in
-    /// `0x6ed000`–`0x6f6000` examines a comma; the value is not trimmed either.
+    /// 2.0 splits `inherits` on commas and trims each name; every template applies, in order.
     #[test]
-    fn a_comma_list_is_one_literal_name_that_misses_and_applies_neither_template() {
+    fn a_comma_list_applies_each_template_in_order() {
         let doc = parse(
             r#"<Ui>
                 <Frame name="A" virtual="true">
@@ -658,32 +657,22 @@ print(x)</Script>
         };
         let mut warnings = Vec::new();
         let expanded = expand(inst, &templates, &mut warnings);
-
-        assert_eq!(warnings.len(), 1, "{warnings:?}");
-        assert!(
-            warnings[0].contains("A, B"),
-            "the warning must name the literal it looked up: {warnings:?}"
-        );
-
-        // The element loads with its own content only.
+        assert!(warnings.is_empty(), "{warnings:?}");
         assert_eq!(expanded.attr("alpha"), Some("1.0"));
-        assert_eq!(expanded.children.len(), 1);
-        fn texture_name(el: &Element) -> &str {
-            el.children[0].children[0].attr("name").unwrap()
-        }
-        assert_eq!(texture_name(&expanded.children[0]), "FromInst");
+        let names: Vec<&str> = expanded
+            .children
+            .iter()
+            .map(|layers| layers.children[0].children[0].attr("name").unwrap())
+            .collect();
+        assert_eq!(names, ["FromA", "FromB", "FromInst"]);
 
-        // A padded name misses: the value is used verbatim.
         let TopLevel::Instance(padded) = &doc.items[3] else {
             panic!("expected instance")
         };
         let mut w2 = Vec::new();
         let expanded = expand(padded, &templates, &mut w2);
-        assert_eq!(w2.len(), 1, "{w2:?}");
-        assert!(
-            expanded.children.is_empty(),
-            "picked up A despite the spaces"
-        );
+        assert!(w2.is_empty(), "{w2:?}");
+        assert_eq!(expanded.children.len(), 1, "a padded name still applies A");
     }
 
     #[test]

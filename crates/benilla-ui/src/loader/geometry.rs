@@ -91,6 +91,28 @@ impl Loader<'_> {
         if el.attr_bool("enableMouse") {
             self.call(wrapper, "EnableMouse", true, dbg);
         }
+        // `<Attributes>` (2.0+): each `<Attribute name type value>` is a `SetAttribute` at load,
+        // typed by `type` ("number", "boolean", else a string). `UIParent`'s panel offsets live here.
+        for attrs in children_named(el, "Attributes") {
+            for a in children_named(attrs, "Attribute") {
+                let (Some(name), Some(value)) = (a.attr("name"), a.attr("value")) else {
+                    continue;
+                };
+                let name = name.to_string();
+                match a.attr("type") {
+                    Some("number") => {
+                        if let Ok(n) = value.trim().parse::<f64>() {
+                            self.call(wrapper, "SetAttribute", (name, n), dbg);
+                        }
+                    }
+                    Some("boolean") => {
+                        let b = matches!(value.trim(), "true" | "TRUE" | "1");
+                        self.call(wrapper, "SetAttribute", (name, b), dbg);
+                    }
+                    _ => self.call(wrapper, "SetAttribute", (name, value.to_string()), dbg),
+                }
+            }
+        }
         // `<HitRectInsets>`: the mouse rect, inset from the frame's; a side it omits is 0.
         if let Some(ins) = children_named(el, "HitRectInsets").next() {
             let src = children_named(ins, "AbsInset").next().unwrap_or(ins);

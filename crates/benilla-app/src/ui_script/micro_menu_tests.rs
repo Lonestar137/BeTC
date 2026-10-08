@@ -127,6 +127,54 @@ fn clicking_the_main_menu_micro_button_opens_and_closes_the_live_menu() {
     assert!(s.errors().is_empty(), "script errors: {:?}", s.errors());
 }
 
+/// Escape's binding body is `ToggleGameMenu()`, which the stock client routes through
+/// `securecall`; the menu's own buttons then open their panels.
+#[test]
+fn escape_toggles_the_game_menu_and_its_buttons_act() {
+    let _data = benilla_formats::wow_data_or_skip!();
+    let mut s = UiScript::new().unwrap();
+    s.set_screen_size(1024.0, 768.0);
+    super::test_ui::load_ui(&s, "Interface\\FrameXML\\GlobalStrings.lua");
+    let _ = super::load_default_ui(&s);
+    s.fire_event("PLAYER_ENTERING_WORLD", vec![]);
+    s.resolve();
+
+    s.run("ToggleGameMenu()").unwrap();
+    assert!(
+        s.eval::<bool>("return GameMenuFrame:IsVisible()").unwrap(),
+        "Escape opens the game menu"
+    );
+    s.resolve();
+    let _ = s.take_errors();
+    // `GetLeft` and friends answer in the frame's own scale (the layer scales this menu), the
+    // pointer in screen units: scale the button's centre to the pointer's space.
+    let (cx, cy) = super::test_ui::centre_of(&mut s, "GameMenuButtonOptions");
+    let scale: f32 = s
+        .eval("return GameMenuButtonOptions:GetEffectiveScale()")
+        .unwrap();
+    let (x, y) = (cx * scale, cy * scale);
+    assert_eq!(
+        s.hit_test_name(x, y).as_deref(),
+        Some("GameMenuButtonOptions"),
+        "the button is what a pointer over it reaches"
+    );
+    s.mouse_move(x, y);
+    s.mouse_button(x, y, "LeftButton", true);
+    s.mouse_button(x, y, "LeftButton", false);
+    assert!(
+        s.eval::<bool>("return BenillaOptionsFrame:IsVisible()")
+            .unwrap(),
+        "the Options button opens the settings panel: {:?}",
+        s.errors()
+    );
+    s.run("ToggleGameMenu()").unwrap();
+    assert!(
+        !s.eval::<bool>("return BenillaOptionsFrame:IsVisible()")
+            .unwrap(),
+        "Escape closes the settings panel"
+    );
+}
+
 #[test]
 fn clicking_character_spellbook_and_map_microbuttons_opens_their_panels() {
     let _data = benilla_formats::wow_data_or_skip!();

@@ -260,7 +260,7 @@ fn the_rest_of_the_bare_globals() {
         -- string.match/gmatch, and claiming otherwise misleads an addon that feature-detects.
         assert(strmatch == nil and gmatch == nil and strrev == nil)
         assert(strlenutf8 == nil and strcmputf8i == nil)
-        assert(securecall == nil and hooksecurefunc == nil and issecure())
+        assert(securecall ~= nil and hooksecurefunc ~= nil and issecure())
 
         -- math family
         assert(exp(0) == 1 and log(1) == 0 and log10(100) == 2)
