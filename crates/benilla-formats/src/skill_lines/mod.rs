@@ -18,8 +18,8 @@ use std::collections::HashMap;
 use anyhow::{Context, Result};
 use benilla_dbc::{FieldType, Schema, SchemaField};
 
-use crate::dbc::{parse, str_at, u32_at};
 use crate::Chain;
+use crate::dbc::{parse, str_at, u32_at};
 
 const SKILL_LINE: &str = "DBFilesClient\\SkillLine.dbc";
 const SKILL_LINE_ABILITY: &str = "DBFilesClient\\SkillLineAbility.dbc";

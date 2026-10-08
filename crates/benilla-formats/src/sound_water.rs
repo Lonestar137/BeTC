@@ -7,8 +7,8 @@ use std::collections::HashMap;
 use anyhow::Result;
 use benilla_dbc::{FieldType, Schema, SchemaField};
 
-use crate::dbc::{parse, u32_at};
 use crate::Chain;
+use crate::dbc::{parse, u32_at};
 
 /// The `(SoundType, FluidSpeed) → SoundEntries kit` map.
 pub struct WaterSoundCatalog {

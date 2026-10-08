@@ -63,7 +63,8 @@ fn publish_world_live(
 
 impl Plugin for CharSelectPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_state(self.start)
+        app.init_resource::<crate::GameMode>()
+            .insert_state(self.start)
             .configure_sets(Update, InWorldGated.run_if(in_state(ClientState::InWorld)))
             .init_resource::<Roster>()
             // Ahead of every world stage, so `WorldLive` and its falling edge are this frame's.
@@ -320,26 +321,29 @@ fn apply_roster_policy(
     cvars: Res<crate::cvars::Cvars>,
     // Present only when a rig drives the run and picks its own character.
     rig: Option<Res<crate::run_mode::RigCharacter>>,
+    mode: Option<Res<crate::GameMode>>,
     mut exit: MessageWriter<AppExit>,
 ) {
     if !roster.env_read {
         roster.env_read = true;
-        // `WOW_RIG` outranks `WOW_CHAR`: the rig may have to create its character first, which
-        // this one-shot fast path cannot wait for.
-        roster.env_char = match rig.as_deref() {
-            Some(crate::run_mode::RigCharacter(name)) => {
-                if let Ok(ignored) = std::env::var("WOW_CHAR") {
-                    warn!("char select: WOW_RIG names {name} — ignoring WOW_CHAR={ignored}");
+        if mode.as_deref().copied().unwrap_or_default() == crate::GameMode::Networked {
+            // `WOW_RIG` outranks `WOW_CHAR`: the rig may have to create its character first, which
+            // this one-shot fast path cannot wait for.
+            roster.env_char = match rig.as_deref() {
+                Some(crate::run_mode::RigCharacter(name)) => {
+                    if let Ok(ignored) = std::env::var("WOW_CHAR") {
+                        warn!("char select: WOW_RIG names {name} — ignoring WOW_CHAR={ignored}");
+                    }
+                    None
                 }
-                None
-            }
-            // `WOW_CHAR`, or the login smoke's optional third field.
-            None => std::env::var("WOW_CHAR").ok().or_else(|| {
-                std::env::var("WOW_LOGIN_SMOKE")
-                    .ok()
-                    .and_then(|s| crate::login::smoke_character(&s))
-            }),
-        };
+                // `WOW_CHAR`, or the login smoke's optional third field.
+                None => std::env::var("WOW_CHAR").ok().or_else(|| {
+                    std::env::var("WOW_LOGIN_SMOKE")
+                        .ok()
+                        .and_then(|s| crate::login::smoke_character(&s))
+                }),
+            };
+        }
     }
     for msg in msgs.read() {
         roster.chars = msg.characters.clone();
@@ -841,7 +845,7 @@ fn debug_select_shot(
     if entered_at.elapsed(&time) < at {
         return;
     }
-    use bevy::render::view::screenshot::{save_to_disk, Screenshot};
+    use bevy::render::view::screenshot::{Screenshot, save_to_disk};
     commands
         .spawn(Screenshot::primary_window())
         .observe(save_to_disk(out.clone()));
@@ -866,6 +870,8 @@ pub(crate) fn race_name(race: u8) -> &'static str {
         6 => "Tauren",
         7 => "Gnome",
         8 => "Troll",
+        10 => "Blood Elf",
+        11 => "Draenei",
         _ => "?",
     }
 }
@@ -1396,10 +1402,12 @@ mod tests {
         app.update();
         let cvars = app.world().resource::<crate::cvars::Cvars>();
         assert!(!cvars.has_events());
-        assert!(cvars
-            .vm_seed()
-            .iter()
-            .any(|r| r.name == CVAR_LAST_CHARACTER && r.value == "1"));
+        assert!(
+            cvars
+                .vm_seed()
+                .iter()
+                .any(|r| r.name == CVAR_LAST_CHARACTER && r.value == "1")
+        );
     }
 
     /// Result first, roster after: the arm is answered by the roster policy, and a name not found

@@ -11,7 +11,7 @@ use std::collections::HashMap;
 
 use bevy::prelude::*;
 
-use super::collider::{build_collider_task, doodad_hulls_bare, PendingCollider};
+use super::collider::{PendingCollider, build_collider_task, doodad_hulls_bare};
 use crate::collision::PickOccluder;
 use crate::interact::WorldObject;
 use crate::model_render::ModelKind;

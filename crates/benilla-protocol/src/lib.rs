@@ -1,12 +1,15 @@
 //! The WoW 1.12.1 (build 5875) wire protocol: [`auth`] for realmd (login protocol version 3),
 //! [`world`] and [`events`] for the world server. SRP6 and the header crypto are `benilla-srp`'s.
 
+#[cfg(feature = "network")]
 pub mod auth;
 pub mod events;
 pub mod guid;
 pub mod messages;
 pub mod wire;
+#[cfg(feature = "network")]
 pub mod world;
+#[cfg(feature = "network")]
 pub use auth::AuthReject;
 pub use events::{
     decode, CharAction, EntityKind, LoginRefusal, LoginStage, MoveSpeeds, Poll, SessionEnd,
@@ -19,13 +22,17 @@ pub use messages::{
     ServerPacket, SpeedKind, SplineMode, TransportPose, CHARACTER_FLAG_GHOST,
     CHARACTER_FLAG_HIDE_CLOAK, CHARACTER_FLAG_HIDE_HELM, CHARACTER_FLAG_RENAME,
 };
+#[cfg(feature = "network")]
 pub use world::{
     WardenRequired, WorldAuthReject, WorldReader, WorldSession, WorldWriter, WORLD_PORT,
 };
 
+#[cfg(feature = "network")]
 use std::net::TcpStream;
 
+#[cfg(feature = "network")]
 use anyhow::{anyhow, Context, Result};
+#[cfg(feature = "network")]
 use benilla_srp::{NormalizedString, PublicKey, SrpClientChallenge, SESSION_KEY_LENGTH};
 
 /// The port a stock vmangos `realmd` listens on.
@@ -33,6 +40,7 @@ pub const AUTH_PORT: u16 = 3724;
 /// The 1.12.1 client build we present to the server.
 pub const CLIENT_BUILD: u16 = 5875;
 /// Challenges [`logon`] draws for an unambiguous `B`; one in ~137 is not, so all 8 fail ~10⁻¹⁷.
+#[cfg(feature = "network")]
 const MAX_CHALLENGE_DIALS: u32 = 8;
 
 /// Splits an optional `:port` off a host; one without a numeric port, a raw IPv6 address
@@ -71,6 +79,7 @@ impl std::error::Error for DialFailure {}
 
 /// Resolves, then tries every resolved address in turn: `localhost` gives `::1` first, and a
 /// server may bind only IPv4.
+#[cfg(feature = "network")]
 fn dial(host: &str, port: u16) -> Result<TcpStream> {
     use std::net::ToSocketAddrs;
     let address = format!("{host}:{port}");
@@ -105,8 +114,8 @@ pub struct RealmInfo {
     pub name: String,
     /// `host:port` of the world server, as the client would connect to it.
     pub address: String,
-    /// The population, sentinels already rewritten as the reference parser does
-    /// ([`auth::MAGIC_POPULATIONS`]); the list shows a band against all realms' mean and deviation.
+    /// The population, with sentinel values rewritten as the client does; the list shows a band
+    /// against all realms' mean and deviation.
     pub population: f32,
     /// This account's character count there, shown as `"(3)"` (client realm record `+0x130`).
     pub characters: u8,
@@ -115,7 +124,7 @@ pub struct RealmInfo {
     pub realm_type: u32,
     /// The realm flags as the client holds them (record `+0x08`): the wire carries only `0x01`
     /// invalid, `0x02` offline and `0x04`; `0x20`/`0x40`/`0x80` (Recommended, New, Full) are
-    /// synthesized from the magic populations ([`auth::MAGIC_POPULATIONS`]).
+    /// synthesized from sentinel population values.
     pub flags: u8,
     /// The category (timezone) byte the list's tabs group on, matched by equality, not an index.
     pub category: u8,
@@ -125,6 +134,7 @@ pub struct RealmInfo {
 
 /// A successful logon: the SRP6 session key, the realms, and the realmd socket, kept open because
 /// the reference's `RealmList.lua` re-requests the list every `REALM_LIST_REFRESH_TIME` (5 s).
+#[cfg(feature = "network")]
 pub struct Logon {
     pub session_key: [u8; SESSION_KEY_LENGTH],
     pub realms: Vec<RealmInfo>,
@@ -132,6 +142,7 @@ pub struct Logon {
     stream: Option<TcpStream>,
 }
 
+#[cfg(feature = "network")]
 impl Logon {
     /// The reference's `RequestRealmList`: re-reads the list, keeping the old one and dropping
     /// the socket on failure (realmd closes idle sockets); `timeout` bounds a silent server.
@@ -163,6 +174,7 @@ impl Logon {
 }
 
 /// The full SRP6 logon against a vanilla `realmd`, then the realm list.
+#[cfg(feature = "network")]
 pub fn logon(host: &str, username: &str, password: &str) -> Result<Logon> {
     let (host, port) = host_port(host, AUTH_PORT);
 

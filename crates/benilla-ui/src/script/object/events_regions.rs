@@ -6,13 +6,47 @@ use mlua::{Function, Lua, MultiValue, Table, Value};
 
 use crate::script::binding_abi::optional_string;
 use crate::script::region::region_wrapper;
-use crate::script::{Model, RegionData, REG_SCRIPTS, SCRIPT_KINDS};
+use crate::script::{Model, REG_SCRIPTS, RegionData, SCRIPT_KINDS};
 use crate::widget::RegionKind;
 
 use super::{decode_id, draw_layer_from_str, frame_handle_of, publish_global};
 
 /// Populate `m`'s event, script and region-creation methods.
 pub(super) fn install(lua: &Lua, m: &Table) -> mlua::Result<()> {
+    m.set(
+        "GetAttribute",
+        lua.create_function(|_, (this, name): (Table, String)| {
+            match this.get::<Value>("__benilla_attributes")? {
+                Value::Table(attributes) => attributes.get::<Value>(name),
+                _ => Ok(Value::Nil),
+            }
+        })?,
+    )?;
+    m.set(
+        "SetAttribute",
+        lua.create_function(|lua, (this, name, value): (Table, String, Value)| {
+            let attributes = match this.get::<Value>("__benilla_attributes")? {
+                Value::Table(attributes) => attributes,
+                _ => {
+                    let attributes = lua.create_table()?;
+                    this.set("__benilla_attributes", attributes.clone())?;
+                    attributes
+                }
+            };
+            if attributes.get::<Value>(name.as_str())? == value {
+                return Ok(());
+            }
+            attributes.set(name.as_str(), value.clone())?;
+            let handle = frame_handle_of(lua, &this)?;
+            let id = lua.app_data_mut::<Model>().expect("model").frame_id(handle);
+            super::super::event::fire_widget_handler(
+                lua,
+                id,
+                "OnAttributeChanged",
+                vec![Value::String(lua.create_string(name)?), value],
+            )
+        })?,
+    )?;
     // Events + scripts
     m.set(
         "RegisterEvent",
@@ -213,7 +247,7 @@ pub(super) fn install(lua: &Lua, m: &Table) -> mlua::Result<()> {
 /// `SetScript(name, func)`: stores the closure under one of [`SCRIPT_KINDS`], else raises.
 /// Deviation: real 1.12 kinds nothing fires yet raise too (`OnHyperlinkEnter`, `OnHyperlinkLeave`,
 /// `OnMessageScrollChanged`, `OnInputLanguageChanged`, the movie frame's), because an accepted
-/// handler that never runs fails silently. `OnAttributeChanged` is 2.0's, with no 1.12 slot.
+/// handler that never runs fails silently.
 fn set_script(lua: &Lua, this: &Table, name: &str, func: Option<Function>) -> mlua::Result<()> {
     let kind = SCRIPT_KINDS
         .iter()
@@ -365,6 +399,36 @@ fn create_region(
 #[cfg(test)]
 mod tests {
     use crate::script::UiScript;
+
+    #[test]
+    fn attributes_round_trip_and_fire_only_when_the_value_changes() {
+        let s = UiScript::new().unwrap();
+        s.run(
+            r#"
+            F = CreateFrame("Button", "AttributeButton")
+            AttributeChanges = 0
+            F:SetScript("OnAttributeChanged", function(self, name, value)
+                AttributeChanges = AttributeChanges + 1
+                LastAttribute = { self, name, value }
+            end)
+            F:SetAttribute("type", "spell")
+            F:SetAttribute("type", "spell")
+            "#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            s.eval::<String>("return F:GetAttribute('type')").unwrap(),
+            "spell"
+        );
+        assert_eq!(s.eval::<i64>("return AttributeChanges").unwrap(), 1);
+        assert!(s.eval::<bool>("return LastAttribute[1] == F").unwrap());
+        assert_eq!(s.eval::<String>("return LastAttribute[2]").unwrap(), "type");
+        assert_eq!(
+            s.eval::<String>("return LastAttribute[3]").unwrap(),
+            "spell"
+        );
+    }
 
     /// Both frames share both events, so clearing one must leave the other's registrations.
     #[test]

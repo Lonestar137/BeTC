@@ -1,6 +1,6 @@
 //! Embedded skin profiles: indices, triangles, submeshes and batches.
 
-use benilla_bytes::{capped, ByteExt};
+use benilla_bytes::{ByteExt, capped};
 
 use crate::error::{Error, Result};
 use crate::model::M2Model;

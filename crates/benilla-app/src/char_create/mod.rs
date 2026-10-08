@@ -12,8 +12,8 @@ use benilla_ui::widget::EditBoxState;
 use bevy::input::keyboard::KeyboardInput;
 
 use crate::textinput::{self, HostClipboard};
-use bevy::input::mouse::AccumulatedMouseMotion;
 use bevy::input::ButtonState;
+use bevy::input::mouse::AccumulatedMouseMotion;
 use bevy::prelude::*;
 
 use crate::char_select::{ClientState, Roster};
@@ -32,8 +32,14 @@ use crate::sound::GlueSound;
 /// `UnitFactionGroup("player")` with.
 pub(crate) const ALLIANCE: [u8; 4] = [1, 3, 4, 7]; // Human, Dwarf, Night Elf, Gnome
 const HORDE: [u8; 4] = [2, 5, 6, 8]; // Orc, Scourge, Tauren, Troll
+pub(crate) const TBC_ALLIANCE: [u8; 5] = [1, 3, 4, 7, 11]; // Draenei
+pub(crate) const TBC_HORDE: [u8; 5] = [2, 5, 6, 8, 10]; // Blood Elf
 /// The reference's initial facing (`SetCharacterCreateFacing(-15)`), reset on every race switch.
 const INITIAL_FACING: f32 = -15.0 * std::f32::consts::PI / 180.0;
+
+pub(crate) fn is_alliance_race(race: u8) -> bool {
+    ALLIANCE.contains(&race) || race == 11
+}
 
 /// The character-creation screen and its selection state.
 pub(crate) struct CharCreatePlugin;
@@ -49,8 +55,8 @@ impl Plugin for CharCreatePlugin {
                 (
                     screen::rescale_screen,
                     create_input,
-                    debug_auto_create,
                     debug_pick,
+                    debug_auto_create,
                     debug_shot,
                     rotate_model,
                     refresh::refresh_dynamic,
@@ -193,7 +199,7 @@ fn debug_shot(
     if time.elapsed_secs() - start < 5.0 {
         return;
     }
-    use bevy::render::view::screenshot::{save_to_disk, Screenshot};
+    use bevy::render::view::screenshot::{Screenshot, save_to_disk};
     commands
         .spawn(Screenshot::primary_window())
         .observe(save_to_disk(out.clone()));
@@ -229,10 +235,20 @@ fn dial_counts(catalog: Option<&CharCreate>, race: u8, sex: u8) -> [u8; 5] {
 impl CreateSelection {
     /// Reset to Human, male, its first class, dials 0.
     fn reset(&mut self, catalog: Option<&CharCreate>) {
-        self.race = 1;
+        self.race = if catalog.is_some_and(|c| c.0.race_file(10).is_some()) {
+            10
+        } else {
+            1
+        };
         self.sex = 0;
         self.class = catalog
-            .and_then(|c| c.0.classes_for_race(1).first().copied())
+            .and_then(|c| {
+                let classes = c.0.classes_for_race(self.race);
+                classes
+                    .contains(&8)
+                    .then_some(8)
+                    .or_else(|| classes.first().copied())
+            })
             .unwrap_or(1);
         self.dials = [0; 5];
         self.name.set_text("");
@@ -710,7 +726,7 @@ mod tests {
     #[test]
     fn the_chosen_icons_are_lock_highlighted() {
         use crate::glue::art::GlueArt;
-        use crate::glue::widgets::{icon_button, LockHighlight};
+        use crate::glue::widgets::{LockHighlight, icon_button};
 
         fn spawn_icons(mut commands: Commands, art: Res<GlueArt>) {
             let font = Handle::<Font>::default();

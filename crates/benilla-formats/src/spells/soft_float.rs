@@ -56,11 +56,7 @@ fn add(a: u32, b: u32) -> u32 {
     }
     let significand = |x: u32| {
         let m = ((x & 0x7f_ffff | 0x80_0000) << 1) as i32;
-        if x & 0x8000_0000 != 0 {
-            -m
-        } else {
-            m
-        }
+        if x & 0x8000_0000 != 0 { -m } else { m }
     };
     let (mut sa, mut sb) = (significand(a), significand(b));
     let gap = be.wrapping_sub(ae) as i32;

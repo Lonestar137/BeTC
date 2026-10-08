@@ -89,7 +89,8 @@ impl M2BoneFlags {
     }
 }
 
-/// One M2 bone: keyBoneId i32 @+0x00, flags @+0x04, parent i16 @+0x08, pivot C3 @+0x60.
+/// One M2 bone: keyBoneId i32 @+0x00, flags @+0x04, parent i16 @+0x08; offsets after the header
+/// are versioned by [`bone_layout`].
 pub struct M2Bone {
     /// `KeyBoneID`, `-1` for none: 0/1 arms L/R, 2/3 shoulders L/R, 4 spine low, 5 waist, 6 head…
     pub key_bone: i16,
@@ -102,6 +103,40 @@ impl M2Bone {
     /// Whether this bone billboards (any of the spherical/cylindrical bits).
     pub fn is_billboard(&self) -> bool {
         self.flags.0 & (0x08 | 0x10 | 0x20 | 0x40) != 0
+    }
+}
+
+/// Versioned offsets in an MD20 bone record.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct M2BoneLayout {
+    pub stride: usize,
+    pub translation: usize,
+    pub rotation: usize,
+    pub rotation_value_size: usize,
+    pub scale: usize,
+    pub pivot: usize,
+}
+
+/// Bone records gained `boneNameCRC` in TBC; all bone tracks and the pivot move by four bytes.
+pub const fn bone_layout(version: u32) -> Option<M2BoneLayout> {
+    match version {
+        256..=259 => Some(M2BoneLayout {
+            stride: 108,
+            translation: 12,
+            rotation: 40,
+            rotation_value_size: 16,
+            scale: 68,
+            pivot: 96,
+        }),
+        260..=263 => Some(M2BoneLayout {
+            stride: 112,
+            translation: 16,
+            rotation: 44,
+            rotation_value_size: 8,
+            scale: 72,
+            pivot: 100,
+        }),
+        _ => None,
     }
 }
 

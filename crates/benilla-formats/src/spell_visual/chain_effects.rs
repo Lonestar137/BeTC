@@ -9,8 +9,8 @@ use std::collections::HashMap;
 use anyhow::{Context, Result};
 use benilla_dbc::{FieldType, Schema, SchemaField};
 
-use crate::dbc::{f32_at, parse, str_at, u32_at};
 use crate::Chain;
+use crate::dbc::{f32_at, parse, str_at, u32_at};
 
 const SPELL_CHAIN_EFFECTS: &str = "DBFilesClient\\SpellChainEffects.dbc";
 const SPELL_CHAIN_EFFECTS_FIELDS: usize = 8;

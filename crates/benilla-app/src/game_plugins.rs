@@ -97,6 +97,8 @@ pub(crate) struct GamePlugins {
     /// [`NetPlugin::connect`]: `false` in capture mode, where no IO thread runs, so captures are
     /// deterministic whether or not a server is up.
     pub(crate) connect: bool,
+    /// The process mode, fixed by the launcher before plugin installation.
+    pub(crate) mode: crate::GameMode,
     /// [`crate::char_select::CharSelectPlugin::start`]: the screen this session opens on.
     pub(crate) start: crate::char_select::ClientState,
 }
@@ -131,13 +133,12 @@ impl PluginGroup for GamePlugins {
             .add(CinematicPlugin)
             .add(CursorPlugin)
             .add(NetPlugin {
-                connect: self.connect,
+                connect: self.connect && self.mode == crate::GameMode::Networked,
             })
             .add(crate::death::DeathPlugin)
             .add(crate::glue::GluePlugin)
             .add(crate::char_select::CharSelectPlugin { start: self.start })
-            .add(crate::login::LoginPlugin)
-            .add(crate::realm_select::RealmSelectPlugin)
+            .add(ConnectionUiPlugins { mode: self.mode })
             .add(crate::char_create::CharCreatePlugin)
             .add(SoundPlugin)
             .add(TargetPlugin)
@@ -281,6 +282,31 @@ impl PluginGroup for GamePlugins {
     }
 }
 
+/// Installs connection screens only in the networked mode; the offline roster still needs their
+/// state resources because the inherited character-select widgets share those models.
+struct ConnectionUiPlugins {
+    mode: crate::GameMode,
+}
+
+impl Plugin for ConnectionUiPlugins {
+    fn build(&self, app: &mut App) {
+        match self.mode {
+            crate::GameMode::Networked => {
+                app.add_plugins((
+                    crate::login::LoginPlugin,
+                    crate::realm_select::RealmSelectPlugin,
+                ));
+            }
+            crate::GameMode::Offline => {
+                app.init_resource::<crate::login::LoginIntent>()
+                    .init_resource::<crate::realm_select::Realms>();
+                #[cfg(feature = "offline")]
+                app.add_plugins(crate::offline::OfflineGamePlugin);
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 pub(crate) mod schedule_tests {
     use std::any::TypeId;
@@ -317,6 +343,7 @@ pub(crate) mod schedule_tests {
         app.add_plugins(benilla_world::world_plugins::WorldPlugins);
         app.add_plugins(GamePlugins {
             connect: false,
+            mode: crate::GameMode::Networked,
             start: crate::char_select::ClientState::Login,
         });
         app.finish();

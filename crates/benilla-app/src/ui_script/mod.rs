@@ -36,6 +36,7 @@ pub(crate) use session::VmMemo;
 pub(crate) use manifest::default_bindings;
 pub(crate) use manifest::load_default_ui;
 pub(crate) use manifest::load_ingame_ui;
+pub(crate) use manifest::offline_default_bindings;
 #[cfg(test)]
 pub(crate) use manifest::{load_stock_bindings, stock_bindings_file};
 

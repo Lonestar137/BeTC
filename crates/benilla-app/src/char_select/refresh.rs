@@ -9,8 +9,8 @@ use crate::glue_strings::GlueStrings;
 use crate::net::NetStatus;
 use crate::portrait::{GlueLook, GluePreview, SelectLook};
 
-use super::screen::{RealmBanner, RowText, SelectAction, SelectedName, MAX_ROWS};
-use super::{class_name, Roster};
+use super::screen::{MAX_ROWS, RealmBanner, RowText, SelectAction, SelectedName};
+use super::{Roster, class_name};
 
 /// Refill the rows, the selected name and the realm banner when the roster changes or the screen
 /// was just spawned (a return from the create screen finds the roster unchanged).
@@ -126,6 +126,7 @@ fn realm_banner(name: &str, suffix: &str, down: Option<&str>) -> String {
 #[allow(clippy::type_complexity)]
 pub(super) fn refresh_banner_and_buttons(
     roster: Res<Roster>,
+    offline: Option<Res<crate::net::NetOffline>>,
     mut rows: Query<(&SelectAction, &mut LockHighlight), With<Button>>,
     mut disables: Query<(&SelectAction, &mut GlueDisabled)>,
     mut create_vis: Query<
@@ -153,17 +154,27 @@ pub(super) fn refresh_banner_and_buttons(
             disabled.0 = want;
         }
     }
-    // The reference hides Create disconnected or at `MAX_CHARACTERS_PER_REALM` (10).
-    let show_create = roster.realm.is_some() && roster.chars.len() < MAX_ROWS;
+    // The reference hides Create disconnected or at `MAX_CHARACTERS_PER_REALM` (10); an offline
+    // roster has no realm but must still be able to create its first local character.
+    let offline = offline.is_some();
+    let show_create = should_show_create(roster.realm.is_some(), offline, roster.chars.len());
     for (action, mut vis) in &mut create_vis {
-        if matches!(action, SelectAction::CreateChar) {
-            *vis = if show_create {
-                Visibility::Inherited
-            } else {
-                Visibility::Hidden
-            };
+        match action {
+            SelectAction::CreateChar => {
+                *vis = if show_create {
+                    Visibility::Inherited
+                } else {
+                    Visibility::Hidden
+                };
+            }
+            SelectAction::ChangeRealm if offline => *vis = Visibility::Hidden,
+            _ => {}
         }
     }
+}
+
+fn should_show_create(has_realm: bool, offline: bool, character_count: usize) -> bool {
+    (has_realm || offline) && character_count < MAX_ROWS
 }
 
 /// Feed the glue booth: the scene is the selected character's race (`SetBackgroundModel`; Orc
@@ -210,6 +221,19 @@ mod tests {
         assert_eq!(
             realm_banner("Kalimdor", "", Some("Server down")),
             "Kalimdor\n(Server down)"
+        );
+    }
+
+    #[test]
+    fn an_empty_offline_roster_can_create_without_a_realm() {
+        assert!(should_show_create(false, true, 0));
+        assert!(
+            !should_show_create(false, false, 0),
+            "network create needs a realm"
+        );
+        assert!(
+            !should_show_create(false, true, MAX_ROWS),
+            "the roster cap still applies"
         );
     }
 }

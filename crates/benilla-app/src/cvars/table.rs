@@ -206,6 +206,8 @@ pub(crate) const REGISTERED: &[Registered] = &[
     // `AutoInteract` (`0x603390`, record `[0xc4d9a4]`), Click-to-Move (`UIOptionsFrame.lua:7`):
     // "1" on koKR alone (`0x603368`). The knob is [`crate::player::Approach`].
     same("AutoInteract", "0"),
+    // Local single-player messages and console output are opt-in; the Chat options page toggles it.
+    same("showChat", "0"),
     // `BlockTrades` (`0x842fbc`), `UIOptionsFrame.lua:11`: the refusal leg `0x4bf7bc` fires only
     // when it is set. The knob is [`crate::ui_trade::BlockTrades`].
     same("BlockTrades", "0"),

@@ -11,8 +11,8 @@ use std::collections::HashMap;
 use anyhow::{Context, Result};
 use benilla_dbc::{FieldType, Schema, SchemaField};
 
-use crate::dbc::{parse, str_at, u32_at};
 use crate::Chain;
+use crate::dbc::{parse, str_at, u32_at};
 
 const EMOTES_TEXT: &str = "DBFilesClient\\EmotesText.dbc";
 const EMOTES_TEXT_DATA: &str = "DBFilesClient\\EmotesTextData.dbc";

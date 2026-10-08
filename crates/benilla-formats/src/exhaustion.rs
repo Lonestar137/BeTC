@@ -6,8 +6,8 @@
 use anyhow::{Context, Result};
 use benilla_dbc::{FieldType, Schema, SchemaField};
 
-use crate::dbc::{f32_at, parse, str_at, u32_at};
 use crate::Chain;
+use crate::dbc::{f32_at, parse, str_at, u32_at};
 
 const EXHAUSTION: &str = "DBFilesClient\\Exhaustion.dbc";
 

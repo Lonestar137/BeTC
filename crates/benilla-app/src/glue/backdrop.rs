@@ -4,7 +4,7 @@
 
 use bevy::prelude::*;
 
-use benilla_assets::{sprite_image, sprite_image_tiled, WorldAssets};
+use benilla_assets::{WorldAssets, sprite_image, sprite_image_tiled};
 
 /// `UI-Tooltip-Background`'s native size, converting a tile period to a `stretch_value`.
 const TOOLTIP_BG_NATIVE: f32 = 64.0;
@@ -265,11 +265,11 @@ mod tests {
         assert_eq!(at(5, 0, 0), (10, 0)); // TOPRIGHT    ← slice 5
         assert_eq!(at(6, 0, 0), (12, 0)); // BOTTOMLEFT  ← slice 6
         assert_eq!(at(7, 0, 0), (14, 0)); // BOTTOMRIGHT ← slice 7
-                                          // TOP ← slice 2, un-rotated: dst(x,y) = src(2e+y, e-1-x).
+        // TOP ← slice 2, un-rotated: dst(x,y) = src(2e+y, e-1-x).
         assert_eq!(at(2, 0, 0), (4, 1)); // dst(0,0) ← src(4, 1)
         assert_eq!(at(2, 1, 0), (4, 0)); // dst(1,0) ← src(4, 0)
         assert_eq!(at(2, 0, 1), (5, 1)); // dst(0,1) ← src(5, 1)
-                                         // BOTTOM ← slice 3 (x 6..8), same un-rotation.
+        // BOTTOM ← slice 3 (x 6..8), same un-rotation.
         assert_eq!(at(3, 0, 0), (6, 1));
         assert_eq!(at(3, 1, 1), (7, 0));
         assert!(cells.iter().all(|c| c.len() == e * e * 4));

@@ -9,8 +9,8 @@ use bevy::prelude::*;
 use benilla_formats::ChrClasses;
 use benilla_protocol::messages::ObjectType;
 use benilla_ui::script::{
-    parse_unit_token, power_token, ScriptValue, UiScript, UnitBase, UnitState, UnitTokenParse,
-    WornDisplay,
+    ScriptValue, UiScript, UnitBase, UnitState, UnitTokenParse, WornDisplay, parse_unit_token,
+    power_token,
 };
 
 use crate::creature_type::CreatureTypeSources;
@@ -18,8 +18,8 @@ use crate::names::NameCache;
 use crate::net::{
     FieldChanged, FieldEdges, Guid, NetCommands, ObjectStore, Reputations, SelfPlayer,
 };
-use crate::target::{ring_reaction, Factions, Selection};
-use crate::ui_script::{gate, UiInput};
+use crate::target::{Factions, Selection, ring_reaction};
+use crate::ui_script::{UiInput, gate};
 
 mod held;
 
@@ -534,10 +534,10 @@ pub(crate) fn class_names(class: u8) -> Option<(&'static str, &'static str)> {
 /// where addons concatenate `UnitFactionGroup("player")` at file scope; [`faction_group`] reads
 /// the live template.
 pub(crate) fn race_faction_group(race: u8) -> Option<&'static str> {
-    if !(1..=8).contains(&race) {
+    if !(1..=8).contains(&race) && !matches!(race, 10 | 11) {
         return None;
     }
-    Some(if crate::char_create::ALLIANCE.contains(&race) {
+    Some(if crate::char_create::is_alliance_race(race) {
         "Alliance"
     } else {
         "Horde"
@@ -1671,9 +1671,9 @@ mod tests {
     mod group_pet_tokens {
         use super::*;
         use crate::net::GuidIndex;
-        use crate::ui_party::{GroupState, GROUPTYPE_RAID};
-        use benilla_protocol::messages::{member_status, GroupMemberEntry, PartyMemberStatsInfo};
+        use crate::ui_party::{GROUPTYPE_RAID, GroupState};
         use benilla_protocol::ObjectFields;
+        use benilla_protocol::messages::{GroupMemberEntry, PartyMemberStatsInfo, member_status};
         use bevy::ecs::system::RunSystemOnce;
 
         const ME: u64 = 0x10;
@@ -1994,9 +1994,9 @@ mod tests {
         use super::*;
         use crate::net::GuidIndex;
         use crate::target::{Hovered, HoveredObject};
-        use crate::ui_party::{GroupState, GROUPTYPE_RAID};
-        use benilla_protocol::messages::{member_status, GroupMemberEntry};
+        use crate::ui_party::{GROUPTYPE_RAID, GroupState};
         use benilla_protocol::ObjectFields;
+        use benilla_protocol::messages::{GroupMemberEntry, member_status};
         use bevy::ecs::system::RunSystemOnce;
 
         const ME: u64 = 0x10;
@@ -2257,7 +2257,7 @@ mod tests {
     /// `0x515970`), on the unit the chain names and not on the base.
     #[test]
     fn the_range_verbs_answer_for_a_target_chain() {
-        use benilla_protocol::messages::{member_status, GroupMemberEntry, ObjectFields};
+        use benilla_protocol::messages::{GroupMemberEntry, ObjectFields, member_status};
 
         const ME: u64 = 0x10;
         const A: u64 = 0x1001;
@@ -2395,7 +2395,7 @@ mod tests {
     /// order: read off the declared graph, the aura feed's set comes before the reach feed.
     #[test]
     fn the_reach_feed_runs_after_the_aura_feed_it_reads() {
-        use crate::game_plugins::schedule_tests::{census, headless_client, SyncPoints};
+        use crate::game_plugins::schedule_tests::{SyncPoints, census, headless_client};
 
         let mut app = headless_client();
         let c = census(&mut app, Update, SyncPoints::Declared);
@@ -3446,8 +3446,8 @@ mod tests {
     fn unit_creature_type_names_the_form_before_the_race_and_a_creature_its_template() {
         use crate::names::CreatureRecord;
         use benilla_formats::ShapeshiftForm;
-        use benilla_protocol::messages::ObjectType;
         use benilla_protocol::ObjectFields;
+        use benilla_protocol::messages::ObjectType;
 
         /// `UNIT_FIELD_BYTES_0` and `UNIT_FIELD_BYTES_1`, absolute descriptor indices, and
         /// `OBJECT_FIELD_ENTRY`.

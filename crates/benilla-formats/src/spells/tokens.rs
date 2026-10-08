@@ -438,11 +438,7 @@ fn atoi(bytes: &[u8]) -> i32 {
     let n = rest.take_while(u8::is_ascii_digit).fold(0i32, |n, b| {
         n.wrapping_mul(10).wrapping_add(i32::from(b - b'0'))
     });
-    if negative {
-        n.wrapping_neg()
-    } else {
-        n
-    }
+    if negative { n.wrapping_neg() } else { n }
 }
 
 /// Substitute every `$`-token in `text` against `spell`.

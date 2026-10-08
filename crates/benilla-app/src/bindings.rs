@@ -183,27 +183,37 @@ impl Plugin for BindingsPlugin {
 /// player's chain (`WTF\DefaultBindings.wtf`), the account set, and the character's set if it has
 /// one. The keys are their own table, so a command a later file declares finds its keys there,
 /// and stock `ActionButton_OnLoad` paints its hotkey corner from `GetBindingKey` at load.
+/// Offline first run uses local movement defaults only when neither saved set exists; persisted
+/// diffs keep their original baseline.
 ///
 /// The reference reads the defaults later in `UI_Init` (`0x4b62b0` at `0x4900c7`); here they are
 /// read first because the stored sets are diffs against them ([`store`]'s deviation), and nothing
 /// reads set 0 before `LoadBindings(0)`.
 pub(crate) fn seed_bindings_for_vm(world: &mut World, script: &mut UiScript) {
-    let defaults = crate::ui_script::default_bindings();
-    script.set_default_bindings(defaults);
-    let defaults = script.default_bindings();
     let account = crate::local_state::bindings_account_path();
-    let overrides = read_diff(&account).unwrap_or_default();
-    script.seed_binding_set(1, Some(store::resolve(&overrides, &defaults)));
-    script.load_binding_set(1);
-
-    // The character's own set: its file existing makes it the active set, the reference's rule.
-    // No roster identity (a rigged or capture run) leaves set 2 unseeded.
     let id = world
         .get_resource::<crate::char_select::Roster>()
         .and_then(crate::ui_macro::identity);
     let character = id
         .as_ref()
         .and_then(|(realm, name)| crate::local_state::bindings_character_path(realm, name));
+    let has_saved_bindings = account.as_ref().is_some_and(|path| path.exists())
+        || character.as_ref().is_some_and(|path| path.exists());
+    let defaults = if world.get_resource::<crate::GameMode>() == Some(&crate::GameMode::Offline)
+        && !has_saved_bindings
+    {
+        crate::ui_script::offline_default_bindings()
+    } else {
+        crate::ui_script::default_bindings()
+    };
+    script.set_default_bindings(defaults);
+    let defaults = script.default_bindings();
+    let overrides = read_diff(&account).unwrap_or_default();
+    script.seed_binding_set(1, Some(store::resolve(&overrides, &defaults)));
+    script.load_binding_set(1);
+
+    // The character's own set: its file existing makes it the active set, the reference's rule.
+    // No roster identity (a rigged or capture run) leaves set 2 unseeded.
     match read_diff(&character) {
         Some(overrides) => {
             script.seed_binding_set(2, Some(store::resolve(&overrides, &defaults)));
@@ -999,6 +1009,40 @@ mod tests {
         assert!(
             state(&app).pressed(Input::MoveForward),
             "the first repeat after re-activation re-latches"
+        );
+    }
+
+    #[test]
+    fn the_tbc_jump_binding_fires_on_press_and_ascend_stop_is_safe_on_release() {
+        const JUMP_BINDING: &str = r#"<Bindings>
+            <Binding name="JUMP" runOnUp="true">
+                if keystate == "down" then JumpOrAscendStart() else AscendStop() end
+            </Binding>
+        </Bindings>"#;
+        let mut script = UiScript::new().expect("VM");
+        script.set_default_bindings(benilla_ui::script::keybind::parse_bindings_wtf(
+            "bind SPACE JUMP",
+        ));
+        script.load_binding_set(1);
+        script.register_bindings(
+            &benilla_ui::bindings_xml::parse(JUMP_BINDING).expect("TBC jump binding"),
+        );
+        let mut app = vm_harness(script);
+
+        press_key(&mut app, KeyCode::Space);
+        app.update();
+        assert!(state(&app).fired(Input::Jump));
+
+        release_key(&mut app, KeyCode::Space);
+        app.update();
+        assert!(!state(&app).fired(Input::Jump));
+        assert!(state(&app).latched.is_empty());
+        assert!(
+            app.world()
+                .non_send_resource::<UiScript>()
+                .errors()
+                .is_empty(),
+            "TBC's runOnUp AscendStop must resolve without a Lua error"
         );
     }
 

@@ -1,0 +1,14 @@
+[package]
+name = "benilla-game-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Version-neutral local game authority for the offline TBC game"
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+sha1.workspace = true
+toml = "0.8"

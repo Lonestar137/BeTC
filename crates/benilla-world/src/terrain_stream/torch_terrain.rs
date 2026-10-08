@@ -10,8 +10,8 @@
 //! chunks, so a slot gathers at most ~2.3k vertices and ~4k triangles once, when its static map
 //! rebuilds. Chunks are culled by their own box against the sphere, then per triangle.
 
-use benilla_assets::coords::wow_to_bevy;
 use benilla_assets::AdtTile;
+use benilla_assets::coords::wow_to_bevy;
 use bevy::prelude::*;
 
 use super::TerrainStreamer;

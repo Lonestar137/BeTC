@@ -7,24 +7,24 @@ use std::time::{Duration, Instant};
 
 use benilla_assets::coords::{bevy_to_wow, placement_rotation, wow_to_bevy};
 use benilla_assets::{AdtTile, M2Model, WdtIndex, WmoModel};
-use benilla_formats::{Doodad, WmoInstance};
+use benilla_formats::{Doodad, WmoInstance, world_to_tile};
 use bevy::pbr::ExtendedMaterial;
 use bevy::prelude::*;
 use bevy::render::render_resource::Face;
 
-use crate::clutter::{scatter_tile_clutter, ClutterConfig, GroundClutter};
-use crate::collision::{walk_layers, GroundDecalSurface, PickOccluder};
+use crate::clutter::{ClutterConfig, GroundClutter, scatter_tile_clutter};
+use crate::collision::{GroundDecalSurface, PickOccluder, walk_layers};
 use crate::interior::WmoResidency;
 use crate::lighting::SharedLightBuffer;
-use crate::liquid::{spawn_liquids, LiquidAssets};
+use crate::liquid::{LiquidAssets, spawn_liquids};
 use crate::model_render::MaterialCache;
 use crate::schedule::WorldStage;
 use crate::view::WorldCamera;
 use crate::vis_chain::VisChainOnly;
 use crate::world_map::CurrentMap;
-use benilla_assets::materials::{TerrainExtension, TerrainMaterial};
 use benilla_assets::MapCatalogRes;
 use benilla_assets::RenderConfig;
+use benilla_assets::materials::{TerrainExtension, TerrainMaterial};
 use benilla_assets::{m2_url, wmo_url};
 
 mod collider;
@@ -42,24 +42,24 @@ pub use torch_terrain::{
 
 use collider::{finish_colliders, impassable_wall_data, terrain_collider_data};
 use furnish::furnish_tile_cells;
-use merge::{flush_static_merge, StaticMerge};
+use merge::{StaticMerge, flush_static_merge};
 use spawn::prop_light::WmoDoodadInst;
 use spawn::spawn_loaded_placements;
-use weld::{flush_hull_welds, HullWelds};
+use weld::{HullWelds, flush_hull_welds};
 pub use window::StreamWindow;
 // The WMO prop-light items, for the interior classifier and the app's WMO props.
-pub use spawn::prop_light::{fold_interior_probe, hex_word, interior_light_up, PropLobeLight};
+pub use spawn::prop_light::{PropLobeLight, fold_interior_probe, hex_word, interior_light_up};
 // The placed-model assembler and off-thread collider build, shared with WMO gameobject props.
-pub use collider::{build_collider_task, placement_collider_data, PendingCollider};
+pub use collider::{PendingCollider, build_collider_task, placement_collider_data};
 pub use spawn::{
-    carried_light_claims, m2_anim_bound, m2_fade, point_light, spawn_model_entities,
-    CarriedClaimSet, SpawnedModel,
+    CarriedClaimSet, SpawnedModel, carried_light_claims, m2_anim_bound, m2_fade, point_light,
+    spawn_model_entities,
 };
 // The position queries + area authority (their home is `queries`; paths stay `terrain_stream::X`).
 use queries::update_current_area;
 pub use queries::{
-    area_id_under, doodad_ground_shade, ground_effect_under, terrain_height_under,
-    terrain_height_under_cached, AreaAuthoritySet, CaptureCameraArea, CurrentArea, ShadeResolve,
+    AreaAuthoritySet, CaptureCameraArea, CurrentArea, ShadeResolve, area_id_under,
+    doodad_ground_shade, ground_effect_under, terrain_height_under, terrain_height_under_cached,
 };
 
 /// Wall-clock per frame for spawning streamed tiles and placements before the rest waits a frame;
@@ -193,6 +193,8 @@ pub struct WorldLoadProgress {
     pub merge_pending: usize,
     /// Focus-neighbourhood placements not yet spawned.
     pub placements_pending: usize,
+    /// Paths blocking the focus neighbourhood's reveal; capped to keep diagnostics bounded.
+    pub pending_placement_models: Vec<String>,
     /// Retained-pass regions spawned but not yet drawable (`StaticGx::undrawn_regions`).
     pub gx_pending: usize,
     /// The focus tile these facts are about. The settle release refuses on a mismatch with the
@@ -863,6 +865,7 @@ fn stream_terrain(
             // props have spawned; a tile not yet up holds `scene_ready` down itself.
             let mut near_pending = 0usize;
             let mut near_tile_missing = false;
+            let mut pending_models = Vec::new();
             for dx in -1..=1i32 {
                 for dy in -1..=1i32 {
                     let c = (cx + dx, cy + dy);
@@ -877,6 +880,59 @@ fn stream_terrain(
                                     p.total += 1;
                                     p.ready += usize::from(up);
                                     near_pending += usize::from(!up);
+                                    if !up && pending_models.len() < 8 {
+                                        let model_id = match &pl.model {
+                                            ModelHandle::M2(h) => h.id().untyped(),
+                                            ModelHandle::Wmo(h) => h.id().untyped(),
+                                        };
+                                        if !pl.spawned {
+                                            pending_models.push(
+                                                asset_server.get_path(model_id).map_or_else(
+                                                    || format!("{uid}"),
+                                                    |p| p.to_string(),
+                                                ),
+                                            );
+                                        }
+                                        for doodad in pl.doodads.iter().filter(|d| !d.spawned) {
+                                            if pending_models.len() == 8 {
+                                                break;
+                                            }
+                                            let path = asset_server
+                                                .get_path(doodad.handle.id().untyped())
+                                                .map_or_else(
+                                                    || format!("{uid}:prop"),
+                                                    |p| p.to_string(),
+                                                );
+                                            let wow = benilla_assets::coords::bevy_to_wow(
+                                                doodad.transform.translation,
+                                            );
+                                            let (tx, ty) = world_to_tile(wow[0], wow[1]);
+                                            let tile_state = state
+                                                .tiles
+                                                .get(&(tx as i32, ty as i32))
+                                                .map(|tile| {
+                                                    format!(
+                                                        "resident={},load={:?}",
+                                                        tiles.get(&tile.handle).is_some(),
+                                                        asset_server.load_state(&tile.handle),
+                                                    )
+                                                })
+                                                .unwrap_or_else(|| "outside-ring".to_string());
+                                            let shade = match doodad_ground_shade(
+                                                &state,
+                                                &tiles,
+                                                doodad.transform.translation,
+                                            ) {
+                                                ShadeResolve::Ready(true) => "shadowed",
+                                                ShadeResolve::Ready(false) => "lit",
+                                                ShadeResolve::Pending => "pending",
+                                            };
+                                            pending_models.push(format!(
+                                                "{path}[model={:?},shade={shade},tile=({tx},{ty})/{tile_state}]",
+                                                asset_server.load_state(&doodad.handle),
+                                            ));
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -885,6 +941,7 @@ fn stream_terrain(
                 }
             }
             p.placements_pending = near_pending;
+            p.pending_placement_models = pending_models;
             // `focus_resident` already folds in the WDT gate and the global WMO's spawn.
             p.scene_ready = p.focus_resident && !near_tile_missing && near_pending == 0;
             // A WMO-only map counts its one placement, props included, which keeps `total > 0`.

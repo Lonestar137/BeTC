@@ -4,7 +4,7 @@
 //! live components by the time the next packet reads them.
 use benilla_assets::coords::bevy_to_wow;
 use benilla_protocol::{
-    guid, EntityKind, MonsterMoveFacing, MoveSpeeds, ObjectFields, SpeedKind, SplineMode,
+    EntityKind, MonsterMoveFacing, MoveSpeeds, ObjectFields, SpeedKind, SplineMode, guid,
 };
 use benilla_protocol::{SessionEvent, SessionEventKind};
 use bevy::ecs::system::SystemParam;
@@ -17,12 +17,13 @@ use benilla_world::model_fade::DespawnFade;
 use benilla_world::vis_chain::VisChainOnly;
 
 use super::motion::{
-    create_spline, gameobject_rotation, monster_move_spline, pose_transform, resolve_facing,
-    trace_create_spline, trace_move_snap, wire_yaw, write_pose, SplineStopped, ROOT_APPLY_WIPE,
+    ROOT_APPLY_WIPE, SplineStopped, create_spline, gameobject_rotation, monster_move_spline,
+    pose_transform, resolve_facing, trace_create_spline, trace_move_snap, wire_yaw, write_pose,
 };
 use super::{
-    merge_store_fields, FieldChanged, Guid, GuidIndex, NetCommands, NetEntity, NetHandlerApp,
-    ObjectStore, RemoteMotion, SelfGuid, SpeedChangeMessage, Spline, UnitMoveModes, UnitSpeeds,
+    FieldChanged, Guid, GuidIndex, NetCommands, NetEntity, NetHandlerApp, ObjectStore,
+    RemoteMotion, SelfGuid, SpeedChangeMessage, Spline, UnitMoveModes, UnitSpeeds,
+    merge_store_fields,
 };
 
 /// `SMSG_GAMEOBJECT_CUSTOM_ANIM`, bridged to [`crate::go_anim`], which rejects `anim_id >= 4` and
@@ -193,7 +194,9 @@ fn on_item(In(ev): In<SessionEvent>, mut sc: Scene) {
                     if c.set_enchant(slot, seconds) {
                         debug!("enchant timer: item {item_guid:#x} slot {slot} → {seconds}s");
                     } else {
-                        debug!("enchant timer: item {item_guid:#x} slot {slot} is past the seventh — refused");
+                        debug!(
+                            "enchant timer: item {item_guid:#x} slot {slot} is past the seventh — refused"
+                        );
                     }
                 }
             }
@@ -642,7 +645,9 @@ fn item_create(
             let mut countdowns = crate::items::Countdowns::default();
             for (slot, seconds) in queued {
                 if !countdowns.set_enchant(slot, seconds) {
-                    debug!("enchant timer: queued slot {slot} for {guid:#x} is past the seventh — refused");
+                    debug!(
+                        "enchant timer: queued slot {slot} for {guid:#x} is past the seventh — refused"
+                    );
                 }
             }
             commands.entity(e).insert(countdowns);
@@ -681,7 +686,7 @@ fn unit_move(
     landings: &mut MessageWriter<crate::creature_anim::HardLanding>,
     self_moves: &mut MessageWriter<crate::net::SelfMoveMessage>,
 ) {
-    use crate::net::motion::{apply_move, arrival_snap, trace_relay, PendingMove, RelayOutcome};
+    use crate::net::motion::{PendingMove, RelayOutcome, apply_move, arrival_snap, trace_relay};
     // Our own guid: the server writing our pose (`SetAsServerSide`, `ctime = 0`), which the
     // reference applies with no mover gate (`0x603bb0`); it goes to `player::wire_in`.
     if self_guid.0 == Some(guid) {

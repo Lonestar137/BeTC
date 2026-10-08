@@ -180,8 +180,14 @@ enum Cycle {
 /// Everything [`spawn_net`] hands the app.
 pub(super) struct NetHandles {
     pub(super) events: Receiver<SessionEvent>,
+    #[cfg(feature = "offline")]
+    pub(super) event_sender: Sender<SessionEvent>,
     pub(super) commands: Sender<ClientCommand>,
+    #[cfg(feature = "offline")]
+    pub(super) command_receiver: Receiver<ClientCommand>,
     pub(super) pick: Sender<CharRequest>,
+    #[cfg(feature = "offline")]
+    pub(super) pick_receiver: Receiver<CharRequest>,
     pub(super) realm: Sender<RealmRequest>,
     pub(super) login: Sender<LoginRequest>,
     pub(super) login_abandon: Arc<AtomicU64>,
@@ -193,6 +199,12 @@ pub(super) fn spawn_net(connect: bool) -> NetHandles {
     let (events_tx, events_rx) = crossbeam_channel::unbounded();
     let (cmd_tx, cmd_rx) = crossbeam_channel::unbounded();
     let (pick_tx, pick_rx) = crossbeam_channel::unbounded::<CharRequest>();
+    #[cfg(feature = "offline")]
+    let event_sender = events_tx.clone();
+    #[cfg(feature = "offline")]
+    let command_receiver = cmd_rx.clone();
+    #[cfg(feature = "offline")]
+    let pick_receiver = pick_rx.clone();
     let (realm_tx, realm_rx) = crossbeam_channel::unbounded::<RealmRequest>();
     let (login_tx, login_rx) = crossbeam_channel::unbounded::<LoginRequest>();
     let login_abandon = Arc::new(AtomicU64::new(0));
@@ -280,8 +292,14 @@ pub(super) fn spawn_net(connect: bool) -> NetHandles {
     // the event stream stays empty.
     NetHandles {
         events: events_rx,
+        #[cfg(feature = "offline")]
+        event_sender,
         commands: cmd_tx,
+        #[cfg(feature = "offline")]
+        command_receiver,
         pick: pick_tx,
+        #[cfg(feature = "offline")]
+        pick_receiver,
         realm: realm_tx,
         login: login_tx,
         login_abandon,

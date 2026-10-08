@@ -101,6 +101,10 @@ impl ItemDisplayCatalog {
 
 /// All 23 columns, the unread ones included, so the field-count check against the header is exact.
 pub(crate) fn item_display_info_schema() -> Schema {
+    item_display_info_schema_for(false)
+}
+
+fn item_display_info_schema_for(tbc: bool) -> Schema {
     let mut s = Schema::new("ItemDisplayInfo");
     for (name, ty) in [
         ("ID", FieldType::UInt32),
@@ -137,6 +141,10 @@ pub(crate) fn item_display_info_schema() -> Schema {
         s.add_field(SchemaField::new(name, FieldType::String));
     }
     s.add_field(SchemaField::new("ItemVisualID", FieldType::UInt32));
+    if tbc {
+        s.add_field(SchemaField::new("ParticleColorID", FieldType::UInt32));
+        s.add_field(SchemaField::new("Unused24", FieldType::UInt32));
+    }
     s
 }
 
@@ -186,7 +194,11 @@ pub fn load_item_display_catalog(chain: &mut Chain) -> Result<ItemDisplayCatalog
     let bytes = chain
         .read_file(ITEM_DISPLAY_INFO)
         .with_context(|| format!("reading {ITEM_DISPLAY_INFO}"))?;
-    let rs = parse(&bytes, item_display_info_schema(), "ItemDisplayInfo")?;
+    let rs = parse(
+        &bytes,
+        item_display_info_schema_for(chain.client_build() == Some(8606)),
+        "ItemDisplayInfo",
+    )?;
     Ok(catalog_from_records(rs))
 }
 

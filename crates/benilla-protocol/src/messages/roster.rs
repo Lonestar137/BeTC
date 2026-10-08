@@ -3,10 +3,11 @@
 
 use std::io::{self, Read};
 
-use crate::wire::{read_cstring, read_u32_le, read_u64_le, read_u8, Vector3d};
+use crate::wire::{Vector3d, read_cstring, read_u8, read_u32_le, read_u64_le};
 
 /// `WorldResult::CharCreateSuccess` / `CharCreateNameInUse` (`SMSG_CHAR_CREATE`).
 pub const CHAR_CREATE_SUCCESS: u8 = 0x2E;
+pub const CHAR_CREATE_ERROR: u8 = 0x2F;
 pub const CHAR_CREATE_NAME_IN_USE: u8 = 0x31;
 /// `WorldResult::CharCreateServerLimit`: the account already holds `CharactersPerRealm`
 /// characters (vmangos `HandleCharCreateOpcode`; 0x2E + 6 in `SharedDefines.h` ResponseCodes).

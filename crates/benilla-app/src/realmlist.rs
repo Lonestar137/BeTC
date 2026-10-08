@@ -28,7 +28,11 @@ pub(crate) fn on_cvar(ev: On<crate::cvars::CvarChanged>, mut realmlist: ResMut<R
 impl Plugin for RealmlistPlugin {
     fn build(&self, app: &mut App) {
         app.add_observer(on_cvar);
-        app.init_resource::<Realmlist>();
+        if app.world().get_resource::<crate::GameMode>() == Some(&crate::GameMode::Offline) {
+            app.insert_resource(Realmlist::offline());
+        } else {
+            app.init_resource::<Realmlist>();
+        }
     }
 }
 
@@ -70,6 +74,13 @@ impl Default for Realmlist {
 }
 
 impl Realmlist {
+    pub(crate) fn offline() -> Self {
+        Self {
+            address: String::new(),
+            pinned_by_env: false,
+        }
+    }
+
     /// A realmlist with no env pin, for tests, since [`Default`] reads `$WOW_HOST`.
     #[cfg(test)]
     pub(crate) fn unpinned(address: &str) -> Self {

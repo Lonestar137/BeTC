@@ -93,7 +93,17 @@ fn open_world_assets(
     commands.insert_resource(RenderConfig { unload_budget });
 
     match open_chain(&data) {
-        Ok(chain) => commands.insert_resource(WorldAssets::open(chain, light_buf, torch)),
+        Ok(chain) => {
+            if let Some(build) = chain.client_build() {
+                info!("client data: build {build}, locale {}", chain.locale().unwrap_or("?"));
+                for archive in chain.unmounted_archives() {
+                    warn!("client data: ignoring non-stock archive {}", archive.display());
+                }
+            } else {
+                info!("client data: inherited 1.12 archive chain");
+            }
+            commands.insert_resource(WorldAssets::open(chain, light_buf, torch));
+        }
         Err(e) => error!("failed to open client data: {e:#}"),
     }
 }

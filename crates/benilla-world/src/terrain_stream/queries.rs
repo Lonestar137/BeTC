@@ -1,8 +1,8 @@
 //! What the streamed world answers about a position: MCSH ground shade, ground effect, terrain
 //! height, and the area authority (the `AreaTable.dbc` leaf under the player's feet).
 
-use benilla_assets::coords::bevy_to_wow;
 use benilla_assets::AdtTile;
+use benilla_assets::coords::bevy_to_wow;
 use benilla_formats::{mcsh_shadowed_at, world_to_tile};
 use bevy::prelude::*;
 

@@ -1,107 +1,99 @@
-# METHOD — how benilla is built
+# METHOD — how benilla-everwood is built
 
-benilla is a from-scratch World of Warcraft 1.12.1 client in Rust and Bevy. It reads the game's
-data from the player's own install, speaks the original protocol to any 1.12.1 server, and does
-not build a server or simulate the game. The reference client is the spec: benilla does what
-1.12.1 does, as a modern, idiomatic client.
+benilla-everwood is an offline, single-player game targeting World of Warcraft: The Burning
+Crusade 2.4.3, build 8606. The player's own install is the reference for client data formats,
+assets, UI, and presentation. The project owns its simulation rules and original world content;
+there is no server and no network protocol on the game path.
 
 ## The rule for every change
 
-A change is right when it makes benilla more like 1.12.1 or fixes a bug, with evidence from the
-reference, in one small piece, with the gates green. A deviation from the reference is the
-maintainer's call alone, and each one is written down where it lives: a CVar's `Deviates` row, a
-comment naming the reference fact and why we differ. Anything else lives on top of benilla, in a
-crate of its own or a fork, and benilla opens a piece of itself to such a crate only when its own
-1.12.1 work creates that piece (`docs/CONTRIBUTING.md`, "Building on top").
+Make one small, tested step toward the vertical slice in `PLAN.md`. Use the TBC client as evidence
+for client behavior and data. State project-owned gameplay decisions explicitly in the rules or
+content schema. Keep the install read-only and external, keep the executable offline, and run the
+appropriate gates. The plan's phase acceptance criteria determine when a phase is complete.
 
 ## The loop
 
-1. **The reference first.** For anything fidelity-defining, get the mechanism from the real
-   client before building: its behaviour, a DBC field, a FrameXML line, a packet capture. The
-   names and shapes under `reference/` are the surface benilla tracks.
-2. **Build it idiomatically.** Modern Bevy and Rust, performance woven in from the start.
-   Implement the mechanism well; do not ape a quirk that is a bug.
-3. **Measure, never eyeball.** Timing, delay, ordering and feel are settled with instruments:
-   trace timestamps, byte-derived numbers, a numeric probe. A capture confirms an existence
-   fact; it cannot measure time. Never search for a viewpoint: take the one simplest shot, and
-   if it does not settle the question, hand over a precise script ("log in, look at X, does Y?").
-4. **Close the loop on the symptom.** A bug reported as seen is closed by reproducing it at the
-   reported spot first, fixing, and showing the same instrument clean there plus one adjacent
-   state. Green gates and an existing mechanism are never that evidence.
-5. **Prove the run before reading the result.** A live result is evidence once the run is valid
-   from numbers: preflight banner clean, camera and body where intended, the subject in frame,
-   the window long enough. A negative from an unproven run is not evidence.
-6. **Commit small and often; land by pull request.** Atomic commits, explicit paths, on a
-   branch; main moves only by a squash-merged pull request, one commit per piece of work.
-   No "done" and no commit without saying what was verified and how the result was judged.
+1. **Establish the fact.** For data, formats, UI, or presentation, use build 8606 files or observe
+   the TBC client. For game rules and content, record a project-owned decision and its provenance.
+2. **Implement one slice.** Keep the game simulation independent of Bevy presentation and client
+   protocol types. Use the adapter boundary in `PLAN.md` while the inherited presentation is being
+   replaced incrementally.
+3. **Measure behavior.** Use deterministic tests, traces, and numeric probes. Visual captures are
+   useful for appearance, not timing or ordering. Do not treat a successful build as evidence of
+   runtime behavior.
+4. **Verify the changed surface.** Run `scripts/check.sh` for a round and the full offline
+   `scripts/gates.sh` before a land. A live run must prove the intended startup and gameplay path.
+5. **Keep changes small.** Work on a branch, preserve unrelated worktree changes, and report the
+   verification performed with each completed piece.
+
+## Compile-efficient rounds
+
+Treat a round as one cohesive, testable behavior slice, not one compile per edit. Before the first
+build, trace the behavior through its relevant layers, establish client facts from build 8606,
+identify the production and test files, and decide which command will verify the whole slice. Then
+make the connected implementation and regression-test edits before compiling. Do not bundle
+unrelated behavior just to amortize a build.
+
+- Prefer one test invocation naming all affected packages and the intended feature set. When
+  packages share dependencies, this lets Cargo build their common graph once. Keep profiles and
+  feature flags stable between runs so the artifacts are reusable.
+- Avoid running `cargo check` and then the same tests solely as successive preflights; choose the
+  check that answers the question for the round. A test build already type-checks its target.
+- If a build or test fails, use its output to inspect and fix the whole failure set before the next
+  build, unless a compile error or new client evidence requires narrowing the implementation first.
+- For repeated interactive presentation checks, prefer the workspace's incremental `play` profile
+  where suitable (for example, `cargo run --profile play -p benilla-offline`) rather than rebuilding
+  the test profile for each visual iteration. Keep deterministic tests as the behavioral gate.
+- Run `scripts/check.sh` once the cohesive round is ready, and the full land gates at the land step.
+  Avoid cleaning build artifacts or changing profiles and feature combinations without a measured
+  reason; either can turn a warm iteration into a cold build. If test compilation dominates, measure
+  any faster test-profile proposal separately, including its effect on test runtime.
 
 ## Hard rules
 
-- **Never commit anything from the install.** Art, models, sounds, maps, data: the install is
-  read at runtime from a gitignored path, and everyone provides their own. Interface code is no
-  exception: FrameXML and GlueXML run off the player's own patch chain, and `assets/ui` holds
-  only benilla's own files.
-- **The install is read-only.** benilla never writes into the WoW folder: no screenshot, log,
-  cache or scratch file. `scripts/smoke.sh` fails a run that leaves the install changed.
-- **Local state lives in one folder**, `benilla-config/`, at the repo root in a dev build and
-  beside the binary in the player build; every path to it resolves through `crate::local_state`.
-  Player settings are CVars persisted as a diff in `benilla-config/config.toml`.
-- **The core UI is the stock UI; benilla's own is one layer on top.** The core loads the stock
-  1.12 FrameXML off the player's own chain, byte for byte, and builds the engine verbs those
-  files call, never stubbing one to make a file load. benilla's own interface (its options
-  window, its game-menu look, its fixes to the stock Lua) is one layer that loads after the
-  stock files and before third-party addons, the way an addon does: written against the 1.12 API
-  alone, listed in no addon list and always on, and offering nothing another addon can build on.
-  Anything that changes what the stock UI does or shows lives in the layer, and the layer does
-  not grow: a test names its files and fails on a new one.
-- **A setting's default is the reference's default.** Every option boots at the stock 1.12
-  value. Shipping another value costs an explicit `Deviates` row with the reason, and a test
-  fails a row that drifts either way.
-- **Our code is MIT OR Apache-2.0**, which is a claim about provenance: no original client
-  code, no bundled assets.
+- **Offline means no transport.** The shipped executable must not open auth or world sockets,
+  launch a server process, or require accounts, realms, or an external database. Compile network,
+  auth, SRP, Login, and Realm Select out of the offline binary rather than relying on a runtime
+  switch.
+- **The install is read-only runtime input.** Resolve the player's TBC install through `WOW_DATA`
+  (or the documented dev-build link). Never write into it and never commit its assets, interface
+  files, or data. Phase 0 adds a gate check that the install is unchanged across each run.
+- **No third-party server content.** Gameplay templates, text, quests, and rules are original and
+  project-authored. Do not copy emulator databases, scraped quest text, or Blizzard install data.
+  Record provenance on every project content file.
+- **Local state has one root.** Saves and settings live under `benilla-config/`; paths resolve
+  through `crate::local_state`. Per-character saves use stable generated IDs, not display names.
+- **Simulation is deterministic.** `game-core` owns game time and seeded randomness. Tests inject
+  time and RNG state; gameplay does not depend on host wall-clock time.
+- **Presentation follows the client.** Load the stock 2.4.3 GlueXML/FrameXML from the player's
+  install. Do not bundle a replacement UI or add project-only addon APIs for the slice.
+- **License reflects provenance.** Our code is MIT OR Apache-2.0; no original client code or
+  bundled client assets.
 
 ## Where things live
 
-- `docs/METHOD.md`, this file: rules and method. Never state, never a log.
-- `docs/MAP.md`: what is built, generated from the code by `scripts/genmap.sh` at every land.
-  Read it to orient; never edit or commit it by hand.
-- git: the history. No changelogs, no status docs, no "what we did" narratives.
-- The code: a comment says what the code does and the 1.12 fact behind it, in a line. No
-  history, no stories.
+- `PLAN.md`: product decisions, phase tasks, and acceptance criteria.
+- `docs/METHOD.md`: binding engineering and provenance rules; never a work log.
+- `docs/MAP.md`: generated inventory of the current code, produced by `scripts/genmap.sh`; never
+  edit by hand.
+- `crates/`: Rust workspace; `reference/`: inherited Vanilla catalogues, frozen until replaced
+  by build-8606 catalogues; `scripts/`: gates and instruments; `third_party/`: vendored code.
+- Git history records changes. Do not add progress logs or status narratives to the repository.
 
 ## Gates
 
-- **The land gates**: `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets
-  -- -D warnings`, `cargo test --workspace`, the doc-link and render-pass lints, the player
-  build without the `dev` feature with its own tests, and the engine boot checks, as
-  `scripts/gates.sh`. It runs on the tree that lands, before it lands; it is memoized on the
-  tree. The tests that read the install or the addon corpus skip where the data is absent, and
-  the gate prints the count; where the data is, a skip is a failure (`BENILLA_REQUIRE_DATA=1`).
-  The workspace tests then run a second time with `WOW_DATA=` (no install), so a test that
-  reads the install without opening with `wow_data_or_skip!` fails here and not on a clone.
-- **Per round**: `scripts/check.sh`, scoped to the changed crates and their dependents. Run each
-  gate once per round; `tee` the output to a file and grep the file.
-- **A clean run** is the fourth gate: `scripts/smoke.sh`, a live login and logout against the
-  local server. For wire work the gate is a live run with a trace (`WOW_MOVE_TRACE=<path>`,
-  tags filtered), never a capture: capture mode has no network.
-- **Platform seams**: a `cfg(target_os)`, a `[target.'cfg(…)']` dependency, a `#[link]` or an
-  `extern "system"` is invisible to the gates of the platform you are on. Say in the commit
-  which platforms you built.
+Phase 0 replaces the inherited gate chain with an offline chain that does not require a server.
+The target chain is: format, clippy with warnings denied, workspace tests with and without client
+data, documentation and render-pass lints, player/offline build and tests, and offline engine boot
+checks. Data-gated tests may skip without an install; when TBC data is present,
+`BENILLA_REQUIRE_DATA=1` makes a skip a failure. The completed chain compares the install before
+and after each run.
 
-## The local server
+Use `scripts/check.sh` for each implementation round. Until Phase 0 has replaced inherited
+network-dependent or Vanilla-only gates, state any gate that could not meaningfully verify this
+fork; do not treat a legacy live-server smoke test as an offline-game check.
 
-benilla talks to any 1.12.1 server: `WOW_HOST` names it (default `localhost`), `WOW_USER` and
-`WOW_PASS` together log in without typing, `WOW_CHAR` picks the character. There is no default
-account. These bind every session and every agent:
-
-- A scripted run logs in as the account its checkout declares in `.probe-identity` (the three
-  variables, one per line, never committed), or as the three variables name; never as a
-  player's, because a login kicks whoever holds the account, and the client refuses a scripted
-  login from a checkout on any account but the declared one.
-- Every unattended run says so: `WOW_UNATTENDED=1`. An agent's run is silent: `WOW_NOSOUND=1`.
-- No unattended combat probes.
-- Anything about hostility, reaction colour, nameplates, threat, damage or breath runs with
-  `WOW_GM=off`.
-- Read the preflight banner before debugging anything else.
-
-The switches for such a run are `docs/CONTRIBUTING.md`, "Running it unattended".
+The fourth gate is a clean offline run: boot the local roster, enter the world, and exit without a
+socket or server. Platform-specific code and dependencies must be built on their target platform
+before claiming that platform is supported.

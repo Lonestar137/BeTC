@@ -3,17 +3,23 @@ name = "benilla-protocol"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "WoW 1.12.1 auth (SRP6) + world wire protocol and the benilla-auth CLI"
+description = "Presentation event and object types with the frozen optional Vanilla wire protocol"
+autobins = false
+autoexamples = false
 
 [lints]
 workspace = true
 
+[features]
+default = ["network"]
+network = ["dep:benilla-srp", "dep:sha1"]
+
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
-benilla-srp = { path = "../benilla-srp" }
+benilla-srp = { path = "../benilla-srp", optional = true }
 flate2 = "1.0"
-sha1.workspace = true
+sha1 = { workspace = true, optional = true }
 # Derives `SessionEventKind`, `SessionEvent`'s fieldless twin that the handler table keys on.
 strum = { version = "0.26", features = ["derive"] }
 
@@ -21,3 +27,63 @@ strum = { version = "0.26", features = ["derive"] }
 # The SRP probe example re-derives the handshake by hand, to vary what `benilla-srp` fixes.
 num-bigint = "0.4.6"
 rand = "0.8.6"
+
+[[bin]]
+name = "benilla-auth"
+path = "src/bin/benilla-auth.rs"
+required-features = ["network"]
+
+[[bin]]
+name = "benilla-world"
+path = "src/bin/benilla-world/main.rs"
+required-features = ["network"]
+
+[[example]]
+name = "addon_chat_probe"
+path = "examples/addon_chat_probe.rs"
+required-features = ["network"]
+
+[[example]]
+name = "cooldown_probe"
+path = "examples/cooldown_probe.rs"
+required-features = ["network"]
+
+[[example]]
+name = "faction_probe"
+path = "examples/faction_probe.rs"
+required-features = ["network"]
+
+[[example]]
+name = "horde_chat_probe"
+path = "examples/horde_chat_probe.rs"
+required-features = ["network"]
+
+[[example]]
+name = "login_refusal_probe"
+path = "examples/login_refusal_probe.rs"
+required-features = ["network"]
+
+[[example]]
+name = "make_account"
+path = "examples/make_account.rs"
+required-features = ["network"]
+
+[[example]]
+name = "park_probe"
+path = "examples/park_probe.rs"
+required-features = ["network"]
+
+[[example]]
+name = "seed_classes"
+path = "examples/seed_classes.rs"
+required-features = ["network"]
+
+[[example]]
+name = "srp_encoding_probe"
+path = "examples/srp_encoding_probe.rs"
+required-features = ["network"]
+
+[[example]]
+name = "version_check_probe"
+path = "examples/version_check_probe.rs"
+required-features = ["network"]

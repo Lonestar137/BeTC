@@ -6,7 +6,7 @@
 use std::io::Cursor;
 
 use anyhow::Result;
-use benilla_m2::{parse_m2, M2ScalarTrack};
+use benilla_m2::{M2ScalarTrack, parse_m2};
 
 use crate::emit_timing::{EmitParams, EmitTiming};
 use crate::models::SeqSlot;
@@ -739,10 +739,12 @@ mod tests {
         assert_eq!(defs[0].timing.rate(None, 0.0, 0.0), 100.0);
         // Emitter 3, the starflash: first key 0, 20/s within 67..100 ms, 0 again by 133 ms.
         let flash = &defs[3];
-        assert!(flash
-            .texture
-            .as_deref()
-            .is_some_and(|t| t.to_ascii_uppercase().contains("STARFLASH")));
+        assert!(
+            flash
+                .texture
+                .as_deref()
+                .is_some_and(|t| t.to_ascii_uppercase().contains("STARFLASH"))
+        );
         assert_eq!(flash.blend, ParticleBlend::Add);
         assert_eq!(flash.timing.rate(None, 0.0, 0.0), 0.0, "silent at t=0");
         assert_eq!(flash.timing.peak_rate(), 20.0);

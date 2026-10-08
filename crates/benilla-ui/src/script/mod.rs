@@ -336,8 +336,8 @@ pub(crate) const TEXTURE_ONLY_METHODS: [&str; 12] = [
 ];
 
 /// FontString-only: the font, text, justify and shadow block and the string metrics.
-/// `GetStringHeight`, `SetFormattedText` and `SetSize` are not 1.12 FontString methods.
-pub(crate) const FONTSTRING_ONLY_METHODS: [&str; 21] = [
+/// `GetStringHeight` and `SetSize` are not 1.12 FontString methods.
+pub(crate) const FONTSTRING_ONLY_METHODS: [&str; 22] = [
     "SetFont",
     "GetFont",
     "SetFontObject",
@@ -353,6 +353,7 @@ pub(crate) const FONTSTRING_ONLY_METHODS: [&str; 21] = [
     "SetJustifyV",
     "GetJustifyV",
     "SetText",
+    "SetFormattedText",
     "GetText",
     "SetTextHeight",
     "GetStringWidth",
@@ -399,7 +400,7 @@ pub const SCREEN: crate::layout::Handle = 0;
 /// ScrollFrame's three scroll kinds are `+0x32c`/`+0x334`/`+0x33c` (script-name map `0x786c40`).
 /// The EditBox's vtable (`0x81c910`) replaces the key and char slots: an EditBox never fires
 /// `OnKeyDown`, and fires `OnChar` only from `Insert`, with the inserted text (`0x77c13c`).
-const SCRIPT_KINDS: [&str; 39] = [
+const SCRIPT_KINDS: [&str; 40] = [
     "OnLoad",
     "OnEvent",
     "OnUpdate",
@@ -455,6 +456,8 @@ const SCRIPT_KINDS: [&str; 39] = [
     "OnChar",
     "OnKeyDown",
     "OnKeyUp",
+    // TBC secure templates update action/unit buttons through this attribute-change callback.
+    "OnAttributeChanged",
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────

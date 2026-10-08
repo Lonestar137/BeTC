@@ -16,14 +16,14 @@
 use bevy::prelude::*;
 use bevy::ui_render::ui_material::MaterialNode;
 
-use benilla_ui::script::addon_gate::{can_load, GateRow, Verdict};
 use benilla_ui::script::UiScript;
+use benilla_ui::script::addon_gate::{GateRow, Verdict, can_load};
 use benilla_ui::widget::{slider_fraction, slider_grab};
 
-use crate::glue::art::{tc_rect, GlueArt, DIM, GOLD};
+use crate::glue::art::{DIM, GOLD, GlueArt, tc_rect};
 use crate::glue::backdrop::{backdrop_border, tiled_bg_node};
 use crate::glue::widgets::{
-    glue_button, outlined_text, overlay, ArtSwap, GlueBtnKind, GlueText, Hilight,
+    ArtSwap, GlueBtnKind, GlueText, Hilight, glue_button, outlined_text, overlay,
 };
 use crate::glue_strings::GlueStrings;
 use crate::sound::GlueSound;

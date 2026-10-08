@@ -2,7 +2,7 @@ use mlua::{Function, ObjectLike, Table};
 
 use crate::framexml::Element;
 
-use super::{children_named, Loader};
+use super::{Loader, children_named};
 
 impl Loader<'_> {
     /// `<Scripts>` (`0x769ef0`): `SetScript` for each handler. Returns the `OnLoad`, which the
@@ -77,9 +77,9 @@ impl Loader<'_> {
         onload
     }
 
-    /// Compile a handler body as the chunk itself, as the reference loads it (`0x704c70`): it takes
-    /// no arguments and reads its frame from `this`, so a `self` in it is an ordinary global. The
-    /// loader reads no other attribute of the element (no `function=`).
+    /// Compile XML handler bodies with TBC's `(self, event, ...)` parameters while preserving the
+    /// legacy `this`/`event`/`argN` globals installed by the dispatcher. The loader reads no other
+    /// attribute of the element (no `function=`).
     pub(super) fn compile_handler(
         &mut self,
         handler: &Element,
@@ -92,12 +92,13 @@ impl Loader<'_> {
         if body.is_empty() {
             return None;
         }
+        let source = format!("return function(self, event, ...)\n{body}\nend");
         match self
             .lua()
-            .load(body)
+            .load(&source)
             .set_name(format!("{owner}:{name}"))
             .set_mode(mlua::ChunkMode::Text)
-            .into_function()
+            .eval::<Function>()
         {
             Ok(f) => Some(f),
             Err(e) => {

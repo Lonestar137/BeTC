@@ -7,8 +7,8 @@ use std::collections::HashMap;
 use anyhow::{Context, Result};
 use benilla_dbc::{FieldType, Schema, SchemaField};
 
-use crate::dbc::{i32_at, parse, u32_at};
 use crate::Chain;
+use crate::dbc::{i32_at, parse, u32_at};
 
 const ITEM_SUB_CLASS: &str = "DBFilesClient\\ItemSubClass.dbc";
 /// The group names, read before [`ITEM_SUB_CLASS`] when a whole subclass mask needs a name.

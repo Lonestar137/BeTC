@@ -49,6 +49,17 @@
             end
         end
 
+        function BenillaChatConsole_SetVisible()
+            if not ChatFrame1 then
+                return
+            end
+            if GetCVar("showChat") == "1" then
+                ChatFrame1:Show()
+            else
+                ChatFrame1:Hide()
+            end
+        end
+
         -- Show Tutorials' setter (UIOptionsFrame.lua:318-327); there is no tutorial CVar. The `~=`
         -- guard is the reference's: re-ticking an on row must not re-arm dismissed tutorials.
         function BenillaOptionsFrame_SetTutorialsEnabled(value)
@@ -1099,7 +1110,7 @@
             -- FCF_Set_SimpleChat's re-layout, Lock Chat Settings and Guild Recruitment.
             Chat = {
                 "RowGuildMemberAlert", "RowRemoveChatDelay", "RowChatBubbles", "RowLootSpam",
-                "RowPartyChatBubbles", "RowSpamFilter",
+                "RowPartyChatBubbles", "RowSpamFilter", "RowShowChatConsole",
             },
             -- Deviation: the bar toggles precede the lock, which 1.12's box leads with, so what is
             -- on screen reads first.
@@ -1710,6 +1721,18 @@
             BenillaOptionsApply_Update()
         end
     ]]></Script>
+
+    <!-- Local chat and console output stay available without occupying the world by default. -->
+    <Frame name="BenillaChatConsoleVisibility" hidden="true">
+        <Scripts>
+            <OnLoad>this:RegisterEvent("CVAR_UPDATE"); this:RegisterEvent("PLAYER_ENTERING_WORLD")</OnLoad>
+            <OnEvent>
+                if ( event == "PLAYER_ENTERING_WORLD" or string.lower(arg1 or "") == "showchat" ) then
+                    BenillaChatConsole_SetVisible()
+                end
+            </OnEvent>
+        </Scripts>
+    </Frame>
 
     <!-- A copy of the stock GameMenuButtonTemplate (UIPanelTemplates.xml:403) at the era's
          96x22. -->
@@ -3934,6 +3957,14 @@
                                                     "OPTION_TOOLTIP_DISABLE_SPAM_FILTER")
                                                 this.invert = 1
                                             </OnLoad></Scripts>
+                                        </Frame>
+                                        <Frame name="$parentRowShowChatConsole" inherits="BenillaOptionsCheckboxRowTemplate">
+                                            <Anchors>
+                                                <Anchor point="TOPLEFT" relativeTo="$parentRowSpamFilter" relativePoint="BOTTOMLEFT"><Offset><AbsDimension x="0" y="-9"/></Offset></Anchor>
+                                                <Anchor point="TOPRIGHT" relativeTo="$parentRowSpamFilter" relativePoint="BOTTOMRIGHT"><Offset><AbsDimension x="0" y="-9"/></Offset></Anchor>
+                                            </Anchors>
+                                            <Scripts><OnLoad>BenillaOptionsRow_OnLoad(this, "showChat",
+                                                "Show Chat / Console", "Show local messages and console command output")</OnLoad></Scripts>
                                         </Frame>
                                     </Frames>
                                 </Frame>

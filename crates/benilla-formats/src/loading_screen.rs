@@ -83,9 +83,11 @@ mod tests {
             maps.loading_screen_id(map_id)
                 .and_then(|id| screens.path(id))
         };
-        assert!(resolve(0)
-            .unwrap()
-            .ends_with("LoadScreenEasternKingdom.blp"));
+        assert!(
+            resolve(0)
+                .unwrap()
+                .ends_with("LoadScreenEasternKingdom.blp")
+        );
         assert!(resolve(1).unwrap().ends_with("LoadScreenKalimdor.blp"));
     }
 }

@@ -2,13 +2,13 @@
 //! `CharacterCreate.xml`) and their marker components. Builders are generic over the screen's
 //! action component; each falls back to a plain face with text without client art.
 
-use benilla_ui::markup::{tokens, TokenKind};
+use benilla_ui::markup::{TokenKind, tokens};
 use benilla_ui::widget::EditBoxState;
 use bevy::prelude::*;
 use bevy::text::LineHeight;
 use bevy::ui_render::ui_material::MaterialNode;
 
-use super::art::{tc_rect, ArrowArt, GlueArt, BTN_BG, BUTTON_TC, FALLBACK_ALPHA, GOLD, NAME_EDGE};
+use super::art::{ArrowArt, BTN_BG, BUTTON_TC, FALLBACK_ALPHA, GOLD, GlueArt, NAME_EDGE, tc_rect};
 use super::backdrop::{backdrop_border, tiled_bg_node};
 
 // ── The shared widget vocabulary ─────────────────────────────────────────────────────────────────
@@ -295,27 +295,53 @@ pub(crate) fn icon_button<A: Component, I: Bundle, L: Bundle>(
     art: &GlueArt,
     s: f32,
 ) {
+    icon_button_sized(
+        parent, font, action, dyn_icon, fixed, label_dyn, label, art, s, 48.0, false,
+    );
+}
+
+pub(crate) fn icon_button_sized<A: Component, I: Bundle, L: Bundle>(
+    parent: &mut ChildSpawnerCommands,
+    font: &Handle<Font>,
+    action: A,
+    dyn_icon: Option<I>,
+    fixed: Option<(Handle<Image>, Rect)>,
+    label_dyn: Option<L>,
+    label: &str,
+    art: &GlueArt,
+    s: f32,
+    button_size: f32,
+    force_fallback: bool,
+) {
     let px = |v: f32| Val::Px(v * s);
     let mut b = parent.spawn((
         action,
         Button,
         LockHighlight::default(),
         Node {
-            width: px(48.0),
-            height: px(48.0),
+            width: px(button_size),
+            height: px(button_size),
             ..default()
         },
     ));
-    if art.races.is_none() {
-        b.insert((FallbackFace, BackgroundColor(BTN_BG))); // no art: the label is the button face
+    if force_fallback || art.races.is_none() {
+        b.insert((FallbackFace, BackgroundColor(BTN_BG))); // the label is the button face
     }
     b.with_children(|b| {
-        // The shadow: 64² centred, offset (2,−2), behind everything.
-        if let Some(shadow) = &art.icon_shadow {
-            b.spawn((
-                ImageNode::new(shadow.clone()),
-                abs(s, -6.0, -6.0, 64.0, 64.0),
-            ));
+        // The shadow is four-thirds of the face, centered behind it.
+        if !force_fallback && art.races.is_some() {
+            if let Some(shadow) = &art.icon_shadow {
+                let shadow_size = if button_size < 48.0 {
+                    button_size
+                } else {
+                    button_size * (4.0 / 3.0)
+                };
+                let inset = (button_size - shadow_size) * 0.5;
+                b.spawn((
+                    ImageNode::new(shadow.clone()),
+                    abs(s, inset, inset, shadow_size, shadow_size),
+                ));
+            }
         }
         // A dynamic face is transparent until the refresh assigns it, since a default
         // `ImageNode` is a white square; the gender halves are fixed.

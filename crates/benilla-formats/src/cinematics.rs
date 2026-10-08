@@ -20,8 +20,8 @@ use anyhow::{Context, Result};
 use benilla_dbc::{FieldType, Schema, SchemaField};
 use benilla_m2::{M2Camera, M2SplineKey, M2Track};
 
-use crate::dbc::{f32_at, parse, str_at, u32_at};
 use crate::Chain;
+use crate::dbc::{f32_at, parse, str_at, u32_at};
 
 const SEQUENCES: &str = "DBFilesClient\\CinematicSequences.dbc";
 const CAMERAS: &str = "DBFilesClient\\CinematicCamera.dbc";

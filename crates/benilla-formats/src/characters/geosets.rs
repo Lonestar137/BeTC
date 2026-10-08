@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use anyhow::{Context, Result};
 use benilla_dbc::{FieldType, Schema, SchemaField};
 
-use crate::dbc::{parse, u32_at};
 use crate::Chain;
+use crate::dbc::{parse, u32_at};
 
 const CHAR_HAIR_GEOSETS: &str = "DBFilesClient\\CharHairGeosets.dbc";
 const CHAR_FACIAL_HAIR: &str = "DBFilesClient\\CharacterFacialHairStyles.dbc";
@@ -23,12 +23,13 @@ const REGION_BASES: [u16; 16] = [
 #[derive(Debug)]
 pub struct VisibleGeosets {
     selected: Vec<u16>,
+    manage_upper: bool,
 }
 
 impl VisibleGeosets {
     /// Whether a model submesh survives the character compositor's geoset selection.
     pub fn contains(&self, geoset_id: &u16) -> bool {
-        *geoset_id > 1700 || self.selected.contains(geoset_id)
+        (*geoset_id > 1700 && !self.manage_upper) || self.selected.contains(geoset_id)
     }
 }
 
@@ -36,9 +37,9 @@ impl VisibleGeosets {
 pub struct CharacterGeosets {
     /// (race, sex, hairStyle) → hair `GeosetID` (group 0).
     hair: HashMap<(u8, u8, u8), u32>,
-    /// (race, sex, facialHair) → three geoset variations in file order, for groups 1, 3, 2
-    /// (`0x478660`).
-    facial: HashMap<(u8, u8, u8), [u32; 3]>,
+    /// (race, sex, facialHair) → geoset variations in file order: groups 1, 3, 2 and TBC ears
+    /// (16, 17).
+    facial: HashMap<(u8, u8, u8), [u32; 5]>,
     /// HelmetGeosetVisData row id → five race bitmasks (`0x4799a0`): bit `1 << race` forces a hair,
     /// facial-hair or ear slot back to its group base under a helm.
     helmet_vis: HashMap<u32, [u32; 5]>,
@@ -79,11 +80,18 @@ impl CharacterGeosets {
         if let Some(&g) = self.hair.get(&(race, sex, hair_style)) {
             set[0] = g.max(1) as u16;
         }
-        // Facial hair: `0x478660` adds 100/300/200 to the row's fields; no row keeps the bases.
-        if let Some(&[a, b, c]) = self.facial.get(&(race, sex, facial_hair)) {
+        let mut manage_upper = false;
+        // `0x478660` adds 100/300/200 to the first three fields. TBC also uses groups 16 and 17
+        // for race-specific features such as Blood Elf ears.
+        if let Some(&[a, b, c, ears, ears_large]) = self.facial.get(&(race, sex, facial_hair)) {
             set[1] = (a + 100) as u16;
             set[3] = (b + 300) as u16;
             set[2] = (c + 200) as u16;
+            if ears != 0 || ears_large != 0 {
+                set.push(1600 + ears as u16);
+                set.push(1700 + ears_large as u16);
+                manage_upper = true;
+            }
         }
         // A helm's vis row (`0x4799a0`) forces slots back to their bases, the ears to 701, after
         // the customization; its slots {0,1,2,3,7} are disjoint from every equipment branch.
@@ -174,7 +182,10 @@ impl CharacterGeosets {
         // The client sets a flag per submesh (`0x7110d0`), so a repeated enable is a no-op there.
         set.sort_unstable();
         set.dedup();
-        VisibleGeosets { selected: set }
+        VisibleGeosets {
+            selected: set,
+            manage_upper,
+        }
     }
 
     /// Load the customization DBCs from the patch chain. A repeated `(race, sex, variation)` key
@@ -205,7 +216,7 @@ impl CharacterGeosets {
                 .with_context(|| format!("reading {CHAR_FACIAL_HAIR}"))?;
             let rs = parse(
                 &bytes,
-                char_facial_hair_schema(),
+                char_facial_hair_schema(chain.client_build() == Some(8606)),
                 "CharacterFacialHairStyles",
             )?;
             let mut m = HashMap::with_capacity(rs.records().len());
@@ -218,6 +229,8 @@ impl CharacterGeosets {
                         u32_at(r, 6).unwrap_or(0),
                         u32_at(r, 7).unwrap_or(0),
                         u32_at(r, 8).unwrap_or(0),
+                        u32_at(r, 9).unwrap_or(0),
+                        u32_at(r, 10).unwrap_or(0),
                     ];
                     // The first row wins.
                     m.entry((race as u8, sex as u8, var as u8)).or_insert(g);
@@ -228,7 +241,11 @@ impl CharacterGeosets {
         // HelmetGeosetVisData, the helm hide-masks: without the file, helms hide nothing.
         let helmet_vis = match chain.read_file(HELMET_GEOSET_VIS) {
             Ok(bytes) => {
-                let rs = parse(&bytes, helmet_vis_schema(), "HelmetGeosetVisData")?;
+                let rs = parse(
+                    &bytes,
+                    helmet_vis_schema(chain.client_build() == Some(8606)),
+                    "HelmetGeosetVisData",
+                )?;
                 let mut m = HashMap::with_capacity(rs.records().len());
                 for r in rs.records() {
                     if let Some(id) = u32_at(r, 0) {
@@ -263,38 +280,41 @@ pub(crate) fn char_hair_geosets_schema() -> Schema {
     s
 }
 
-/// HelmetGeosetVisData.dbc: 6 fields, 0x18-byte records (loader `0x546f00`); the five masks are
-/// race bitmasks (`0x4799a0`).
-pub(crate) fn helmet_vis_schema() -> Schema {
+/// HelmetGeosetVisData.dbc: 6 fields in Vanilla, 8 in build 8606; the fields consumed here are race
+/// bitmasks (`0x4799a0`).
+pub(crate) fn helmet_vis_schema(tbc: bool) -> Schema {
     let mut s = Schema::new("HelmetGeosetVisData");
-    for (name, ty) in [
-        ("ID", FieldType::UInt32),
-        ("HideHair", FieldType::UInt32),
-        ("HideFacial1", FieldType::UInt32),
-        ("HideFacial2", FieldType::UInt32),
-        ("HideFacial3", FieldType::UInt32),
-        ("HideEars", FieldType::UInt32),
-    ] {
-        s.add_field(SchemaField::new(name, ty));
+    for i in 0..if tbc { 8 } else { 6 } {
+        let name = match i {
+            0 => "ID".to_string(),
+            1 => "HideHair".to_string(),
+            2 => "HideFacial1".to_string(),
+            3 => "HideFacial2".to_string(),
+            4 => "HideFacial3".to_string(),
+            5 => "HideEars".to_string(),
+            _ => format!("Unused{i}"),
+        };
+        s.add_field(SchemaField::new(name, FieldType::UInt32));
     }
     s
 }
 
-/// CharacterFacialHairStyles.dbc: 9 fields, no ID column.
-pub(crate) fn char_facial_hair_schema() -> Schema {
+/// CharacterFacialHairStyles.dbc: 9 fields in Vanilla, 11 in build 8606; neither has an ID column.
+pub(crate) fn char_facial_hair_schema(tbc: bool) -> Schema {
     let mut s = Schema::new("CharacterFacialHairStyles");
-    for (name, ty) in [
-        ("RaceID", FieldType::UInt32),
-        ("SexID", FieldType::UInt32),
-        ("VariationID", FieldType::UInt32),
-        ("Unused3", FieldType::UInt32),
-        ("Unused4", FieldType::UInt32),
-        ("Unused5", FieldType::UInt32),
-        ("Geoset100", FieldType::UInt32),
-        ("Geoset300", FieldType::UInt32),
-        ("Geoset200", FieldType::UInt32),
-    ] {
-        s.add_field(SchemaField::new(name, ty));
+    for i in 0..if tbc { 11 } else { 9 } {
+        let name = match i {
+            0 => "RaceID".to_string(),
+            1 => "SexID".to_string(),
+            2 => "VariationID".to_string(),
+            6 => "Geoset100".to_string(),
+            7 => "Geoset300".to_string(),
+            8 => "Geoset200".to_string(),
+            9 => "Geoset1600".to_string(),
+            10 => "Geoset1700".to_string(),
+            _ => format!("Unused{i}"),
+        };
+        s.add_field(SchemaField::new(name, FieldType::UInt32));
     }
     s
 }
@@ -533,7 +553,7 @@ mod tests {
         let mut hair = HashMap::new();
         hair.insert((1, 0, 1), 5u32); // styled hair → geoset 5
         let mut facial = HashMap::new();
-        facial.insert((1, 0, 1), [2u32, 3, 4]); // styled facial → 102/303/204
+        facial.insert((1, 0, 1), [2u32, 3, 4, 0, 0]); // styled facial → 102/303/204
         let mut helmet_vis = HashMap::new();
         helmet_vis.insert(368, [u32::MAX; 5]); // a shipped row id, hiding everything
         helmet_vis.insert(245, [0u32; 5]); // a shipped row id, hiding nothing
@@ -588,7 +608,7 @@ mod tests {
         let mut hair = HashMap::new();
         hair.insert((1, 0, 1), 2u32);
         let mut facial = HashMap::new();
-        facial.insert((1, 0, 1), [1u32, 2, 1]);
+        facial.insert((1, 0, 1), [1u32, 2, 1, 0, 0]);
         let cg = CharacterGeosets {
             hair,
             facial,

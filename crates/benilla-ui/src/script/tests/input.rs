@@ -279,27 +279,32 @@ fn the_mouse_wheel_flag_round_trips_and_the_scrolling_kinds_are_born_enabled() {
 
     // A plain frame is born wheel-disabled, as in the reference; the two scrolling kinds' own
     // constructors enable it.
-    assert!(!s
-        .eval::<bool>("return Plain:IsMouseWheelEnabled()")
-        .unwrap());
-    assert!(s
-        .eval::<bool>("return Scroll:IsMouseWheelEnabled()")
-        .unwrap());
+    assert!(
+        !s.eval::<bool>("return Plain:IsMouseWheelEnabled()")
+            .unwrap()
+    );
+    assert!(
+        s.eval::<bool>("return Scroll:IsMouseWheelEnabled()")
+            .unwrap()
+    );
     assert!(s.eval::<bool>("return Msg:IsMouseWheelEnabled()").unwrap());
 
     s.run("Plain:EnableMouseWheel(true)").unwrap();
-    assert!(s
-        .eval::<bool>("return Plain:IsMouseWheelEnabled()")
-        .unwrap());
+    assert!(
+        s.eval::<bool>("return Plain:IsMouseWheelEnabled()")
+            .unwrap()
+    );
     s.run("Plain:EnableMouseWheel(false)").unwrap();
-    assert!(!s
-        .eval::<bool>("return Plain:IsMouseWheelEnabled()")
-        .unwrap());
+    assert!(
+        !s.eval::<bool>("return Plain:IsMouseWheelEnabled()")
+            .unwrap()
+    );
     // Lua truthiness, like every other flag binding: `EnableMouseWheel(1)` is on.
     s.run("Plain:EnableMouseWheel(1)").unwrap();
-    assert!(s
-        .eval::<bool>("return Plain:IsMouseWheelEnabled()")
-        .unwrap());
+    assert!(
+        s.eval::<bool>("return Plain:IsMouseWheelEnabled()")
+            .unwrap()
+    );
     assert!(s.errors().is_empty(), "{:?}", s.errors());
 }
 
@@ -566,8 +571,6 @@ fn the_unfired_script_kinds_still_raise_rather_than_silently_accepting() {
     s.run(r#"Raiser = CreateFrame("EditBox", "RaiserBox")"#)
         .unwrap();
     for name in [
-        // A 2.0 secure-frame slot; no 1.12 resolver has it.
-        "OnAttributeChanged",
         // Real 1.12 slots that benilla does not fire.
         "OnHyperlinkEnter",
         "OnMessageScrollChanged",

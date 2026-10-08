@@ -41,9 +41,16 @@ pub(crate) fn capture_ui_opted_in() -> bool {
 /// "log in without typing" and nothing about who is present; [`unattended`] answers that. One
 /// credential alone is a typed login, and `$WOW_CHAR` alone is only the roster's fast path.
 pub(crate) fn env_login() -> bool {
-    ["WOW_USER", "WOW_PASS"]
-        .iter()
-        .all(|k| std::env::var_os(k).is_some())
+    #[cfg(feature = "network")]
+    {
+        ["WOW_USER", "WOW_PASS"]
+            .iter()
+            .all(|k| std::env::var_os(k).is_some())
+    }
+    #[cfg(not(feature = "network"))]
+    {
+        false
+    }
 }
 
 /// Is nobody at the keyboard? `false` unless the run declares itself with `$WOW_UNATTENDED`, or is
@@ -56,9 +63,16 @@ pub(crate) fn env_login() -> bool {
 /// Read by what acts instead of a person: [`crate::net::DisconnectedMessage::new`] (the
 /// lost-session verdict, taken once at the wire edge) and the `FATAL` exits.
 pub(crate) fn unattended() -> bool {
-    ["WOW_UNATTENDED", "WOW_CAPTURE", "WOW_RIG"]
-        .iter()
-        .any(|k| std::env::var_os(k).is_some())
+    #[cfg(feature = "network")]
+    {
+        ["WOW_UNATTENDED", "WOW_CAPTURE", "WOW_RIG"]
+            .iter()
+            .any(|k| std::env::var_os(k).is_some())
+    }
+    #[cfg(not(feature = "network"))]
+    {
+        false
+    }
 }
 
 /// A run stuck on a dialog: `true` (exit) only when the run is [`unattended`], logging the `FATAL`

@@ -186,21 +186,30 @@ fn table(t: &Table, depth: usize, seen: &mut HashSet<*const c_void>) -> Option<V
 /// Register `RegisterForSave`, with no taint gate: the reference refuses it outside Blizzard code
 /// (`0x4884e0`), and benilla has no taint model.
 pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
-    lua.globals().set(
-        "RegisterForSave",
-        lua.create_function(|lua, name: String| {
-            let mut model = lua.app_data_mut::<Model>().expect("model app_data");
-            if !model.saved_names.contains(&name) {
-                model.saved_names.push(name);
-            }
-            Ok(())
-        })?,
-    )
+    let register = lua.create_function(|lua, name: String| {
+        let mut model = lua.app_data_mut::<Model>().expect("model app_data");
+        if !model.saved_names.contains(&name) {
+            model.saved_names.push(name);
+        }
+        Ok(())
+    })?;
+    let globals = lua.globals();
+    globals.set("RegisterForSave", register.clone())?;
+    globals.set("RegisterForSavePerCharacter", register)
 }
 
 #[cfg(test)]
 mod tests {
     use crate::script::UiScript;
+
+    #[test]
+    fn per_character_save_registration_uses_the_offline_character_snapshot() {
+        let script = UiScript::new().unwrap();
+        script
+            .run("RegisterForSavePerCharacter('LAST_PAGE')")
+            .unwrap();
+        assert_eq!(script.saved_variable_names(), ["LAST_PAGE"]);
+    }
 
     /// Bagnon's shape: a saved bag list sorted with the keyring (-2) last, laid out by `pairs`.
     #[test]

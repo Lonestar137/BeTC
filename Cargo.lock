@@ -511,6 +511,7 @@ dependencies = [
  "avian3d",
  "benilla-assets",
  "benilla-formats",
+ "benilla-game-core",
  "benilla-protocol",
  "benilla-srp",
  "benilla-ui",
@@ -602,6 +603,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "benilla-game-core"
+version = "0.2.0"
+dependencies = [
+ "serde",
+ "sha1",
+ "toml",
+]
+
+[[package]]
 name = "benilla-m2"
 version = "0.2.0"
 dependencies = [
@@ -614,6 +624,14 @@ version = "0.2.0"
 dependencies = [
  "benilla-bytes",
  "flate2",
+]
+
+[[package]]
+name = "benilla-offline"
+version = "0.2.0"
+dependencies = [
+ "benilla-app",
+ "benilla-buildstamp",
 ]
 
 [[package]]

@@ -334,8 +334,9 @@ fn faction_template_schema() -> Schema {
     s
 }
 
-/// `Faction.dbc`: 37 fields in build 5875 (vmangos `FactionEntry`).
-fn faction_schema() -> Schema {
+/// `Faction.dbc`: 37 fields in build 5875, 53 in build 8606 (16 localized strings).
+fn faction_schema(tbc: bool) -> Schema {
+    let locale_count = if tbc { 16 } else { 8 };
     let mut s = Schema::new("Faction");
     s.add_field(SchemaField::new("ID", FieldType::UInt32));
     s.add_field(SchemaField::new("ReputationIndex", FieldType::Int32));
@@ -352,11 +353,11 @@ fn faction_schema() -> Schema {
         s.add_field(SchemaField::new(format!("RepFlags{i}"), FieldType::UInt32));
     }
     s.add_field(SchemaField::new("Team", FieldType::UInt32));
-    for i in 0..8 {
+    for i in 0..locale_count {
         s.add_field(SchemaField::new(format!("Name{i}"), FieldType::String));
     }
     s.add_field(SchemaField::new("NameFlags", FieldType::UInt32));
-    for i in 0..8 {
+    for i in 0..locale_count {
         s.add_field(SchemaField::new(format!("Desc{i}"), FieldType::String));
     }
     s.add_field(SchemaField::new("DescFlags", FieldType::UInt32));
@@ -365,26 +366,29 @@ fn faction_schema() -> Schema {
 
 /// `FactionGroup.dbc`: 12 fields, 48-byte rows; `MaskID` is a bit index, read by `0x48d540` at
 /// `+0x4` with the name at `+0xc`.
-fn faction_group_schema() -> Schema {
+fn faction_group_schema(tbc: bool) -> Schema {
+    let locale_count = if tbc { 16 } else { 8 };
     let mut s = Schema::new("FactionGroup");
     s.add_field(SchemaField::new("ID", FieldType::UInt32));
     s.add_field(SchemaField::new("MaskID", FieldType::UInt32));
     s.add_field(SchemaField::new("InternalName", FieldType::String));
-    for i in 0..8 {
+    for i in 0..locale_count {
         s.add_field(SchemaField::new(format!("Name{i}"), FieldType::String));
     }
     s.add_field(SchemaField::new("NameFlags", FieldType::UInt32));
     s
 }
 
-/// `ChrRaces.dbc`: 29 fields in build 5875. Only the id and `FactionID` (column 2) are read; the
-/// string columns are declared so the field count matches.
-fn chr_races_schema() -> Schema {
+/// `ChrRaces.dbc`: 29 fields in build 5875, 69 in build 8606. Only the id and `FactionID` (column
+/// 2) are read here, so later columns need only preserve the row width.
+fn chr_races_schema(tbc: bool) -> Schema {
     let mut s = Schema::new("ChrRaces");
-    for i in 0..29 {
-        let ty = match i {
-            15 | 26 | 27 | 28 => FieldType::String,
-            _ => FieldType::UInt32,
+    let field_count = if tbc { 69 } else { 29 };
+    for i in 0..field_count {
+        let ty = if !tbc && matches!(i, 15 | 26 | 27 | 28) {
+            FieldType::String
+        } else {
+            FieldType::UInt32
         };
         s.add_field(SchemaField::new(format!("f{i}"), ty));
     }
@@ -393,6 +397,7 @@ fn chr_races_schema() -> Schema {
 
 /// Load the three faction tables and the race templates off the patch chain.
 pub fn load_faction_catalog(chain: &mut Chain) -> Result<FactionCatalog> {
+    let tbc = chain.client_build() == Some(8606);
     let bytes = chain
         .read_file(FACTION_TEMPLATE)
         .with_context(|| format!("reading {FACTION_TEMPLATE}"))?;
@@ -418,7 +423,7 @@ pub fn load_faction_catalog(chain: &mut Chain) -> Result<FactionCatalog> {
     let bytes = chain
         .read_file(FACTION)
         .with_context(|| format!("reading {FACTION}"))?;
-    let rs = parse(&bytes, faction_schema(), "Faction")?;
+    let rs = parse(&bytes, faction_schema(tbc), "Faction")?;
     let mut factions = HashMap::with_capacity(rs.records().len());
     let mut names = HashMap::with_capacity(rs.records().len());
     let mut descriptions = HashMap::new();
@@ -441,8 +446,9 @@ pub fn load_faction_catalog(chain: &mut Chain) -> Result<FactionCatalog> {
             if let Some(name) = crate::dbc::str_at(&rs, r, 19) {
                 names.insert(id, name);
             }
-            // Desc0 (enUS), column 28, past the name block; empty on most rows.
-            if let Some(desc) = crate::dbc::str_at(&rs, r, 28) {
+            // Desc0 follows the locale-width name block and its flags; empty on most rows.
+            let description_column = if tbc { 36 } else { 28 };
+            if let Some(desc) = crate::dbc::str_at(&rs, r, description_column) {
                 descriptions.insert(id, desc);
             }
         }
@@ -451,7 +457,7 @@ pub fn load_faction_catalog(chain: &mut Chain) -> Result<FactionCatalog> {
     let bytes = chain
         .read_file(FACTION_GROUP)
         .with_context(|| format!("reading {FACTION_GROUP}"))?;
-    let rs = parse(&bytes, faction_group_schema(), "FactionGroup")?;
+    let rs = parse(&bytes, faction_group_schema(tbc), "FactionGroup")?;
     let mut group_names = HashMap::with_capacity(rs.records().len());
     let mut group_internal_names = HashMap::with_capacity(rs.records().len());
     for r in rs.records() {
@@ -468,7 +474,7 @@ pub fn load_faction_catalog(chain: &mut Chain) -> Result<FactionCatalog> {
     let bytes = chain
         .read_file(CHR_RACES)
         .with_context(|| format!("reading {CHR_RACES}"))?;
-    let rs = parse(&bytes, chr_races_schema(), "ChrRaces")?;
+    let rs = parse(&bytes, chr_races_schema(tbc), "ChrRaces")?;
     let race_templates = rs
         .records()
         .iter()

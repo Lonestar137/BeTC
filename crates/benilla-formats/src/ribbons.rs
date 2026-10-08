@@ -29,8 +29,8 @@ use std::io::Cursor;
 use anyhow::Result;
 use benilla_m2::parse_m2;
 
-use crate::value_track::{seq0_band, track_keys_with, ValueTrack};
 use crate::ParticleBlend;
+use crate::value_track::{ValueTrack, seq0_band, track_keys_with};
 
 const STRIDE: usize = 0xdc;
 const HDR_COUNT: usize = 0x134;

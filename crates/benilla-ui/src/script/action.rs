@@ -152,6 +152,20 @@ pub(super) fn truthy_nonzero(v: &Value) -> bool {
 pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
     let g = lua.globals();
 
+    // TBC's native getter mirrors FrameXML's current page state. Before MainMenuBar_OnLoad seeds
+    // it, page one is the action-button calculation's default.
+    g.set(
+        "GetActionBarPage",
+        lua.create_function(|lua, ()| {
+            let current: Value = lua.globals().get("CURRENT_ACTIONBAR_PAGE")?;
+            Ok(match current {
+                Value::Integer(page) if page > 0 => page,
+                Value::Number(page) if page.is_finite() && page > 0.0 => page as i64,
+                _ => 1,
+            })
+        })?,
+    )?;
+
     g.set(
         "HasAction",
         lua.create_function(|lua, action: u32| {
@@ -394,6 +408,14 @@ pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
 mod tests {
     use super::ActionSlot;
     use crate::script::UiScript;
+
+    #[test]
+    fn get_action_bar_page_tracks_the_stock_framexml_page_global() {
+        let s = UiScript::new().unwrap();
+        assert_eq!(s.eval::<i64>("return GetActionBarPage()").unwrap(), 1);
+        s.run("CURRENT_ACTIONBAR_PAGE = 4").unwrap();
+        assert_eq!(s.eval::<i64>("return GetActionBarPage()").unwrap(), 4);
+    }
 
     /// `GetActionAutocast` answers a pet spell's two bits only for a macro bound out of the pet's
     /// book (`0x4e6fcb`), never for a spell slot of the same id, and always two values.

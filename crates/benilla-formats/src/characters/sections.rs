@@ -5,7 +5,7 @@ use benilla_dbc::{FieldType, Schema, SchemaField};
 
 use crate::dbc::{parse, str_at, u32_at};
 use crate::items::ItemDisplay;
-use crate::{read_texture_mip_chain, BlpMipChain, Chain};
+use crate::{BlpMipChain, Chain, read_texture_mip_chain};
 
 const CHAR_SECTIONS: &str = "DBFilesClient\\CharSections.dbc";
 
@@ -930,14 +930,16 @@ mod tests {
         assert!(designed.is_designed());
         // Index 0 ships in every field.
         assert!(GuildEmblem::default().is_designed());
-        assert!(!GuildEmblem {
-            emblem_style: -1,
-            emblem_color: -1,
-            border_style: -1,
-            border_color: -1,
-            background_color: -1,
-        }
-        .is_designed());
+        assert!(
+            !GuildEmblem {
+                emblem_style: -1,
+                emblem_color: -1,
+                border_style: -1,
+                border_color: -1,
+                background_color: -1,
+            }
+            .is_designed()
+        );
         for spoil in [
             GuildEmblem {
                 emblem_style: -1,

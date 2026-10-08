@@ -1,0 +1,21 @@
+[package]
+name = "benilla-offline"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Offline TBC game launcher"
+build = "build.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+benilla-app = { path = "../benilla-app", default-features = false, features = ["offline"] }
+
+[build-dependencies]
+benilla-buildstamp = { path = "../benilla-buildstamp" }
+
+[[bin]]
+name = "benilla-offline"
+path = "src/main.rs"
+test = false

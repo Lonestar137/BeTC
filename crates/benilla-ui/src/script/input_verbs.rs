@@ -160,7 +160,7 @@ fn inert(lua: &Lua, names: &[&str]) -> mlua::Result<()> {
     Ok(())
 }
 
-/// Register the 49 functions: the three tables' 48 and `TargetNearestFriend`.
+/// Register the three tables' 48 functions, the 1.12 targeting shim, and the TBC jump wrappers.
 pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
     let g = lua.globals();
 
@@ -223,8 +223,10 @@ pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
     }
     // `Jump` (`0x513bd0`), `ToggleRun` (`0x513d50`) and `ToggleAutoRun` (`0x513de0`) open on the
     // same gate; their further refusals (a dead or rooted player) are the engine's, as for the key.
-    let fired: [(&str, FiredInput); 3] = [
+    let fired: [(&str, FiredInput); 4] = [
         ("Jump", FiredInput::Jump),
+        // TBC's stock JUMP binding wrapper; on land this takes the same one-shot jump path.
+        ("JumpOrAscendStart", FiredInput::Jump),
         ("ToggleRun", FiredInput::ToggleRun),
         ("ToggleAutoRun", FiredInput::ToggleAutoRun),
     ];
@@ -263,11 +265,13 @@ pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
             })?,
         )?;
     }
-    // Not built, so these answer and do nothing: the pitch pair (`0x400`/`0x800`), since the
-    // mover has no keyboard pitch axis, so PITCHUP and PITCHDOWN (INSERT, DELETE) do nothing.
+    // Not built, so these answer and do nothing: AscendStop is TBC's JUMP runOnUp wrapper for
+    // flight, which the offline slice does not support; the pitch pair (`0x400`/`0x800`) has no
+    // keyboard pitch axis, so PITCHUP and PITCHDOWN (INSERT, DELETE) do nothing.
     inert(
         lua,
         &[
+            "AscendStop",
             "PitchUpStart",
             "PitchUpStop",
             "PitchDownStart",
@@ -374,8 +378,10 @@ mod tests {
 
     /// The three reference tables' 48 names (`0x8500b8`, `0x84f7a0`, and the main table's seven
     /// at `0x83de68`), each a callable global that answers without raising.
-    const NAMES: [&str; 48] = [
+    const NAMES: [&str; 50] = [
         "Jump",
+        "JumpOrAscendStart",
+        "AscendStop",
         "ToggleRun",
         "ToggleAutoRun",
         "MoveForwardStart",
@@ -443,16 +449,19 @@ mod tests {
     #[test]
     fn the_movement_calls_act_only_inside_a_binding_body() {
         let mut s = UiScript::new().unwrap();
-        s.run("MoveForwardStart() StrafeLeftStop() Jump() ToggleRun()")
-            .unwrap();
+        let body = concat!(
+            "MoveForwardStart() StrafeLeftStop() Jump() ",
+            "JumpOrAscendStart() ToggleRun() AscendStop()"
+        );
+        s.run(body).unwrap();
         assert!(s.take_binding_input().is_empty());
-        s.run_binding("MoveForwardStart() StrafeLeftStop() Jump() ToggleRun()")
-            .unwrap();
+        s.run_binding(body).unwrap();
         assert_eq!(
             s.take_binding_input(),
             vec![
                 BindingInput::Start(HeldInput::MoveForward),
                 BindingInput::Stop(HeldInput::StrafeLeft),
+                BindingInput::Fire(FiredInput::Jump),
                 BindingInput::Fire(FiredInput::Jump),
                 BindingInput::Fire(FiredInput::ToggleRun),
             ]

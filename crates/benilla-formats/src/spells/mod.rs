@@ -1,12 +1,10 @@
 //! `Spell.dbc` joined with `SpellIcon.dbc`: a spell id resolves to the display record the action
 //! bar, spellbook, tooltips and cast gates read.
 //!
-//! A `Spell.dbc` record is 173 fields, 692 bytes (the loader's header checks, `0x55007e`,
-//! `0x5500bb`), and the client's `SpellRec` holds the row as stored: offset = column × 4, so
-//! `SpellVisual` is `+0x1cc` (column 115) and the name `+0x1e0` (column 120). The client's reads
-//! agree, such as Speed `+0x94` at `0x6e814b`, `Attributes` and `AttributesEx2` at `0x6e5922` and
-//! `0x6e591c`, `castUI` at `0x4b29bf`. Most columns were also matched by value against the
-//! vmangos `spell_template` of build 5875: only column 115 equals `spellVisual1` on 1309 rows.
+//! A build-5875 `Spell.dbc` record is 173 fields; build 8606 expands each of four localized strings
+//! from 8 to 16 locales and appends 11 fields, for 216 total. The pre-string columns retain their
+//! indices; post-string columns move by 32. The client's reads agree for the shared columns, such
+//! as SpellVisual at 115, Speed at 37, and Attributes at 6.
 //!
 //! A localized string is eight locale dwords and a flags dword: name 120-128, subtext 129-137,
 //! description 138-146, aura description 147-155, then `ManaCostPercentage` at 156. The
@@ -50,6 +48,7 @@ use crate::dbc::{f32_at, i32_at, parse, str_at, u32_at};
 const SPELL: &str = "DBFilesClient\\Spell.dbc";
 
 const SPELL_FIELDS: usize = 173;
+const TBC_SPELL_FIELDS: usize = 216;
 /// `Category` (`+0x8`): the shared-cooldown `SpellCategory.dbc` id, such as potions 4.
 const COL_CATEGORY: usize = 2;
 const COL_CAST_UI: usize = 3;
@@ -367,10 +366,28 @@ impl SpellCatalog {
     }
 }
 
-/// 173 fields, `u32` but for `Speed`, the four float effect arrays and the four enUS string heads;
-/// the signed columns stay `u32`, as [`i32_at`] reads the same bits.
-fn spell_schema() -> Schema {
+/// Build 5875 has 173 fields. Build 8606 has four 16-locale string blocks and 216 fields total;
+/// its field positions are checked against the installed Fireball row in the catalog tests.
+fn spell_schema(tbc: bool) -> Schema {
     let mut s = Schema::new("Spell");
+    if tbc {
+        for i in 0..TBC_SPELL_FIELDS {
+            let ty = if [127, 144, 161, 178].contains(&i) {
+                FieldType::String
+            } else if i == 41
+                || (77..80).contains(&i)
+                || (101..104).contains(&i)
+                || (119..122).contains(&i)
+                || (206..209).contains(&i)
+            {
+                FieldType::Float32
+            } else {
+                FieldType::UInt32
+            };
+            s.add_field(SchemaField::new(format!("F{i}"), ty));
+        }
+        return s;
+    }
     for i in 0..SPELL_FIELDS {
         if i == COL_NAME_ENUS {
             s.add_field(SchemaField::new("NameEnUs", FieldType::String));
@@ -419,8 +436,43 @@ fn spell_schema() -> Schema {
     s
 }
 
+fn spell_column(column: usize, tbc: bool) -> usize {
+    if !tbc {
+        return column;
+    }
+    match column {
+        0 => 0,
+        COL_SCHOOL => 215,
+        COL_CATEGORY => 1,
+        COL_CAST_UI => 0,
+        COL_DISPEL => 2,
+        COL_MECHANIC => 3,
+        COL_ATTRIBUTES => 4,
+        COL_ATTRIBUTES_EX => 5,
+        COL_ATTRIBUTES_EX2 => 6,
+        COL_ATTRIBUTES_EX3 => 7,
+        COL_ATTRIBUTES_EX4 => 8,
+        COL_STANCES => 9,
+        COL_STANCES_NOT => 10,
+        COL_TARGETS => 11,
+        COL_TARGET_CREATURE_TYPE => 12,
+        COL_REQUIRES_SPELL_FOCUS => 13,
+        COL_CASTER_AURA_STATE => 14,
+        COL_TARGET_AURA_STATE => 15,
+        18..=111 => column + 4,
+        112..=119 => column + 7,
+        COL_NAME_ENUS => 127,
+        COL_NAME_SUBTEXT_ENUS => 144,
+        COL_DESCRIPTION_ENUS => 161,
+        COL_AURA_DESCRIPTION_ENUS => 178,
+        156..=172 => column + 39,
+        _ => column,
+    }
+}
+
 /// Load the joined spell display catalog off the patch chain.
 pub fn load_spell_catalog(chain: &mut Chain) -> Result<SpellCatalog> {
+    let tbc = chain.client_build() == Some(8606);
     let icons = crate::dbc::load_spell_icon_map(chain)?;
     let dispel_types = load_spell_dispel_types(chain)?;
     // Categories whose `SpellCategory.dbc` flags carry `0x2` match every cooldown query
@@ -447,17 +499,22 @@ pub fn load_spell_catalog(chain: &mut Chain) -> Result<SpellCatalog> {
     };
 
     let spell_bytes = chain.read_file(SPELL).context("reading Spell.dbc")?;
-    let spells_set = parse(&spell_bytes, spell_schema(), "Spell.dbc")?;
+    let spells_set = parse(&spell_bytes, spell_schema(tbc), "Spell.dbc")?;
     let mut spells: HashMap<u32, SpellDisplay> = HashMap::new();
     let mut learned_spell: HashMap<u32, u32> = HashMap::new();
     let mut learn_effects: HashMap<u32, Vec<LearnEffect>> = HashMap::new();
     let mut declared_language: HashMap<u32, u32> = HashMap::new();
     for r in spells_set.records() {
-        let Some(id) = u32_at(r, 0) else { continue };
+        let column = |index| spell_column(index, tbc);
+        let get_u32 = |index| u32_at(r, column(index));
+        let get_i32 = |index| i32_at(r, column(index));
+        let get_f32 = |index| f32_at(r, column(index));
+        let get_str = |index| str_at(&spells_set, r, column(index));
+        let Some(id) = get_u32(0) else { continue };
         // The learn-spell hop: the first LEARN_SPELL effect's trigger is the taught ability.
         for i in 0..3 {
-            if u32_at(r, COL_EFFECT_1 + i) == Some(SPELL_EFFECT_LEARN_SPELL) {
-                if let Some(taught) = u32_at(r, COL_EFFECT_TRIGGER_1 + i).filter(|&t| t != 0) {
+            if get_u32(COL_EFFECT_1 + i) == Some(SPELL_EFFECT_LEARN_SPELL) {
+                if let Some(taught) = get_u32(COL_EFFECT_TRIGGER_1 + i).filter(|&t| t != 0) {
                     learned_spell.entry(id).or_insert(taught);
                     break;
                 }
@@ -466,14 +523,14 @@ pub fn load_spell_catalog(chain: &mut Chain) -> Result<SpellCatalog> {
         // Learn effects in slot order; a SKILL_STEP's step is base points plus die sides.
         let effects: Vec<LearnEffect> = (0..3)
             .filter_map(|i| {
-                let trigger = || u32_at(r, COL_EFFECT_TRIGGER_1 + i).filter(|&t| t != 0);
-                match u32_at(r, COL_EFFECT_1 + i)? {
+                let trigger = || get_u32(COL_EFFECT_TRIGGER_1 + i).filter(|&t| t != 0);
+                match get_u32(COL_EFFECT_1 + i)? {
                     SPELL_EFFECT_LEARN_SPELL => trigger().map(LearnEffect::Spell),
                     SPELL_EFFECT_LEARN_PET_SPELL => trigger().map(LearnEffect::PetSpell),
                     SPELL_EFFECT_SKILL_STEP => {
-                        let skill = i32_at(r, COL_EFFECT_MISC_1 + i).filter(|&m| m > 0)? as u32;
-                        let value = i32_at(r, COL_EFFECT_BASE_POINTS_1 + i).unwrap_or(0)
-                            + i32_at(r, COL_EFFECT_DIE_SIDES_1 + i).unwrap_or(0);
+                        let skill = get_i32(COL_EFFECT_MISC_1 + i).filter(|&m| m > 0)? as u32;
+                        let value = get_i32(COL_EFFECT_BASE_POINTS_1 + i).unwrap_or(0)
+                            + get_i32(COL_EFFECT_DIE_SIDES_1 + i).unwrap_or(0);
                         Some(LearnEffect::SkillStep {
                             skill,
                             step: value.max(0) as u32,
@@ -488,24 +545,25 @@ pub fn load_spell_catalog(chain: &mut Chain) -> Result<SpellCatalog> {
         }
         // The language declaration (`0x4b2656`) reads slot 0 only, `+0xf4` and `+0x1a8`, unlike
         // the learn hop's scan of all three.
-        if u32_at(r, COL_EFFECT_1) == Some(SPELL_EFFECT_LANGUAGE) {
-            if let Some(lang) = i32_at(r, COL_EFFECT_MISC_1).filter(|&l| l > 0) {
+        if get_u32(COL_EFFECT_1) == Some(SPELL_EFFECT_LANGUAGE) {
+            if let Some(lang) = get_i32(COL_EFFECT_MISC_1).filter(|&l| l > 0) {
                 declared_language.insert(id, lang as u32);
             }
         }
-        let name = str_at(&spells_set, r, COL_NAME_ENUS).unwrap_or_default();
-        let rank = str_at(&spells_set, r, COL_NAME_SUBTEXT_ENUS);
-        let icon = u32_at(r, COL_ICON_ID)
+        let name = get_str(COL_NAME_ENUS).unwrap_or_default();
+        let rank = get_str(COL_NAME_SUBTEXT_ENUS);
+        let icon = get_u32(COL_ICON_ID)
             .filter(|&i| i != 0)
             .and_then(|i| icons.get(&i).cloned());
-        let visual = u32_at(r, COL_VISUAL_ID).unwrap_or(0);
-        let speed = f32_at(r, COL_SPEED).unwrap_or(0.0);
-        let attributes = u32_at(r, COL_ATTRIBUTES).unwrap_or(0);
+        let visual = get_u32(COL_VISUAL_ID).unwrap_or(0);
+        let speed = get_f32(COL_SPEED).unwrap_or(0.0);
+        let attributes = get_u32(COL_ATTRIBUTES).unwrap_or(0);
+        let school = get_u32(COL_SCHOOL).unwrap_or(0);
         // Read once; the shapeshift-form derivation below reuses `effect_apply_aura`.
         let effect_apply_aura: [u32; 3] =
-            std::array::from_fn(|i| u32_at(r, COL_EFFECT_APPLY_AURA_1 + i).unwrap_or(0));
+            std::array::from_fn(|i| get_u32(COL_EFFECT_APPLY_AURA_1 + i).unwrap_or(0));
         let effect_trigger_spell: [u32; 3] =
-            std::array::from_fn(|i| u32_at(r, COL_EFFECT_TRIGGER_1 + i).unwrap_or(0));
+            std::array::from_fn(|i| get_u32(COL_EFFECT_TRIGGER_1 + i).unwrap_or(0));
         spells.insert(
             id,
             SpellDisplay {
@@ -516,138 +574,145 @@ pub fn load_spell_catalog(chain: &mut Chain) -> Result<SpellCatalog> {
                 visual,
                 speed,
                 attributes,
-                attributes_ex: u32_at(r, COL_ATTRIBUTES_EX).unwrap_or(0),
-                attributes_ex2: u32_at(r, COL_ATTRIBUTES_EX2).unwrap_or(0),
-                attributes_ex3: u32_at(r, COL_ATTRIBUTES_EX3).unwrap_or(0),
-                attributes_ex4: u32_at(r, COL_ATTRIBUTES_EX4).unwrap_or(0),
-                school: u32_at(r, COL_SCHOOL).unwrap_or(0),
-                mechanic: u32_at(r, COL_MECHANIC).unwrap_or(0),
+                attributes_ex: get_u32(COL_ATTRIBUTES_EX).unwrap_or(0),
+                attributes_ex2: get_u32(COL_ATTRIBUTES_EX2).unwrap_or(0),
+                attributes_ex3: get_u32(COL_ATTRIBUTES_EX3).unwrap_or(0),
+                attributes_ex4: get_u32(COL_ATTRIBUTES_EX4).unwrap_or(0),
+                school: if tbc && school != 0 {
+                    school.trailing_zeros()
+                } else {
+                    school
+                },
+                mechanic: get_u32(COL_MECHANIC).unwrap_or(0),
                 effect_mechanic: std::array::from_fn(|i| {
-                    u32_at(r, COL_EFFECT_MECHANIC_1 + i).unwrap_or(0)
+                    get_u32(COL_EFFECT_MECHANIC_1 + i).unwrap_or(0)
                 }),
-                prevention_type: u32_at(r, COL_PREVENTION_TYPE).unwrap_or(0),
-                spell_family: u32_at(r, COL_SPELL_FAMILY_NAME).unwrap_or(0),
+                prevention_type: get_u32(COL_PREVENTION_TYPE).unwrap_or(0),
+                spell_family: get_u32(COL_SPELL_FAMILY_NAME).unwrap_or(0),
                 // Low dword first: the reference reads bit i at `[rec + 4 * (i >> 5) + 0x284]`.
-                spell_family_flags: u64::from(u32_at(r, COL_SPELL_FAMILY_FLAGS_LOW).unwrap_or(0))
-                    | u64::from(u32_at(r, COL_SPELL_FAMILY_FLAGS_LOW + 1).unwrap_or(0)) << 32,
+                spell_family_flags: u64::from(get_u32(COL_SPELL_FAMILY_FLAGS_LOW).unwrap_or(0))
+                    | u64::from(get_u32(COL_SPELL_FAMILY_FLAGS_LOW + 1).unwrap_or(0)) << 32,
                 passive: attributes & ATTR_PASSIVE != 0,
-                cast_ui: u32_at(r, COL_CAST_UI).unwrap_or(0),
-                effects: [0, 1, 2].map(|i| u32_at(r, COL_EFFECT_1 + i).unwrap_or(0)),
-                base_level: u32_at(r, COL_BASE_LEVEL).unwrap_or(0),
-                max_level: u32_at(r, COL_MAX_LEVEL).unwrap_or(0),
-                spell_level: u32_at(r, COL_SPELL_LEVEL).unwrap_or(0),
+                cast_ui: if tbc {
+                    0
+                } else {
+                    get_u32(COL_CAST_UI).unwrap_or(0)
+                },
+                effects: [0, 1, 2].map(|i| get_u32(COL_EFFECT_1 + i).unwrap_or(0)),
+                base_level: get_u32(COL_BASE_LEVEL).unwrap_or(0),
+                max_level: get_u32(COL_MAX_LEVEL).unwrap_or(0),
+                spell_level: get_u32(COL_SPELL_LEVEL).unwrap_or(0),
                 // The first OPEN_LOCK effect, in any slot, and its `EffectMiscValue` LockType.
                 open_lock: (0..3).find_map(|i| {
-                    (u32_at(r, COL_EFFECT_1 + i)? == SPELL_EFFECT_OPEN_LOCK).then(|| OpenLock {
-                        lock_type: u32_at(r, COL_EFFECT_MISC_1 + i).unwrap_or(0),
+                    (get_u32(COL_EFFECT_1 + i)? == SPELL_EFFECT_OPEN_LOCK).then(|| OpenLock {
+                        lock_type: get_u32(COL_EFFECT_MISC_1 + i).unwrap_or(0),
                         effect: i,
                     })
                 }),
-                dispel: u32_at(r, COL_DISPEL).unwrap_or(0),
-                category: u32_at(r, COL_CATEGORY).unwrap_or(0),
+                dispel: get_u32(COL_DISPEL).unwrap_or(0),
+                category: get_u32(COL_CATEGORY).unwrap_or(0),
                 // Resolved at load, read off the armed record (`0x6e1563`).
-                category_wildcard: u32_at(r, COL_CATEGORY)
+                category_wildcard: get_u32(COL_CATEGORY)
                     .is_some_and(|c| wildcard_categories.contains(&c)),
-                recovery_ms: u32_at(r, COL_RECOVERY_TIME).unwrap_or(0),
-                interrupt_flags: u32_at(r, COL_INTERRUPT_FLAGS).unwrap_or(0),
-                aura_interrupt_flags: u32_at(r, COL_AURA_INTERRUPT_FLAGS).unwrap_or(0),
-                channel_interrupt_flags: u32_at(r, COL_CHANNEL_INTERRUPT_FLAGS).unwrap_or(0),
-                category_recovery_ms: u32_at(r, COL_CATEGORY_RECOVERY_TIME).unwrap_or(0),
-                start_recovery_category: u32_at(r, COL_START_RECOVERY_CATEGORY).unwrap_or(0),
-                start_recovery_ms: u32_at(r, COL_START_RECOVERY_TIME).unwrap_or(0),
-                power_type: u32_at(r, COL_POWER_TYPE).unwrap_or(0),
-                mana_cost: u32_at(r, COL_MANA_COST).unwrap_or(0),
-                mana_cost_pct: u32_at(r, COL_MANA_COST_PCT).unwrap_or(0),
-                mana_cost_per_level: u32_at(r, COL_MANA_COST_PER_LEVEL).unwrap_or(0),
-                mana_per_second: u32_at(r, COL_MANA_PER_SECOND).unwrap_or(0),
-                range_index: u32_at(r, COL_RANGE_INDEX).unwrap_or(0),
-                modal_next_spell: u32_at(r, COL_MODAL_NEXT_SPELL).unwrap_or(0),
-                targets: u32_at(r, COL_TARGETS).unwrap_or(0),
-                target_creature_type: u32_at(r, COL_TARGET_CREATURE_TYPE).unwrap_or(0),
-                implicit_target_a1: u32_at(r, COL_IMPLICIT_TARGET_A1).unwrap_or(0),
+                recovery_ms: get_u32(COL_RECOVERY_TIME).unwrap_or(0),
+                interrupt_flags: get_u32(COL_INTERRUPT_FLAGS).unwrap_or(0),
+                aura_interrupt_flags: get_u32(COL_AURA_INTERRUPT_FLAGS).unwrap_or(0),
+                channel_interrupt_flags: get_u32(COL_CHANNEL_INTERRUPT_FLAGS).unwrap_or(0),
+                category_recovery_ms: get_u32(COL_CATEGORY_RECOVERY_TIME).unwrap_or(0),
+                start_recovery_category: get_u32(COL_START_RECOVERY_CATEGORY).unwrap_or(0),
+                start_recovery_ms: get_u32(COL_START_RECOVERY_TIME).unwrap_or(0),
+                power_type: get_u32(COL_POWER_TYPE).unwrap_or(0),
+                mana_cost: get_u32(COL_MANA_COST).unwrap_or(0),
+                mana_cost_pct: get_u32(COL_MANA_COST_PCT).unwrap_or(0),
+                mana_cost_per_level: get_u32(COL_MANA_COST_PER_LEVEL).unwrap_or(0),
+                mana_per_second: get_u32(COL_MANA_PER_SECOND).unwrap_or(0),
+                range_index: get_u32(COL_RANGE_INDEX).unwrap_or(0),
+                modal_next_spell: get_u32(COL_MODAL_NEXT_SPELL).unwrap_or(0),
+                targets: get_u32(COL_TARGETS).unwrap_or(0),
+                target_creature_type: get_u32(COL_TARGET_CREATURE_TYPE).unwrap_or(0),
+                implicit_target_a1: get_u32(COL_IMPLICIT_TARGET_A1).unwrap_or(0),
                 effect_implicit_target_a: std::array::from_fn(|i| {
-                    u32_at(r, COL_IMPLICIT_TARGET_A1 + i).unwrap_or(0)
+                    get_u32(COL_IMPLICIT_TARGET_A1 + i).unwrap_or(0)
                 }),
                 effect_implicit_target_b: std::array::from_fn(|i| {
-                    u32_at(r, COL_IMPLICIT_TARGET_B1 + i).unwrap_or(0)
+                    get_u32(COL_IMPLICIT_TARGET_B1 + i).unwrap_or(0)
                 }),
-                stances: u32_at(r, COL_STANCES).unwrap_or(0),
-                stances_not: u32_at(r, COL_STANCES_NOT).unwrap_or(0),
-                caster_aura_state: u32_at(r, COL_CASTER_AURA_STATE).unwrap_or(0),
-                target_aura_state: u32_at(r, COL_TARGET_AURA_STATE).unwrap_or(0),
-                totems: std::array::from_fn(|i| u32_at(r, COL_TOTEM_1 + i).unwrap_or(0)),
+                stances: get_u32(COL_STANCES).unwrap_or(0),
+                stances_not: get_u32(COL_STANCES_NOT).unwrap_or(0),
+                caster_aura_state: get_u32(COL_CASTER_AURA_STATE).unwrap_or(0),
+                target_aura_state: get_u32(COL_TARGET_AURA_STATE).unwrap_or(0),
+                totems: std::array::from_fn(|i| get_u32(COL_TOTEM_1 + i).unwrap_or(0)),
                 reagents: std::array::from_fn(|i| {
                     (
-                        u32_at(r, COL_REAGENT_1 + i).unwrap_or(0),
-                        u32_at(r, COL_REAGENT_COUNT_1 + i).unwrap_or(0),
+                        get_u32(COL_REAGENT_1 + i).unwrap_or(0),
+                        get_u32(COL_REAGENT_COUNT_1 + i).unwrap_or(0),
                     )
                 }),
-                equipped_item_class: u32_at(r, COL_EQUIPPED_ITEM_CLASS).unwrap_or(0) as i32,
-                equipped_item_subclass_mask: u32_at(r, COL_EQUIPPED_ITEM_SUBCLASS_MASK)
+                equipped_item_class: get_u32(COL_EQUIPPED_ITEM_CLASS).unwrap_or(0) as i32,
+                equipped_item_subclass_mask: get_u32(COL_EQUIPPED_ITEM_SUBCLASS_MASK).unwrap_or(0),
+                equipped_item_inventory_type_mask: get_u32(COL_EQUIPPED_ITEM_INVENTORY_TYPE_MASK)
                     .unwrap_or(0),
-                equipped_item_inventory_type_mask: u32_at(r, COL_EQUIPPED_ITEM_INVENTORY_TYPE_MASK)
-                    .unwrap_or(0),
-                requires_spell_focus: u32_at(r, COL_REQUIRES_SPELL_FOCUS).unwrap_or(0),
+                requires_spell_focus: get_u32(COL_REQUIRES_SPELL_FOCUS).unwrap_or(0),
                 // The first MOD_SHAPESHIFT effect's `EffectMiscValue` is the form (`0x4b4690`).
                 shapeshift_form: (0..3).find_map(|i| {
                     (effect_apply_aura[i] == SPELL_AURA_MOD_SHAPESHIFT)
-                        .then(|| u32_at(r, COL_EFFECT_MISC_1 + i).unwrap_or(0))
+                        .then(|| get_u32(COL_EFFECT_MISC_1 + i).unwrap_or(0))
                 }),
-                stance_bar_order: u32_at(r, COL_STANCE_BAR_ORDER).unwrap_or(0) as i32,
-                active_icon_id: u32_at(r, COL_ACTIVE_ICON_ID).unwrap_or(0),
-                active_icon: u32_at(r, COL_ACTIVE_ICON_ID)
+                stance_bar_order: get_u32(COL_STANCE_BAR_ORDER).unwrap_or(0) as i32,
+                active_icon_id: get_u32(COL_ACTIVE_ICON_ID).unwrap_or(0),
+                active_icon: get_u32(COL_ACTIVE_ICON_ID)
                     .filter(|&i| i != 0)
                     .and_then(|i| icons.get(&i).cloned()),
-                description: str_at(&spells_set, r, COL_DESCRIPTION_ENUS),
-                aura_description: str_at(&spells_set, r, COL_AURA_DESCRIPTION_ENUS),
-                duration_index: u32_at(r, COL_DURATION_INDEX).unwrap_or(0),
-                casting_time_index: u32_at(r, COL_CASTING_TIME_INDEX).unwrap_or(0),
-                proc_flags: u32_at(r, COL_PROC_FLAGS).unwrap_or(0),
-                proc_chance: u32_at(r, COL_PROC_CHANCE).unwrap_or(0),
-                proc_charges: u32_at(r, COL_PROC_CHARGES).unwrap_or(0),
-                stack_amount: u32_at(r, COL_STACK_AMOUNT).unwrap_or(0),
-                max_target_level: u32_at(r, COL_MAX_TARGET_LEVEL).unwrap_or(0),
-                max_affected_targets: u32_at(r, COL_MAX_AFFECTED_TARGETS).unwrap_or(0),
+                description: get_str(COL_DESCRIPTION_ENUS),
+                aura_description: get_str(COL_AURA_DESCRIPTION_ENUS),
+                duration_index: get_u32(COL_DURATION_INDEX).unwrap_or(0),
+                casting_time_index: get_u32(COL_CASTING_TIME_INDEX).unwrap_or(0),
+                proc_flags: get_u32(COL_PROC_FLAGS).unwrap_or(0),
+                proc_chance: get_u32(COL_PROC_CHANCE).unwrap_or(0),
+                proc_charges: get_u32(COL_PROC_CHARGES).unwrap_or(0),
+                stack_amount: get_u32(COL_STACK_AMOUNT).unwrap_or(0),
+                max_target_level: get_u32(COL_MAX_TARGET_LEVEL).unwrap_or(0),
+                max_affected_targets: get_u32(COL_MAX_AFFECTED_TARGETS).unwrap_or(0),
                 effect_base_points: std::array::from_fn(|i| {
-                    i32_at(r, COL_EFFECT_BASE_POINTS_1 + i).unwrap_or(0)
+                    get_i32(COL_EFFECT_BASE_POINTS_1 + i).unwrap_or(0)
                 }),
                 effect_die_sides: std::array::from_fn(|i| {
-                    i32_at(r, COL_EFFECT_DIE_SIDES_1 + i).unwrap_or(0)
+                    get_i32(COL_EFFECT_DIE_SIDES_1 + i).unwrap_or(0)
                 }),
                 effect_base_dice: std::array::from_fn(|i| {
-                    i32_at(r, COL_EFFECT_BASE_DICE_1 + i).unwrap_or(0)
+                    get_i32(COL_EFFECT_BASE_DICE_1 + i).unwrap_or(0)
                 }),
                 effect_dice_per_level: std::array::from_fn(|i| {
-                    i32_at(r, COL_EFFECT_DICE_PER_LEVEL_1 + i).unwrap_or(0)
+                    get_i32(COL_EFFECT_DICE_PER_LEVEL_1 + i).unwrap_or(0)
                 }),
                 effect_real_points_per_level: std::array::from_fn(|i| {
-                    f32_at(r, COL_EFFECT_REAL_POINTS_PER_LEVEL_1 + i).unwrap_or(0.0)
+                    get_f32(COL_EFFECT_REAL_POINTS_PER_LEVEL_1 + i).unwrap_or(0.0)
                 }),
                 effect_amplitude: std::array::from_fn(|i| {
-                    u32_at(r, COL_EFFECT_AMPLITUDE_1 + i).unwrap_or(0)
+                    get_u32(COL_EFFECT_AMPLITUDE_1 + i).unwrap_or(0)
                 }),
                 effect_apply_aura,
                 effect_radius_index: std::array::from_fn(|i| {
-                    u32_at(r, COL_EFFECT_RADIUS_INDEX_1 + i).unwrap_or(0)
+                    get_u32(COL_EFFECT_RADIUS_INDEX_1 + i).unwrap_or(0)
                 }),
                 effect_chain_targets: std::array::from_fn(|i| {
-                    u32_at(r, COL_EFFECT_CHAIN_TARGETS_1 + i).unwrap_or(0)
+                    get_u32(COL_EFFECT_CHAIN_TARGETS_1 + i).unwrap_or(0)
                 }),
                 effect_multiple_value: std::array::from_fn(|i| {
-                    f32_at(r, COL_EFFECT_MULTIPLE_VALUE_1 + i).unwrap_or(0.0)
+                    get_f32(COL_EFFECT_MULTIPLE_VALUE_1 + i).unwrap_or(0.0)
                 }),
                 damage_multiplier: std::array::from_fn(|i| {
-                    f32_at(r, COL_DAMAGE_MULTIPLIER_1 + i).unwrap_or(0.0)
+                    get_f32(COL_DAMAGE_MULTIPLIER_1 + i).unwrap_or(0.0)
                 }),
                 effect_points_per_combo_point: std::array::from_fn(|i| {
-                    f32_at(r, COL_EFFECT_POINTS_PER_COMBO_POINT_1 + i).unwrap_or(0.0)
+                    get_f32(COL_EFFECT_POINTS_PER_COMBO_POINT_1 + i).unwrap_or(0.0)
                 }),
                 effect_trigger_spell,
                 effect_item_type: std::array::from_fn(|i| {
-                    u32_at(r, COL_EFFECT_ITEM_TYPE_1 + i).unwrap_or(0)
+                    get_u32(COL_EFFECT_ITEM_TYPE_1 + i).unwrap_or(0)
                 }),
                 effect_misc_value: std::array::from_fn(|i| {
-                    i32_at(r, COL_EFFECT_MISC_1 + i).unwrap_or(0)
+                    get_i32(COL_EFFECT_MISC_1 + i).unwrap_or(0)
                 }),
             },
         );

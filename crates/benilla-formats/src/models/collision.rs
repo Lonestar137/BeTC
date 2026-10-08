@@ -5,7 +5,7 @@ use std::io::Cursor;
 
 use anyhow::{Context, Result};
 use benilla_m2::parse_m2;
-use benilla_wmo::{parse_wmo, ParsedWmo};
+use benilla_wmo::{ParsedWmo, parse_wmo};
 
 use crate::Chain;
 

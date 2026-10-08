@@ -4043,6 +4043,42 @@ fn the_chat_page_toggles_the_chat_bubble_cvars() {
     assert!(s.errors().is_empty(), "script errors: {:?}", s.errors());
 }
 
+#[test]
+fn the_local_chat_console_is_hidden_by_default_and_can_be_enabled() {
+    benilla_formats::wow_data_or_skip!();
+    let mut s = chat_harness();
+    s.run("ShowUIPanel(BenillaOptionsFrame)").unwrap();
+    s.run("BenillaOptionsFrameCategoryListRowChat:Click()")
+        .unwrap();
+
+    assert_eq!(s.cvar("showChat").as_deref(), Some("0"));
+    s.run("ChatFrame1:Show(); BenillaChatConsole_SetVisible()")
+        .unwrap();
+    assert!(
+        !s.eval::<bool>("return ChatFrame1:IsShown()")
+            .unwrap(),
+        "the default hides the text log"
+    );
+
+    let _ = s.take_cvar_changes();
+    s.run("BenillaOptionsFrameContainerBodyChatRowShowChatConsoleCheck:Click()")
+        .unwrap();
+    assert_eq!(
+        s.take_cvar_changes(),
+        vec![("showChat".to_string(), "1".to_string())]
+    );
+    s.fire_event(
+        "CVAR_UPDATE",
+        vec![benilla_ui::script::ScriptValue::Str("showChat".into())],
+    );
+    assert!(
+        s.eval::<bool>("return ChatFrame1:IsShown()")
+            .unwrap(),
+        "enabling the option reveals local system and console output"
+    );
+    assert!(s.errors().is_empty(), "script errors: {:?}", s.errors());
+}
+
 /// Remove Chat Hover Delay is a saved global whose apply moves two fade constants nothing re-reads;
 /// Detailed Loot Information is a CVar the loot-roll composer reads per line, so it needs none.
 #[test]

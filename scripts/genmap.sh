@@ -11,7 +11,7 @@ cd "$(dirname "$0")/.."
 field() { grep -m1 "^$2" "$1" 2>/dev/null | sed -E "s/^$2[[:space:]]*=[[:space:]]*\"//; s/\".*$//"; }
 
 {
-  echo "# benilla — generated map"
+  echo "# benilla-everwood — generated map"
   echo
   echo "> **GENERATED** by \`scripts/genmap.sh\` from the code — do not edit by hand; rerun the script"
   echo "> when what's built changes. *What-is* only: the *what-changed* is in git. No timestamp —"
@@ -51,7 +51,7 @@ field() { grep -m1 "^$2" "$1" 2>/dev/null | sed -E "s/^$2[[:space:]]*=[[:space:]
     [ -f "$lib" ] || continue
     crate=$(echo "$lib" | sed -E 's@crates/([^/]+)/.*@\1@')
     mods=$(grep -E '^[[:space:]]*(pub(\([a-z]+\))? )?mod [a-z_0-9]+;' "$lib" \
-      | sed -E 's/.*mod ([a-z_0-9]+);.*/\1/' | sort | tr '\n' ' ')
+      | sed -E 's/.*mod ([a-z_0-9]+);.*/\1/' | sort | tr '\n' ' ' | sed 's/ *$//')
     [ -n "$mods" ] && echo "- **$crate** ($(basename "$lib")): $mods"
   done
   echo

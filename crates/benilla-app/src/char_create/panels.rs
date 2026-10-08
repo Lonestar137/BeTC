@@ -10,11 +10,11 @@ use super::parts::{
     DynIcon, DynText, DynTint, InfoKind, InfoScroll, ScrollArrow, ScrollHides, ScrollThumb,
 };
 use crate::glue::art::{
-    tc_rect, GlueArt, ScrollArt, ALLIANCE_FILL, FALLBACK_ALPHA, GOLD, INFO_TEXT, PANEL_EDGE,
-    SCROLL_BTN_TC,
+    ALLIANCE_FILL, FALLBACK_ALPHA, GOLD, GlueArt, INFO_TEXT, PANEL_EDGE, SCROLL_BTN_TC, ScrollArt,
+    tc_rect,
 };
 use crate::glue::backdrop::{backdrop_border, tiled_bg_node};
-use crate::glue::widgets::{abs, outlined_text, overlay, GlueText, Hilight};
+use crate::glue::widgets::{GlueText, Hilight, abs, outlined_text, overlay};
 
 pub(super) fn right_stack(
     ui: &mut ChildSpawnerCommands,

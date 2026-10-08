@@ -3,16 +3,18 @@ name = "benilla-app"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "The Bevy app as a library: everything but the build-id stamp, which lives in the `benilla` launcher so a new commit does not rebuild this crate"
+description = "The Bevy presentation app and adapter for the offline TBC game; the networked Vanilla path is a frozen compatibility build"
 
 [lints]
 workspace = true
 
 [features]
 # `dev` compiles in the instruments; the player build (`scripts/gates.sh`) has no defaults.
-default = ["dev"]
+default = ["dev", "network"]
 # The asset, format and world crates default `dev` on, so they come in without it, forwarded here.
 dev = ["benilla-assets/dev", "benilla-formats/dev", "benilla-world/dev", "dep:bevy_egui"]
+network = ["benilla-protocol/network"]
+offline = ["dep:benilla-game-core"]
 tracy = ["bevy/trace_tracy"]
 # Writes every system's per-run span to `trace-<ts>.json` in the cwd.
 trace_chrome = ["bevy/trace_chrome"]
@@ -41,8 +43,9 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 crossbeam-channel = "0.5"
 benilla-assets = { path = "../benilla-assets", default-features = false }
 benilla-formats = { path = "../benilla-formats", default-features = false }
-benilla-protocol = { path = "../benilla-protocol" }
+benilla-protocol = { path = "../benilla-protocol", default-features = false }
 benilla-world = { path = "../benilla-world", default-features = false }
+benilla-game-core = { path = "../benilla-game-core", optional = true }
 # The CVar diff persisted in `benilla-config/config.toml`.
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"

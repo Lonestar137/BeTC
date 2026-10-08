@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 use std::io::Cursor;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use benilla_dbc::{DbcParser, FieldType, Record, RecordSet, Schema, SchemaField, StringRef, Value};
 
 use crate::Chain;

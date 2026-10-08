@@ -12,10 +12,10 @@ use super::parts::{
     CharCreateUi, DialRow, DynIcon, DynText, DynTint, InfoKind, InfoScroll, ScrollArrow,
     ScrollHides, ScrollThumb,
 };
-use super::{class_file, race_classes, CreateAction, CreateSelection, ALLIANCE};
+use super::{CreateAction, CreateSelection, class_file, is_alliance_race, race_classes};
 use crate::glue::art::{
-    class_tc, race_tc, tc_rect, GlueArt, ALLIANCE_FILL, BACKDROP_ALLIANCE, BACKDROP_HORDE, BTN_BG,
-    BTN_HOVER, FALLBACK_ALPHA, HORDE_FILL,
+    ALLIANCE_FILL, BACKDROP_ALLIANCE, BACKDROP_HORDE, BTN_BG, BTN_HOVER, FALLBACK_ALPHA, GlueArt,
+    HORDE_FILL, class_tc, race_tc, tc_rect,
 };
 use crate::glue::widgets::{FallbackFace, GlueDisabled, Hilight, HoverLabel, LockHighlight};
 
@@ -49,7 +49,7 @@ pub(super) fn refresh_dynamic(
     let empty = GlueStrings::default();
     let strings = strings.as_deref().unwrap_or(&empty);
     let classes = race_classes(cat, sel.race);
-    let alliance = ALLIANCE.contains(&sel.race);
+    let alliance = is_alliance_race(sel.race);
     let file = cat
         .and_then(|c| c.0.race_file(sel.race))
         .unwrap_or("Human")
@@ -261,7 +261,7 @@ pub(super) fn refresh_hover(
         for child in children {
             if let Ok(mut vis) = labels.get_mut(*child) {
                 // Without icon art the label is the button face.
-                let show = lit || art.races.is_none();
+                let show = lit || fallback || art.races.is_none();
                 *vis = if show {
                     Visibility::Inherited
                 } else {

@@ -12,8 +12,8 @@ use std::collections::HashMap;
 use anyhow::{Context, Result};
 use benilla_dbc::{FieldType, Schema, SchemaField};
 
-use crate::dbc::{f32_at, parse, u32_at};
 use crate::Chain;
+use crate::dbc::{f32_at, parse, u32_at};
 
 const TRANSPORT_ANIMATION: &str = "DBFilesClient\\TransportAnimation.dbc";
 
@@ -231,9 +231,10 @@ mod tests {
         assert_eq!(top[0].pos, [0.0, 0.0, 0.0]);
         assert!(top.windows(2).all(|w| w[0].time_ms <= w[1].time_ms));
         // The car moves on z only (x and y are ~2e-6 yd of noise), 61.24 yd down.
-        assert!(top
-            .iter()
-            .all(|f| f.pos[0].abs() < 1e-3 && f.pos[1].abs() < 1e-3));
+        assert!(
+            top.iter()
+                .all(|f| f.pos[0].abs() < 1e-3 && f.pos[1].abs() < 1e-3)
+        );
         assert!((top.iter().map(|f| f.pos[2]).fold(0.0f32, f32::min) + 61.244).abs() < 1e-3);
         let bottom = paths.entry(4171).expect("Mesa Elevator 4171");
         assert_eq!(elevator_period_ms(bottom), 30000);

@@ -1,7 +1,7 @@
 //! The FontString-only methods: the string, its measured width, justification, non-space wrap and
 //! text height. The font block it shares with EditBox comes from [`crate::script::font_block`].
 
-use mlua::{Lua, Table, Value};
+use mlua::{Function, Lua, MultiValue, Table, Value};
 
 use crate::justify;
 use crate::script::Model;
@@ -28,7 +28,35 @@ pub(super) fn install(lua: &Lua, m: &Table) -> mlua::Result<()> {
         })?,
     )?;
 
-    // No `SetFormattedText`: not a 1.12 verb; 1.12 writes `SetText(format(fmt, ...))`.
+    m.set(
+        "SetFormattedText",
+        lua.create_function(|lua, values: MultiValue| {
+            let mut values = values.into_iter();
+            let this = match values.next() {
+                Some(Value::Table(this)) => this,
+                _ => {
+                    return Err(mlua::Error::runtime(
+                        "Usage: FontString:SetFormattedText(format, ...)",
+                    ));
+                }
+            };
+            let format = crate::script::binding_abi::text_arg(lua, values.next())?;
+            let text = if let Some(format) = format {
+                let mut params = vec![Value::String(lua.create_string(format)?)];
+                params.extend(values);
+                let string: Table = lua.globals().get("string")?;
+                let formatter: Function = string.get("format")?;
+                Some(formatter.call::<String>(MultiValue::from_vec(params))?)
+            } else {
+                None
+            };
+            let rh = region_handle_of(lua, &this)?;
+            let mut model = lua.app_data_mut::<Model>().expect("model");
+            model.region_data.entry(rh).or_default().text = text;
+            model.touch_measure(rh);
+            Ok(())
+        })?,
+    )?;
 
     // GetText answers nil for "" (`0x79d690`, its first-byte test at `0x79d73b`), though `SetText`
     // (`0x771d80`) keeps a non-NULL empty buffer (`0x771e7e`). The rule is per binding, not per
@@ -201,4 +229,28 @@ pub(super) fn install(lua: &Lua, m: &Table) -> mlua::Result<()> {
     // The font object, font, text colour and shadow getters and setters are type-guard shims over
     // one implementation each (`0x79f210` SetFont, `0x79f3b0` GetFont), shared with EditBox.
     super::super::font_block::install(lua, m, region_handle_of, "FontString", None)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::script::UiScript;
+
+    #[test]
+    fn set_formatted_text_uses_the_installed_lua_formatter() {
+        let script = UiScript::new().expect("VM");
+        script
+            .run(
+                r#"
+                local frame = CreateFrame("Frame")
+                local label = frame:CreateFontString()
+                label:SetFormattedText("Rank %d: %s", 2, "Fireball")
+                FormattedTextResult = label:GetText()
+                "#,
+            )
+            .expect("FontString:SetFormattedText");
+        assert_eq!(
+            script.eval::<String>("return FormattedTextResult").unwrap(),
+            "Rank 2: Fireball"
+        );
+    }
 }

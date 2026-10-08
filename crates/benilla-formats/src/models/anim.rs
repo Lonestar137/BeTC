@@ -7,8 +7,16 @@ use anyhow::Result;
 use benilla_bytes::capped;
 use benilla_m2::parse_m2;
 
-use super::{le_f32, le_u16, le_u32};
+use super::{le_f32, le_u16, le_u32, m2_bone_layout, m2_quat_component};
 use crate::BoneSpin;
+
+fn read_bone_quat(bytes: &[u8], offset: usize, layout: benilla_m2::M2BoneLayout) -> [f32; 4] {
+    if layout.rotation_value_size == 8 {
+        std::array::from_fn(|i| m2_quat_component(le_u16(bytes, offset + i * 2)))
+    } else {
+        std::array::from_fn(|i| le_f32(bytes, offset + i * 4))
+    }
+}
 
 /// A rest-skeleton bone, raw WoW model space. Vanilla M2 has no inverse bind matrices: the rest
 /// pose is identity and the pivot is the bind position (`0x714260`).
@@ -49,7 +57,7 @@ impl Skeleton {
     }
 }
 
-/// Parse the bone hierarchy (stride `0x6c`: parent `+0x08`, pivot `+0x60`, as `0x714260` reads).
+/// Parse the bone hierarchy using the MD20 version's record layout.
 pub fn parse_m2_skeleton(bytes: &[u8]) -> Result<Skeleton> {
     let format =
         parse_m2(&mut Cursor::new(bytes)).map_err(|e| anyhow::anyhow!("parsing M2: {e}"))?;
@@ -219,6 +227,9 @@ pub fn parse_m2_animation_lookup(bytes: &[u8]) -> Result<Vec<u16>> {
 /// doodads `0x695100`). How a WMO skybox is armed is untraced; both shipped ones have one clip.
 pub fn m2_bone_spins(bytes: &[u8]) -> HashMap<u16, BoneSpin> {
     let mut out = HashMap::new();
+    let Some(layout) = m2_bone_layout(bytes) else {
+        return out;
+    };
     let Ok(skeleton) = parse_m2_skeleton(bytes) else {
         return out;
     };
@@ -240,7 +251,7 @@ pub fn m2_bone_spins(bytes: &[u8]) -> HashMap<u16, BoneSpin> {
         // The rotation track's `interp_type`, bounds-checked here: `le_u16` panics past the end.
         let interp = idx < bone_count
             && bone_ofs
-                .checked_add(idx * 0x6c + 0x28)
+                .checked_add(idx * layout.stride + layout.rotation)
                 .is_some_and(|t| t + 2 <= bytes.len() && le_u16(bytes, t) != 0);
         out.insert(
             keys.bone,
@@ -380,7 +391,7 @@ type BoneChannels = (
     ChannelTrack<[f32; 3]>,
 );
 
-/// Read one `M2Track` whole; out-of-range reads truncate the keys, which vanilla art relies on.
+/// Read one `M2Track` whole; incomplete timestamp/value arrays truncate its keys.
 fn read_channel_track<T>(
     b: &[u8],
     track: usize,
@@ -403,6 +414,7 @@ fn read_channel_track<T>(
         le_u32(b, track + 0x0c) as usize,
         le_u32(b, track + 0x10) as usize,
     );
+    let vn = le_u32(b, track + 0x14) as usize;
     let vo = le_u32(b, track + 0x18) as usize;
     let ranges = (0..rn)
         .map_while(|i| {
@@ -410,7 +422,7 @@ fn read_channel_track<T>(
             (e + 8 <= b.len()).then(|| (le_u32(b, e), le_u32(b, e + 4)))
         })
         .collect();
-    let keys = (0..tn)
+    let keys = (0..tn.min(vn))
         .map_while(|k| {
             let (t_off, v_off) = (to + k * 4, vo + k * stride);
             (t_off + 4 <= b.len() && v_off + stride <= b.len())
@@ -489,6 +501,9 @@ pub fn hand_grip_finger_poses(bytes: &[u8], bones: &[u16]) -> Vec<(u16, [f32; 4]
     if b.len() < 0x40 || &b[0..4] != b"MD20" {
         return Vec::new();
     }
+    let Some(layout) = m2_bone_layout(b) else {
+        return Vec::new();
+    };
     let (seq_count, seq_ofs) = (le_u32(b, 0x1c) as usize, le_u32(b, 0x20) as usize);
     let (bone_count, bone_ofs) = (le_u32(b, 0x34) as usize, le_u32(b, 0x38) as usize);
     // HandsClosed's file slot, which indexes the key windows, and its start ms.
@@ -506,21 +521,18 @@ pub fn hand_grip_finger_poses(bytes: &[u8], bones: &[u16]) -> Vec<(u16, [f32; 4]
     let Some((slot, frame)) = hands_closed else {
         return Vec::new();
     };
-    let quat = |b: &[u8], o: usize| {
-        [
-            le_f32(b, o),
-            le_f32(b, o + 4),
-            le_f32(b, o + 8),
-            le_f32(b, o + 12),
-        ]
-    };
     let mut out = Vec::new();
     for &bone in bones {
         let bi = bone as usize;
-        if bi >= bone_count || bone_ofs + bi * 0x6c + 0x6c > b.len() {
+        if bi >= bone_count || bone_ofs + bi * layout.stride + layout.stride > b.len() {
             continue;
         }
-        let tr = read_channel_track(b, bone_ofs + bi * 0x6c + 0x28, 16, quat);
+        let tr = read_channel_track(
+            b,
+            bone_ofs + bi * layout.stride + layout.rotation,
+            layout.rotation_value_size,
+            |bytes, offset| read_bone_quat(bytes, offset, layout),
+        );
         if tr.gseq != 0xffff || tr.keys.is_empty() {
             continue; // a global-sequence track runs on its own clock
         }
@@ -538,23 +550,18 @@ pub fn hand_grip_finger_poses(bytes: &[u8], bones: &[u16]) -> Vec<(u16, [f32; 4]
 }
 
 /// Parse every sequence at the animate kernel's offsets (`0x714260`): sequences at MD20
-/// `0x1c`/`0x20` (stride `0x44`), bones at `0x34`/`0x38` (stride `0x6c`). Zero-length sequences
-/// are skipped.
+/// `0x1c`/`0x20` (stride `0x44`), bones at `0x34`/`0x38` with the versioned bone layout. Zero-length
+/// sequences are skipped.
 pub fn parse_m2_animations(b: &[u8]) -> Vec<ModelAnimation> {
     if b.len() < 0x40 || &b[0..4] != b"MD20" {
         return Vec::new();
     }
+    let Some(layout) = m2_bone_layout(b) else {
+        return Vec::new();
+    };
     let (seq_count, seq_ofs) = (le_u32(b, 0x1c) as usize, le_u32(b, 0x20) as usize);
     let (bone_count, bone_ofs) = (le_u32(b, 0x34) as usize, le_u32(b, 0x38) as usize);
     let vec3 = |b: &[u8], o: usize| [le_f32(b, o), le_f32(b, o + 4), le_f32(b, o + 8)];
-    let quat = |b: &[u8], o: usize| {
-        [
-            le_f32(b, o),
-            le_f32(b, o + 4),
-            le_f32(b, o + 8),
-            le_f32(b, o + 12),
-        ]
-    };
     // The event table (MD20 `0x114`/`0x118`, stride 44; the `M2TrackBase` at `+24` puts the
     // absolute-ms timestamps at `+36`), read once and cut per sequence like the bone keys.
     let (ev_count, ev_ofs) = (le_u32(b, 0x114) as usize, le_u32(b, 0x118) as usize);
@@ -601,12 +608,17 @@ pub fn parse_m2_animations(b: &[u8]) -> Vec<ModelAnimation> {
 
     let bone_tracks: Vec<BoneChannels> = (0..bone_count)
         .map_while(|i| {
-            let brec = bone_ofs + i * 0x6c;
-            (brec + 0x60 <= b.len()).then(|| {
+            let brec = bone_ofs + i * layout.stride;
+            (brec + layout.stride <= b.len()).then(|| {
                 (
-                    read_channel_track(b, brec + 0x0c, 12, vec3),
-                    read_channel_track(b, brec + 0x28, 16, quat),
-                    read_channel_track(b, brec + 0x44, 12, vec3),
+                    read_channel_track(b, brec + layout.translation, 12, vec3),
+                    read_channel_track(
+                        b,
+                        brec + layout.rotation,
+                        layout.rotation_value_size,
+                        |bytes, offset| read_bone_quat(bytes, offset, layout),
+                    ),
+                    read_channel_track(b, brec + layout.scale, 12, vec3),
                 )
             })
         })
@@ -712,13 +724,13 @@ fn read_global_channel<T>(
         return None;
     }
     let period_ms = period_of(gseq)?;
-    let n = le_u32(b, track + 0x0c) as usize;
+    let n = (le_u32(b, track + 0x0c) as usize).min(le_u32(b, track + 0x14) as usize);
     let ts_o = le_u32(b, track + 0x10) as usize;
     let val_o = le_u32(b, track + 0x18) as usize;
     if n <= 1 {
         return None; // a constant, not a loop
     }
-    // `n` is a raw count; the timestamp array bounds how many keys the file holds.
+    // Both arrays declare their own count; only paired timestamps and values form keys.
     let mut keys = Vec::with_capacity(capped(n, 4, b.len().saturating_sub(ts_o)));
     for k in 0..n {
         let (t_off, v_off) = (ts_o + k * 4, val_o + k * stride);
@@ -750,24 +762,25 @@ pub fn parse_m2_global_sequence_bones(b: &[u8]) -> Vec<GlobalSeqBone> {
         (d > 0).then_some(d)
     };
     let vec3 = |b: &[u8], o: usize| [le_f32(b, o), le_f32(b, o + 4), le_f32(b, o + 8)];
-    let quat = |b: &[u8], o: usize| {
-        [
-            le_f32(b, o),
-            le_f32(b, o + 4),
-            le_f32(b, o + 8),
-            le_f32(b, o + 12),
-        ]
-    };
     let (bone_count, bone_ofs) = (le_u32(b, 0x34) as usize, le_u32(b, 0x38) as usize);
+    let Some(layout) = m2_bone_layout(b) else {
+        return Vec::new();
+    };
     let mut out = Vec::new();
     for i in 0..bone_count {
-        let brec = bone_ofs + i * 0x6c;
-        if brec + 0x60 > b.len() {
+        let brec = bone_ofs + i * layout.stride;
+        if brec + layout.stride > b.len() {
             break;
         }
-        let translation = read_global_channel(b, brec + 0x0c, 12, &period_of, vec3);
-        let rotation = read_global_channel(b, brec + 0x28, 16, &period_of, quat);
-        let scale = read_global_channel(b, brec + 0x44, 12, &period_of, vec3);
+        let translation = read_global_channel(b, brec + layout.translation, 12, &period_of, vec3);
+        let rotation = read_global_channel(
+            b,
+            brec + layout.rotation,
+            layout.rotation_value_size,
+            &period_of,
+            |bytes, offset| read_bone_quat(bytes, offset, layout),
+        );
+        let scale = read_global_channel(b, brec + layout.scale, 12, &period_of, vec3);
         if translation.is_some() || rotation.is_some() || scale.is_some() {
             out.push(GlobalSeqBone {
                 bone: i as u16,
@@ -785,6 +798,149 @@ mod tests {
     use super::*;
 
     #[test]
+    fn tbc_animation_tracks_follow_the_bone_name_crc() {
+        let mut b = vec![0u8; 0x600];
+        b[0..4].copy_from_slice(b"MD20");
+        b[4..8].copy_from_slice(&263u32.to_le_bytes());
+        b[0x1c..0x20].copy_from_slice(&1u32.to_le_bytes());
+        b[0x20..0x24].copy_from_slice(&0x200u32.to_le_bytes());
+        b[0x34..0x38].copy_from_slice(&1u32.to_le_bytes());
+        b[0x38..0x3c].copy_from_slice(&0x400u32.to_le_bytes());
+
+        // One 1-second sequence and one TBC bone with a 2-key translation track.
+        b[0x200..0x202].copy_from_slice(&0u16.to_le_bytes());
+        b[0x204..0x208].copy_from_slice(&0u32.to_le_bytes());
+        b[0x208..0x20c].copy_from_slice(&1000u32.to_le_bytes());
+        let track = 0x400 + 16; // TBC translation starts after boneNameCRC.
+        b[track..track + 2].copy_from_slice(&1u16.to_le_bytes());
+        b[track + 2..track + 4].copy_from_slice(&0xffffu16.to_le_bytes());
+        b[track + 12..track + 16].copy_from_slice(&2u32.to_le_bytes());
+        b[track + 16..track + 20].copy_from_slice(&0x500u32.to_le_bytes());
+        b[track + 20..track + 24].copy_from_slice(&2u32.to_le_bytes());
+        b[track + 24..track + 28].copy_from_slice(&0x508u32.to_le_bytes());
+        b[0x500..0x504].copy_from_slice(&0u32.to_le_bytes());
+        b[0x504..0x508].copy_from_slice(&1000u32.to_le_bytes());
+        for (i, value) in [0.0f32, 0.0, 0.0, 1.0, 2.0, 3.0].into_iter().enumerate() {
+            let at = 0x508 + i * 4;
+            b[at..at + 4].copy_from_slice(&value.to_le_bytes());
+        }
+
+        let anim = parse_m2_animations(&b);
+        assert_eq!(anim.len(), 1);
+        assert_eq!(anim[0].bones.len(), 1);
+        assert_eq!(
+            anim[0].bones[0].translation,
+            vec![(0.0, [0.0, 0.0, 0.0]), (1.0, [1.0, 2.0, 3.0])]
+        );
+    }
+
+    #[test]
+    fn tbc_packed_bone_quaternion_decodes_identity() {
+        let mut bytes = vec![0u8; 16];
+        bytes[4..8].copy_from_slice(&263u32.to_le_bytes());
+        for (i, value) in [32767u16, 32767, 32767, 65535].into_iter().enumerate() {
+            let at = 8 + i * 2;
+            bytes[at..at + 2].copy_from_slice(&value.to_le_bytes());
+        }
+        let layout = m2_bone_layout(&bytes).expect("v263 layout");
+        let quat = read_bone_quat(&bytes, 8, layout);
+        assert!(quat[..3].iter().all(|v| v.abs() < 1e-4));
+        assert!((quat[3] - 1.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn animation_tracks_do_not_read_values_past_the_declared_value_count() {
+        let mut bytes = vec![0u8; 0x40];
+        bytes[0x0c..0x10].copy_from_slice(&2u32.to_le_bytes());
+        bytes[0x10..0x14].copy_from_slice(&0x20u32.to_le_bytes());
+        bytes[0x14..0x18].copy_from_slice(&1u32.to_le_bytes());
+        bytes[0x18..0x1c].copy_from_slice(&0x30u32.to_le_bytes());
+        bytes[0x20..0x24].copy_from_slice(&0u32.to_le_bytes());
+        bytes[0x24..0x28].copy_from_slice(&1000u32.to_le_bytes());
+        bytes[0x30..0x34].copy_from_slice(&7u32.to_le_bytes());
+
+        let track = read_channel_track(&bytes, 0, 4, |b, o| le_u32(b, o));
+        assert_eq!(track.keys, vec![(0, 7)]);
+    }
+
+    #[test]
+    fn global_animation_tracks_do_not_read_values_past_the_declared_value_count() {
+        let mut bytes = vec![0u8; 0x40];
+        bytes[0x02..0x04].copy_from_slice(&0u16.to_le_bytes());
+        bytes[0x0c..0x10].copy_from_slice(&2u32.to_le_bytes());
+        bytes[0x10..0x14].copy_from_slice(&0x20u32.to_le_bytes());
+        bytes[0x14..0x18].copy_from_slice(&1u32.to_le_bytes());
+        bytes[0x18..0x1c].copy_from_slice(&0x30u32.to_le_bytes());
+        bytes[0x20..0x24].copy_from_slice(&0u32.to_le_bytes());
+        bytes[0x24..0x28].copy_from_slice(&500u32.to_le_bytes());
+        bytes[0x30..0x34].copy_from_slice(&7u32.to_le_bytes());
+
+        let channel = read_global_channel(&bytes, 0, 4, &|_| Some(1000), |b, o| le_u32(b, o));
+        assert!(channel.is_none());
+    }
+
+    #[test]
+    fn packed_quaternion_components_decode_both_signed_halves() {
+        let values = [0u16, 32767, 32768, 65535].map(m2_quat_component);
+        assert!((values[0] + 1.0).abs() < 1e-6);
+        assert!(values[1].abs() < 1e-6);
+        assert!(values[2].abs() < 1e-6);
+        assert!((values[3] - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn build_8606_character_bone_hierarchy_and_stand_tracks_are_valid() {
+        let data = crate::wow_data_or_skip!();
+        let mut chain = crate::open_chain(&data).expect("open build-8606 chain");
+        let bytes = chain
+            .read_file("Character\\Draenei\\Female\\DraeneiFemale.m2")
+            .expect("DraeneiFemale.m2");
+        assert_eq!(le_u32(&bytes, 4), 263);
+
+        let skeleton = parse_m2_skeleton(&bytes).expect("TBC skeleton");
+        assert!(skeleton.bones.len() > 100);
+        for (i, bone) in skeleton.bones.iter().enumerate() {
+            assert!(
+                bone.parent < 0 || (bone.parent as usize) < i,
+                "bone {i} parent {}",
+                bone.parent
+            );
+            assert!(
+                bone.pivot.iter().all(|v| v.is_finite()),
+                "bone {i} pivot {:?}",
+                bone.pivot
+            );
+        }
+
+        let stand = parse_m2_animations(&bytes)
+            .into_iter()
+            .find(|animation| animation.anim_id == 0)
+            .expect("Stand sequence");
+        assert!(!stand.bones.is_empty());
+        for bone in stand.bones {
+            assert!((bone.bone as usize) < skeleton.bones.len());
+            assert!(
+                bone.translation
+                    .iter()
+                    .flat_map(|(_, v)| v)
+                    .all(|v| v.is_finite())
+            );
+            assert!(
+                bone.rotation
+                    .iter()
+                    .flat_map(|(_, v)| v)
+                    .all(|v| v.is_finite())
+            );
+            assert!(
+                bone.scale
+                    .iter()
+                    .flat_map(|(_, v)| v)
+                    .all(|v| v.is_finite())
+            );
+        }
+    }
+
+    #[test]
     fn hostile_event_and_key_counts_reserve_only_what_the_file_holds() {
         let mut b = vec![0u8; 0x11c];
         b[0..4].copy_from_slice(b"MD20");
@@ -800,9 +956,10 @@ mod tests {
             "no sequences ⇒ no clips, and no abort"
         );
 
-        // A global-sequence track claiming u32::MAX keys walks the 7 that fit its own 28 bytes.
+        // A global-sequence track claiming u32::MAX key pairs walks the 7 that fit its own bytes.
         let mut track = [0u8; 0x1c];
         track[0x0c..0x10].copy_from_slice(&u32::MAX.to_le_bytes());
+        track[0x14..0x18].copy_from_slice(&u32::MAX.to_le_bytes());
         let ch = read_global_channel(&track, 0, 4, &|_: u16| Some(1000u32), le_u32)
             .expect("more than one key on a live global sequence is a channel");
         assert_eq!(ch.keys.len(), 7);

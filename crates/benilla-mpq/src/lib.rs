@@ -44,13 +44,16 @@ const HASH_DELETED: u32 = 0xFFFF_FFFE; // deleted: skip, keep probing
 struct HashEntry {
     name_a: u32,
     name_b: u32,
+    locale: u16,
+    platform: u16,
     block_index: u32,
 }
 
 /// One decrypted block-table entry (16 bytes on disk).
 #[derive(Clone, Copy)]
 struct BlockEntry {
-    file_pos: u32,
+    file_pos: u64,
+    compressed_size: u32,
     file_size: u32,
     flags: u32,
 }
@@ -62,6 +65,7 @@ struct Index {
     archive_offset: u64,
     /// The uncompressed sector size, `512 << block_size`.
     sector_size: usize,
+    locale_id: u16,
     hash_table: Vec<HashEntry>,
     block_table: Vec<BlockEntry>,
 }
@@ -122,21 +126,49 @@ fn avail_from(file_len: u64, pos: u64) -> usize {
 }
 
 impl Archive {
-    /// Open an archive: find the header, then read and decrypt the hash and block tables.
+    /// Open an archive using its neutral (locale 0) hash entries.
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
+        Self::open_with_locale(path, 0)
+    }
+
+    /// Open an archive preferring entries for `locale_id`, with locale-neutral fallback. MPQ
+    /// locale IDs are Windows LCIDs (for example, enGB is 0x0809).
+    pub fn open_with_locale(path: impl AsRef<Path>, locale_id: u16) -> Result<Self> {
         let path = path.as_ref().to_path_buf();
         let mut file = File::open(&path)?;
         let file_len = file.metadata()?.len();
 
         let archive_offset = find_header(&mut file, file_len)?;
 
-        // The 32-byte V1 header: later versions only extend it, and every 1.12 table offset fits
-        // a `u32`, so the V2 hi-block table is never needed.
         file.seek(SeekFrom::Start(archive_offset))?;
         let mut hdr = [0u8; 32];
         file.read_exact(&mut hdr)?;
         let signature = hdr.u32_at(0).ok_or(Error::NotMpq)?;
         debug_assert_eq!(signature, SIGNATURE);
+        let header_size = hdr.u32_at(4).ok_or(Error::NotMpq)?;
+        let format_version = hdr.u16_at(12).ok_or(Error::NotMpq)?;
+        let (hi_block_table_pos, hash_table_high, block_table_high) = match format_version {
+            0 if header_size >= 32 => (0, 0, 0),
+            1 if header_size >= 44 => {
+                let mut extension = [0u8; 12];
+                file.read_exact(&mut extension)?;
+                (
+                    u64::from_le_bytes(extension[..8].try_into().map_err(|_| Error::NotMpq)?),
+                    extension.u16_at(8).ok_or(Error::NotMpq)?,
+                    extension.u16_at(10).ok_or(Error::NotMpq)?,
+                )
+            }
+            0 | 1 => {
+                return Err(Error::Corrupt(format!(
+                    "MPQ header size {header_size} is too small for format {format_version}"
+                )))
+            }
+            other => {
+                return Err(Error::Unsupported(format!(
+                    "MPQ header format version {other}"
+                )))
+            }
+        };
         let block_size_shift = hdr.u16_at(14).ok_or(Error::NotMpq)?;
         // A raw header `u16`, capped before `512 << shift` can overflow; 1.12 data uses 3 (4 KiB
         // sectors), and 23 is already 4 GiB.
@@ -146,8 +178,10 @@ impl Archive {
             )));
         }
         let sector_size = 512usize << block_size_shift;
-        let hash_table_pos = hdr.u32_at(16).ok_or(Error::NotMpq)? as u64;
-        let block_table_pos = hdr.u32_at(20).ok_or(Error::NotMpq)? as u64;
+        let hash_table_pos =
+            u64::from(hdr.u32_at(16).ok_or(Error::NotMpq)?) | (u64::from(hash_table_high) << 32);
+        let block_table_pos =
+            u64::from(hdr.u32_at(20).ok_or(Error::NotMpq)?) | (u64::from(block_table_high) << 32);
         let hash_table_size = hdr.u32_at(24).ok_or(Error::NotMpq)? as usize;
         let block_table_size = hdr.u32_at(28).ok_or(Error::NotMpq)? as usize;
 
@@ -157,18 +191,30 @@ impl Archive {
             hash_table_size,
             file_len,
         )?;
-        let block_table = read_block_table(
+        let mut block_table = read_block_table(
             &mut file,
             archive_offset + block_table_pos,
             block_table_size,
             file_len,
         )?;
+        if hi_block_table_pos != 0 {
+            let hi_blocks = read_hi_block_table(
+                &mut file,
+                archive_offset + hi_block_table_pos,
+                block_table_size,
+                file_len,
+            )?;
+            for (block, high) in block_table.iter_mut().zip(hi_blocks) {
+                block.file_pos |= u64::from(high) << 32;
+            }
+        }
 
         Ok(Archive {
             index: Arc::new(Index {
                 path,
                 archive_offset,
                 sector_size,
+                locale_id,
                 hash_table,
                 block_table,
             }),
@@ -217,22 +263,56 @@ impl Archive {
         if block.flags & FLAG_DELETE_MARKER != 0 {
             return Err(Error::NotFound(name.into()));
         }
-        // Outside the 1.12.1 envelope: refuse rather than guess.
         if block.flags & FLAG_ENCRYPTED != 0 {
             return Err(Error::Unsupported(format!("encrypted file {name}")));
         }
-        if block.flags & FLAG_SINGLE_UNIT != 0 {
-            return Err(Error::Unsupported(format!("single-unit file {name}")));
-        }
 
-        let file = File::open(&idx.path)?;
-        let file_pos = idx.archive_offset + block.file_pos as u64;
+        let mut file = File::open(&idx.path)?;
+        let file_pos = idx.archive_offset + block.file_pos;
         let file_size = block.file_size as usize;
+        let compressed_size = block.compressed_size as usize;
         let compressed = block.flags & (FLAG_COMPRESS | FLAG_IMPLODE) != 0;
         let implode_only = block.flags & FLAG_IMPLODE != 0 && block.flags & FLAG_COMPRESS == 0;
+        let single_unit = block.flags & FLAG_SINGLE_UNIT != 0;
 
         let file_len = file.metadata()?.len();
         let avail = avail_from(file_len, file_pos);
+
+        let single_unit_data = if single_unit {
+            let stored_size = if compressed {
+                compressed_size
+            } else {
+                file_size
+            };
+            if capped(stored_size, 1, avail) < stored_size {
+                return Err(Error::Corrupt(format!(
+                    "{name}: single-unit size ({stored_size}) larger than the archive"
+                )));
+            }
+            file.seek(SeekFrom::Start(file_pos))?;
+            let mut raw = vec![0u8; stored_size];
+            file.read_exact(&mut raw)?;
+            let data = if !compressed || stored_size >= file_size {
+                raw.truncate(file_size);
+                raw
+            } else if implode_only {
+                decompress(0x08, &raw, file_size, name)?
+            } else {
+                let Some((&method, payload)) = raw.split_first() else {
+                    return Err(Error::Corrupt(format!("{name}: empty single-unit payload")));
+                };
+                decompress(method, payload, file_size, name)?
+            };
+            if data.len() != file_size {
+                return Err(Error::Decompress(format!(
+                    "{name}: single unit inflates to {} bytes, not {file_size}",
+                    data.len()
+                )));
+            }
+            Some(data)
+        } else {
+            None
+        };
 
         let mut open = ArchiveFile {
             file,
@@ -242,10 +322,14 @@ impl Archive {
             sector_size: idx.sector_size,
             offsets: None,
             implode_only,
+            single_unit_data,
             avail,
             pos: 0,
             sector: None,
         };
+        if single_unit {
+            return Ok(open);
+        }
         if !compressed {
             // Stored: exactly `file_size` raw bytes, refused up front if the file cannot hold them.
             if capped(file_size, 1, avail) < file_size {
@@ -298,6 +382,8 @@ pub struct ArchiveFile {
     /// The sector offset table, relative to `base`; `None` for a stored file.
     offsets: Option<Vec<u32>>,
     implode_only: bool,
+    /// A single-unit file is inflated as one block and then read from here.
+    single_unit_data: Option<Vec<u8>>,
     /// Bytes from `base` to the archive's end: the cap on every length read from a header.
     avail: usize,
     /// The read position in the uncompressed file.
@@ -314,6 +400,9 @@ impl ArchiveFile {
 
     /// The whole file from its start, sector by sector.
     fn read_all(mut self) -> Result<Vec<u8>> {
+        if let Some(data) = self.single_unit_data.take() {
+            return Ok(data);
+        }
         if self.offsets.is_none() {
             self.file.seek(SeekFrom::Start(self.base))?;
             let mut out = vec![0u8; self.size]; // proven <= avail by `open_file`
@@ -415,6 +504,11 @@ impl Read for ArchiveFile {
         }
         let n = if self.offsets.is_some() {
             self.read_sectored(buf)
+        } else if let Some(data) = &self.single_unit_data {
+            let start = self.pos as usize;
+            let n = buf.len().min(data.len() - start);
+            buf[..n].copy_from_slice(&data[start..start + n]);
+            Ok(n)
         } else {
             self.read_stored(buf)
         }
@@ -458,19 +552,27 @@ impl Index {
         let start = (hash_string(name, hash_type::TABLE_OFFSET) & mask) as usize;
         let want_a = hash_string(name, hash_type::NAME_A);
         let want_b = hash_string(name, hash_type::NAME_B);
+        let mut neutral = None;
         for i in 0..len {
             let e = &self.hash_table[(start + i) % len];
             if e.block_index == HASH_EMPTY {
-                return None; // never-used slot ends the chain
+                return neutral; // never-used slot ends the chain; a locale-neutral match may remain
             }
             if e.block_index == HASH_DELETED {
                 continue;
             }
-            if e.name_a == want_a && e.name_b == want_b {
-                return self.block_table.get(e.block_index as usize).copied();
+            if e.name_a != want_a || e.name_b != want_b || e.platform != 0 {
+                continue;
+            }
+            let block = self.block_table.get(e.block_index as usize).copied();
+            if e.locale == self.locale_id {
+                return block;
+            }
+            if e.locale == 0 {
+                neutral = block;
             }
         }
-        None
+        neutral
     }
 }
 
@@ -525,7 +627,8 @@ fn read_hash_table(
             HashEntry {
                 name_a: words[o],
                 name_b: words[o + 1],
-                // words[o + 2] is locale and platform, unread: 1.12.1 data is locale-neutral.
+                locale: words[o + 2] as u16,
+                platform: (words[o + 2] >> 16) as u16,
                 block_index: words[o + 3],
             }
         })
@@ -558,12 +661,31 @@ fn read_block_table(
         .map(|i| {
             let o = i * 4;
             BlockEntry {
-                file_pos: words[o],
-                // words[o + 1] is compressed_size, unread: the offset table sizes the sectors.
+                file_pos: u64::from(words[o]),
+                compressed_size: words[o + 1],
                 file_size: words[o + 2],
                 flags: words[o + 3],
             }
         })
+        .collect())
+}
+
+fn read_hi_block_table(file: &mut File, pos: u64, count: usize, file_len: u64) -> Result<Vec<u16>> {
+    let avail = avail_from(file_len, pos);
+    let cap = capped(count, 2, avail);
+    if cap < count {
+        return Err(Error::Corrupt(format!(
+            "hi-block table: header claims {count} entries, only room for {cap} in the archive"
+        )));
+    }
+    let mut bytes = vec![0u8; cap * 2];
+    file.seek(SeekFrom::Start(pos))?;
+    file.read_exact(&mut bytes)?;
+    Ok(bytes
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|word| u16::from_le_bytes(*word))
         .collect())
 }
 
@@ -613,6 +735,7 @@ mod tests {
     ) -> [u8; 32] {
         let mut h = [0u8; 32];
         h[0..4].copy_from_slice(&SIGNATURE.to_le_bytes());
+        h[4..8].copy_from_slice(&32u32.to_le_bytes());
         h[14..16].copy_from_slice(&block_size_shift.to_le_bytes());
         h[16..20].copy_from_slice(&hash_table_pos.to_le_bytes());
         h[20..24].copy_from_slice(&block_table_pos.to_le_bytes());
@@ -663,6 +786,73 @@ mod tests {
             open_temp("empty_tables", &hdr).expect("a well-formed empty-table archive must open");
         assert!(!archive.contains("anything"));
         assert_eq!(archive.file_size("anything"), None);
+    }
+
+    #[test]
+    fn extended_header_without_hi_blocks_opens() {
+        let mut bytes = vec![0u8; 44];
+        bytes[0..4].copy_from_slice(&SIGNATURE.to_le_bytes());
+        bytes[4..8].copy_from_slice(&44u32.to_le_bytes());
+        bytes[8..12].copy_from_slice(&44u32.to_le_bytes());
+        bytes[12..14].copy_from_slice(&1u16.to_le_bytes());
+        bytes[14..16].copy_from_slice(&3u16.to_le_bytes());
+        bytes[16..20].copy_from_slice(&44u32.to_le_bytes());
+        bytes[20..24].copy_from_slice(&44u32.to_le_bytes());
+        let (archive, path) = open_temp_kept("extended_header", &bytes);
+        assert!(!archive.contains("anything"));
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn hash_lookup_prefers_the_requested_locale_then_neutral_entries() {
+        use crypto::hash_type;
+        let name = "DBFilesClient\\Map.dbc";
+        let start = hash_string(name, hash_type::TABLE_OFFSET) & 3;
+        let mut table = vec![
+            HashEntry {
+                name_a: HASH_EMPTY,
+                name_b: 0,
+                locale: 0,
+                platform: 0,
+                block_index: HASH_EMPTY,
+            };
+            4
+        ];
+        let entry = |locale, block_index| HashEntry {
+            name_a: hash_string(name, hash_type::NAME_A),
+            name_b: hash_string(name, hash_type::NAME_B),
+            locale,
+            platform: 0,
+            block_index,
+        };
+        table[start as usize] = entry(0, 0);
+        let next = (start as usize + 1) % table.len();
+        table[next] = entry(0x0809, 1);
+        let blocks = vec![
+            BlockEntry {
+                file_pos: 0,
+                compressed_size: 0,
+                file_size: 11,
+                flags: FLAG_EXISTS,
+            },
+            BlockEntry {
+                file_pos: 0,
+                compressed_size: 0,
+                file_size: 22,
+                flags: FLAG_EXISTS,
+            },
+        ];
+        let index = |locale_id| Index {
+            path: PathBuf::new(),
+            archive_offset: 0,
+            sector_size: 4096,
+            locale_id,
+            hash_table: table.clone(),
+            block_table: blocks.clone(),
+        };
+        assert_eq!(index(0x0809).find(name).unwrap().file_size, 22);
+        assert_eq!(index(0x0409).find(name).unwrap().file_size, 11);
+        assert_eq!(index(0).find(name).unwrap().file_size, 11);
     }
 
     /// Like [`open_temp`], but the file stays for `read_file`, which reopens it by path.
@@ -720,6 +910,34 @@ mod tests {
         assert!(arc.contains("Interface\\a.txt"));
         assert!(!arc.is_delete_marker("Interface\\a.txt"));
         assert_eq!(arc.read_file("Interface\\a.txt").unwrap(), b"hello");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn single_unit_zlib_entry_reads_without_a_sector_table() {
+        use flate2::{write::ZlibEncoder, Compression};
+        use std::io::Write;
+
+        let plain = vec![b'A'; 2048];
+        let mut encoder = ZlibEncoder::new(vec![0x02], Compression::default());
+        encoder.write_all(&plain).unwrap();
+        let packed = encoder.finish().unwrap();
+        let (archive, path) = open_temp_kept(
+            "single_unit",
+            &archive_with_one_block(
+                "Fonts\\FRIZQT__.TTF",
+                FLAG_EXISTS | FLAG_COMPRESS | FLAG_SINGLE_UNIT,
+                &packed,
+                plain.len() as u32,
+            ),
+        );
+
+        let mut file = archive.open_file("Fonts\\FRIZQT__.TTF").unwrap();
+        file.seek(SeekFrom::Start(4)).unwrap();
+        let mut suffix = Vec::new();
+        file.read_to_end(&mut suffix).unwrap();
+        assert_eq!(suffix, &plain[4..]);
+        assert_eq!(archive.read_file("Fonts\\FRIZQT__.TTF").unwrap(), plain);
         let _ = std::fs::remove_file(&path);
     }
 

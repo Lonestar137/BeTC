@@ -1,17 +1,18 @@
-# benilla
+# benilla-everwood
 
-A from-scratch World of Warcraft 1.12.1 client in Rust and Bevy. The reference client is the
-spec: benilla is a faithful, modern implementation of it, not a place to get creative.
+An offline, single-player TBC 2.4.3 (build 8606) game in Rust and Bevy. The player's own TBC
+install supplies client data and presentation; this project supplies the local game simulation
+and original gameplay content. This is a fork, not an upstream benilla contribution.
 
 Read, in this order:
 
-1. `docs/METHOD.md` — the rules and how we work. Binding for every session.
-2. `docs/MAP.md` — what is built right now, generated from the code. Orient here before
-   touching anything.
-3. `docs/CONTRIBUTING.md` — what gets in and how a change is judged.
+1. `docs/METHOD.md` — binding project rules and implementation method.
+2. `PLAN.md` — product decisions, phases, and acceptance criteria.
+3. `docs/MAP.md` — generated inventory of what the code currently builds; never edit by hand.
+4. `docs/CONTRIBUTING.md` — scope, gates, and local setup.
 
-The rest of the root is code and data: `crates/` the workspace, `reference/` the 1.12 name
-catalogues the tests check against, `scripts/` the gates and instruments, `third_party/`
-vendored code.
+The install is runtime input only: never commit its files or write into it. The game is fully
+offline: do not add sockets, auth, realms, server processes, or external databases. The existing
+networked Vanilla path is frozen and may be removed when it blocks the TBC offline path.
 
 @docs/METHOD.md

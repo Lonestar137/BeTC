@@ -1,22 +1,20 @@
-//! The Lua 5.0 dialect: the 5.1 VM's libraries reshaped to answer as the 1.12 client's Lua 5.0.
+//! TBC's Lua 5.1 runtime plus the Lua 5.0 compatibility library behavior used by legacy UI code.
 //!
 //! The reference embeds Lua 5.0 (`$Lua: Lua 5.0` at `0x811b30`), and `InitLua 0x7039e0` opens
 //! five libraries: base (`0x811e28`, 36 entries), `string` (`0x822d88`, 12), `table`
 //! (`0x822d40`, 8), `math` (`0x822c60`, 24) and `bit` (`0x822c18`, 8), with no `os`, `io`,
 //! `debug` or `coroutine`. The grammar is the Lua fork's, in `third_party/lua-src`.
 //!
-//! `...` is a parameter-list token only: a vararg function reads its arguments through 5.0's
-//! `arg` table (`arg.n`, `unpack(arg)`). So Lua written here forwards an unknown argument list
-//! only through a table, and a verb whose arity matters (`GetPoint()` against `GetPoint(nil)`)
-//! stays in Rust.
+//! TBC code uses Lua 5.1 vararg expressions, `select`, length and modulo operators. Older UI
+//! libraries also rely on Lua 5.0's implicit `arg` table and n-based table functions; both forms
+//! coexist in the same VM.
 
-use mlua::{Lua, Table, Value};
+use mlua::{Lua, MultiValue, Table, Value, Variadic};
 
-/// The Lua 5.1 library members 5.0 lacks, removed so an addon's feature test
-/// (`string.gmatch or string.gfind`) takes the branch 1.12 gives it.
+/// The 5.1 library members unused by TBC FrameXML and absent from the 5.0 layer.
 const REMOVED: &[(&str, &[&str])] = &[
-    // 5.0 has `gfind`, and no `gmatch`, `match` or `reverse`.
-    ("string", &["gmatch", "match", "reverse"]),
+    // TBC FrameXML uses `string.match` and `string.gmatch`; `reverse` remains unused.
+    ("string", &["reverse"]),
     // 5.0's eight are concat, foreach, foreachi, getn, setn, sort, insert and remove.
     ("table", &["maxn"]),
     // 5.0's `mod` is 5.1's `fmod` (and a bare global in 1.12); 5.0 has no `modf`, `huge` or
@@ -35,7 +33,7 @@ pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
     // ── 1 · the `n`-based table library ───────────────────────────────────────────────────────
     table_size::install(lua)?;
 
-    // ── 2 · the 5.1-only members go ───────────────────────────────────────────────────────────
+    // ── 2 · the members outside TBC and the legacy compatibility layer go ─────────────────────
     for (lib, names) in REMOVED {
         let Ok(t) = g.get::<Table>(*lib) else {
             continue;
@@ -47,9 +45,7 @@ pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
     // `InitLua` never opens `coroutine`.
     g.set("coroutine", Value::Nil)?;
 
-    // `select` is 5.1's base library and has no row in 1.12's `_G`. A vararg function counts its
-    // arguments with `arg.n`, and host code asks `UiScript::arity`.
-    g.set("select", Value::Nil)?;
+    install_select(lua)?;
 
     // 1.12's string type has no metatable, so `("x"):upper()` raises `attempt to index a string
     // value`. There it cannot carry one: `luaT_gettmbyobj 0x6f7bd0` finds metamethods only on
@@ -89,6 +85,45 @@ pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
     install_assert(lua)?;
 
     Ok(())
+}
+
+/// TBC FrameXML uses Lua 5.1's `select`; its vararg API is separate from the legacy `arg` table.
+fn install_select(lua: &Lua) -> mlua::Result<()> {
+    lua.globals().set(
+        "select",
+        lua.create_function(|_, (index, args): (Value, Variadic<Value>)| {
+            if matches!(&index, Value::String(s) if s.as_bytes().as_ref() == b"#") {
+                return Ok(MultiValue::from_vec(vec![
+                    Value::Integer(args.len() as i64),
+                ]));
+            }
+            let index = match index {
+                Value::Integer(n) => n,
+                Value::Number(n) if n.is_finite() => n.trunc() as i64,
+                Value::String(s) => std::str::from_utf8(s.as_bytes().as_ref())
+                    .ok()
+                    .and_then(|s| s.parse::<i64>().ok())
+                    .ok_or_else(|| {
+                        mlua::Error::runtime("bad argument #1 to 'select' (number expected)")
+                    })?,
+                _ => {
+                    return Err(mlua::Error::runtime(
+                        "bad argument #1 to 'select' (number expected)",
+                    ));
+                }
+            };
+            let count = args.len() as i64;
+            let first = if index < 0 { count + index + 1 } else { index };
+            if first < 1 || first > count {
+                return Err(mlua::Error::runtime(
+                    "bad argument #1 to 'select' (index out of range)",
+                ));
+            }
+            Ok(MultiValue::from_vec(
+                args.into_iter().skip((first - 1) as usize).collect(),
+            ))
+        })?,
+    )
 }
 
 /// The `bit` library 1.12 opens (`0x7fadc0`, array `0x822c18`): its eight functions, in the
@@ -208,7 +243,7 @@ fn install_gc(lua: &Lua) -> mlua::Result<()> {
                             return Err(mlua::Error::RuntimeError(format!(
                                 "bad argument #1 to `collectgarbage' (number expected, got {})",
                                 type_name(&arg)
-                            )))
+                            )));
                         }
                     }
                 }
@@ -216,7 +251,7 @@ fn install_gc(lua: &Lua) -> mlua::Result<()> {
                     return Err(mlua::Error::RuntimeError(format!(
                         "bad argument #1 to `collectgarbage' (number expected, got {})",
                         type_name(other)
-                    )))
+                    )));
                 }
             };
             // `_ftol` truncates toward zero; `0x6f4400`'s unsigned compare saturates a negative
@@ -264,7 +299,7 @@ fn install_assert(lua: &Lua) -> mlua::Result<()> {
                         return Err(mlua::Error::RuntimeError(format!(
                             "bad argument #2 to `assert' (string expected, got {})",
                             type_name(&other)
-                        )))
+                        )));
                     }
                 },
             };
@@ -350,11 +385,12 @@ mod tests {
             "5.1's string options must not exist here: {e}"
         );
         // An explicit threshold above the live count is what `gcinfo` reports back.
-        assert!(s
-            .eval::<bool>(
+        assert!(
+            s.eval::<bool>(
                 "local c = gcinfo() collectgarbage(c * 4) local _, t = gcinfo() return t >= c"
             )
-            .unwrap());
+            .unwrap()
+        );
     }
 
     /// `luaB_loadstring 0x703280` names a chunk by its source unless given a name (`0x70329a`),
@@ -489,13 +525,18 @@ mod tests {
         );
     }
 
-    /// The 5.1-only members are gone, so an addon's feature detection picks 1.12's branch.
+    /// TBC string matching is available; other unsupported 5.1 additions stay absent.
     #[test]
-    fn the_5_1_only_members_are_not_offered() {
+    fn tbc_string_matching_and_the_5_0_table_library_coexist() {
         let s = UiScript::new().unwrap();
+        for expr in ["string.match", "string.gmatch"] {
+            assert!(
+                s.eval::<bool>(&format!("return type({expr}) == 'function'"))
+                    .unwrap(),
+                "TBC FrameXML uses {expr}"
+            );
+        }
         for expr in [
-            "string.gmatch",
-            "string.match",
             "string.reverse",
             "table.maxn",
             "math.fmod",
@@ -524,25 +565,42 @@ mod tests {
         let s = UiScript::new().unwrap();
         assert_eq!(s.eval::<f64>("return mod(7, 3)").unwrap(), 1.0);
         assert_eq!(s.eval::<f64>("return floor(2.7)").unwrap(), 2.0);
+        assert_eq!(
+            s.eval::<(i64, i64, i64)>("return select('#', 1, 2, 3), select(2, 1, 2, 3)")
+                .unwrap(),
+            (3, 2, 3),
+            "TBC's select coexists with the old bare math aliases"
+        );
     }
 
-    /// `...` parses in a parameter list and nowhere else; `arg` carries the arguments.
+    /// The VM accepts TBC's 5.1 vararg expressions while retaining Lua 5.0's `arg` table.
     #[test]
-    fn vararg_is_a_declaration_only() {
+    fn vararg_expressions_and_the_legacy_arg_table_both_work() {
         let s = UiScript::new().unwrap();
         let parses = |src: &str| s.run(src).is_ok();
-        // Declaration, and 5.0's way to read what it captured.
+        // Declaration, expression forwarding, and 5.0's way to read what it captured.
         assert!(parses("return function(x, ...) return x end"));
         assert!(parses("return function(x, ...) return arg.n end"));
+        assert!(parses("return function(x, ...) return ... end"));
         assert!(parses(
             "local f = tostring return function(x, ...) return f(x, unpack(arg)) end"
         ));
-        // Every use of `...` as an expression fails, at chunk level too, where 5.1 allows it.
-        assert!(!parses("return function(x, ...) return ... end"));
-        assert!(!parses(
+        assert!(parses(
             "local f = tostring return function(x, ...) return f(x, ...) end"
         ));
-        assert!(!parses("local a = ... return a"));
+        assert!(parses("local a = ... return a"));
+        assert_eq!(
+            s.eval::<(i64, i64, i64)>("local f = function(...) return ... end return f(1, 2, 3)")
+                .unwrap(),
+            (1, 2, 3),
+            "5.1 vararg expressions preserve multiple-return behavior"
+        );
+        assert_eq!(
+            s.eval::<i64>("local f = function(...) return arg.n end return f(1, 2, 3)")
+                .unwrap(),
+            3,
+            "the legacy 5.0 arg table remains available"
+        );
     }
 
     #[test]
@@ -604,25 +662,14 @@ mod tests {
         assert_eq!(s.eval::<f64>("return __pow(2, 10)").unwrap(), 1024.0);
     }
 
-    /// Ace2's `lua51` probe, `loadstring("return function(...) return ... end")`, fails as on
-    /// 1.12: the reference's `simpleexp` (`0x6fd240`) has no `...` arm.
+    /// The installed TBC UI is Lua 5.1; keep its vararg syntax without removing 5.0 globals.
     #[test]
-    fn the_vararg_expression_is_a_syntax_error_as_it_is_on_1_12() {
+    fn the_tbc_vararg_probe_succeeds_and_legacy_arg_is_available() {
         let s = UiScript::new().unwrap();
         assert!(
-            s.eval::<bool>(
-                r#"return (loadstring("return function(...) return ... end") and true or false) == false"#
-            )
-            .unwrap(),
-            "the Ace2 lua51 probe must answer false, as it does on the 1.12 client"
-        );
-        // `prefixexp` then accepts only `(` or a name, so this is 5.0's own `unexpected symbol`.
-        let msg: String = s
-            .eval(r#"local f, e = loadstring("return ...") return tostring(e)"#)
-            .unwrap();
-        assert!(
-            msg.contains("unexpected symbol"),
-            "5.0's own message for this, not a bespoke one: {msg}"
+            s.eval::<bool>(r#"return loadstring("return function(...) return ... end") ~= nil"#)
+                .unwrap(),
+            "the TBC FrameXML syntax probe must compile"
         );
         // The 5.0 half of the question: `arg`.
         assert_eq!(
@@ -640,27 +687,23 @@ mod tests {
         );
         // A `...` in a parameter list still parses: the deletion is `simpleexp`'s arm, not
         // `parlist`'s.
-        assert!(s
-            .eval::<bool>(r#"return loadstring("return function(...) return arg.n end") ~= nil"#)
-            .unwrap());
+        assert!(
+            s.eval::<bool>(r#"return loadstring("return function(...) return arg.n end") ~= nil"#)
+                .unwrap()
+        );
     }
 
-    /// The reference's `getunopr` (`0x6fe0a0`) knows only `-` and `not`, its `getbinopr`
-    /// (`0x6fe0c0`) has no `%`, and its metamethod names (`0x871896`) have no `__len` or `__mod`.
+    /// TBC Lua 5.1 arithmetic syntax works alongside the Lua 5.0 `math.mod` compatibility global.
     #[test]
-    fn the_length_and_modulo_operators_are_not_in_the_grammar() {
+    fn tbc_length_and_modulo_operators_work() {
         let s = UiScript::new().unwrap();
-        for probe in ["return #t", "return 7 % 3", "local n = #({1,2}) return n"] {
-            assert!(
-                s.eval::<bool>(&format!("return loadstring({:?}) == nil", probe))
-                    .unwrap(),
-                "{probe} is 5.1-only syntax; 1.12's parser rejects it"
-            );
-        }
+        assert_eq!(s.eval::<i64>("return #{1, 2, 3}").unwrap(), 3);
+        assert_eq!(s.eval::<i64>("return #'abc'").unwrap(), 3);
+        assert_eq!(s.eval::<i64>("return 7 % 3").unwrap(), 1);
         // 5.0's spellings of both.
         assert_eq!(s.eval::<i64>("return table.getn({1,2,3})").unwrap(), 3);
         assert_eq!(s.eval::<i64>("return getn({1,2,3})").unwrap(), 3);
-        assert_eq!(s.eval::<f64>("return math.mod(7, 3)").unwrap(), 1.0);
+        assert_eq!(s.eval::<f64>("return mod(7, 3)").unwrap(), 1.0);
         assert_eq!(s.eval::<i64>("return string.len('abcd')").unwrap(), 4);
     }
 
@@ -830,15 +873,14 @@ mod error_quoting_tests {
         }
     }
 
-    /// `select` is 5.1's; 5.0 counts arguments with `arg.n`, and the host with
-    /// [`UiScript::arity`]. Both must tell zero returns from one `nil`, or an arity check passes a
-    /// binding that returns nothing.
+    /// TBC exposes Lua 5.1's `select`; the Lua 5.0 `arg.n` table and host-side
+    /// [`UiScript::arity`] remain available for legacy call sites.
     #[test]
-    fn select_is_not_a_1_12_global_and_arg_n_answers_instead() {
+    fn select_arg_n_and_host_arity_are_all_available() {
         let s = UiScript::new().unwrap();
         assert!(
-            s.eval::<bool>("return select == nil").unwrap(),
-            "`select` is 5.1's base library; `reference/1.12-globals.tsv` has no row for it"
+            s.eval::<bool>("return type(select) == 'function'").unwrap(),
+            "stock TBC FrameXML calls select"
         );
 
         // 5.0's spelling, as an addon writes it.

@@ -4,7 +4,7 @@
 
 use benilla_m2::M2ScalarTrack;
 
-use crate::models::{bake_track, ScalarAnim, SeqSlot};
+use crate::models::{ScalarAnim, SeqSlot, bake_track};
 
 /// The spawn rate and enabled gate per file sequence slot. The reference's animate kernel
 /// (`0x714260`) samples both through the playing sequence's key window every frame, and the rate

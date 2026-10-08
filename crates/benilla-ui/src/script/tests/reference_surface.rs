@@ -10,6 +10,19 @@ use super::common::script;
 
 /// Globals the engine exposes that 1.12 does not, each with its reason. The list is exact.
 const BEYOND_1_12: &[&str] = &[
+    // TBC FrameXML's Lua 5.1 compatibility (`select`) and secure-context query (`issecure`) are
+    // required to load and drive the installed UI in this offline client.
+    "select",
+    "issecure",
+    // TBC's stock JUMP binding uses these wrappers; flight/ascension stays unsupported offline.
+    "JumpOrAscendStart",
+    "AscendStop",
+    "GetActionBarPage",
+    "RegisterForSavePerCharacter",
+    // TBC FrameXML reads and writes the modified-click mapping through this table and its APIs.
+    "MODIFIER_CLICK",
+    "GetModifiedClick",
+    "SetModifiedClick",
     // Our Lua runtime is 5.1 where 1.12's is 5.0: 1.12's base library does not export `_G` (an
     // addon reaches the globals with `getfenv(0)`); ours does, as our `getglobal`/`setglobal` are
     // written over it.
@@ -485,9 +498,10 @@ fn button_set_font_returns_nothing_and_is_a_no_op_without_a_label() {
     );
     // Nothing set: still three values, the path and height nil.
     assert_eq!(s.arity("SFLabelled:GetFont()").unwrap(), 3);
-    assert!(s
-        .eval::<bool>("local f = SFLabelled:GetFont() return f == nil")
-        .unwrap());
+    assert!(
+        s.eval::<bool>("local f = SFLabelled:GetFont() return f == nil")
+            .unwrap()
+    );
 
     s.run(r#"SFBare:SetFont("Fonts\\SKURRI.TTF", 12, "THICKOUTLINE")"#)
         .unwrap();
@@ -685,13 +699,15 @@ fn editbox_font_block_return_shapes_are_the_shared_implementations() {
         "number",
         "the number 1, never the boolean true"
     );
-    assert!(s
-        .eval::<bool>(r#"return EBShape:SetFont("Fonts\\SKURRI.TTF", 12) == 1"#)
-        .unwrap());
+    assert!(
+        s.eval::<bool>(r#"return EBShape:SetFont("Fonts\\SKURRI.TTF", 12) == 1"#)
+            .unwrap()
+    );
     // An unloadable (empty) path answers nil, not an error.
-    assert!(s
-        .eval::<bool>(r#"return EBShape:SetFont("", 12) == nil"#)
-        .unwrap());
+    assert!(
+        s.eval::<bool>(r#"return EBShape:SetFont("", 12) == nil"#)
+            .unwrap()
+    );
     // Both arguments are gated (`lua_isstring` + `lua_isnumber`, else the usage error).
     assert!(s.run(r#"EBShape:SetFont("Fonts\\SKURRI.TTF")"#).is_err());
 
@@ -734,9 +750,10 @@ fn the_dewdrop_editbox_font_shape_resolves_and_paints() {
     )
     .unwrap();
 
-    assert!(s
-        .eval::<bool>("return DewdropEBFrame.editBox:GetFontObject() == ChatFontNormal")
-        .unwrap());
+    assert!(
+        s.eval::<bool>("return DewdropEBFrame.editBox:GetFontObject() == ChatFontNormal")
+            .unwrap()
+    );
     // The object's paint reaches the box's own FontString (`[this+0x324]`, what the shim passes).
     assert_eq!(
         s.eval::<(String, f32)>("local p, h = DewdropEBFrame.editBox:GetFont() return p, h")
@@ -976,12 +993,14 @@ fn get_inventory_slot_info_folds_case_and_flags_only_the_ranged_slot() {
     // The DBC string verbatim, lowercase directory and `.blp`: the binding pushes `[esi+4]` as is.
     assert_eq!(art, "interface\\paperdoll\\UI-PaperDoll-Slot-Head.blp");
 
-    assert!(s
-        .eval::<bool>("local _,_,r = GetInventorySlotInfo('RangedSlot') return r == 1")
-        .unwrap());
-    assert!(s
-        .eval::<bool>("local _,_,r = GetInventorySlotInfo('HeadSlot') return r == nil")
-        .unwrap());
+    assert!(
+        s.eval::<bool>("local _,_,r = GetInventorySlotInfo('RangedSlot') return r == 1")
+            .unwrap()
+    );
+    assert!(
+        s.eval::<bool>("local _,_,r = GetInventorySlotInfo('HeadSlot') return r == nil")
+            .unwrap()
+    );
 
     // `Bag1`..`Bag12` are SlotNumbers 64..75 (64..69 the bank bags) and share one string offset
     // with `Bag0Slot`..`Bag3Slot`, so all sixteen answer the same art.
@@ -1180,10 +1199,11 @@ fn the_type_identity_verbs_answer_what_the_binary_answers() {
             );
         }
     }
-    assert!(s
-        .eval::<Option<i64>>("return TITex:IsObjectType('FontString')")
-        .unwrap()
-        .is_none());
+    assert!(
+        s.eval::<Option<i64>>("return TITex:IsObjectType('FontString')")
+            .unwrap()
+            .is_none()
+    );
 
     // Case-insensitive and whole-string (`SStrCmpI`).
     for spelling in ["texture", "TEXTURE", "TeXtUrE", "region", "REGION"] {

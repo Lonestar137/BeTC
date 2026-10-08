@@ -6,7 +6,7 @@
 
 use benilla_m2::{M2ScalarTrack, M2Vec3Track};
 
-use super::key_anim::{bake_track, KeyAnim, SeqLoops, SeqSlot};
+use super::key_anim::{KeyAnim, SeqLoops, SeqSlot, bake_track};
 
 /// One baked scalar loop, the alpha channels' [`KeyAnim`].
 pub type ScalarAnim = KeyAnim<f32>;

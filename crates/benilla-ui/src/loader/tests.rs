@@ -789,12 +789,12 @@ mod loader_tests {
         assert!(s.eval::<bool>("return FineRan == true").unwrap());
     }
 
-    /// `OnAttributeChanged` is 2.0's; no 1.12 handler resolver has a slot for it.
+    /// A handler with no implementation is warned about and the XML load continues.
     #[test]
     fn unsupported_script_name_is_a_warning() {
         let s = UiScript::new().unwrap();
         let doc = parse(
-            r#"<Ui><Frame name="Keyed"><Scripts><OnAttributeChanged>x = 1</OnAttributeChanged></Scripts></Frame></Ui>"#,
+            r#"<Ui><Frame name="Keyed"><Scripts><OnHyperlinkEnter>x = 1</OnHyperlinkEnter></Scripts></Frame></Ui>"#,
         );
         let report = load(&s, &doc, &no_files);
         assert_eq!(report.frames, 1);
@@ -802,7 +802,7 @@ mod loader_tests {
         assert!(report
             .warnings
             .iter()
-            .any(|w| w.contains("OnAttributeChanged")));
+            .any(|w| w.contains("OnHyperlinkEnter")));
     }
 
     /// `Instantiate 0x6ee280` logs `"Unknown frame type: %s"` (`0x871124`) and builds nothing for
@@ -1095,18 +1095,18 @@ mod loader_tests {
         // The `error` is on the body's second line: `:2:`.
         let named = raised(r#"NamedBtn:GetScript("OnClick")"#);
         assert!(
-            named.starts_with(r#"[string "NamedBtn:OnClick"]:2: boom"#),
+            named.starts_with(r#"[string "NamedBtn:OnClick"]:3: boom"#),
             "{named}"
         );
         // A `CreateFrame` instance is named by its own `GetName()`, not by its template.
         let made = raised(r#"Made:GetScript("OnClick")"#);
         assert!(
-            made.starts_with(r#"[string "Made:OnClick"]:1: tmpl"#),
+            made.starts_with(r#"[string "Made:OnClick"]:2: tmpl"#),
             "{made}"
         );
         let anon = raised(r#"BenillaAnon:GetScript("OnClick")"#);
         assert!(
-            anon.starts_with(r#"[string "<unnamed>:OnClick"]:1: anon"#),
+            anon.starts_with(r#"[string "<unnamed>:OnClick"]:2: anon"#),
             "{anon}"
         );
     }
@@ -2409,17 +2409,16 @@ mod chunk_name_tests {
         );
     }
 
-    /// A handler body is the chunk itself (`0x704c70`): it takes no arguments and reads its frame
-    /// from `this`, so `self` in it is an ordinary global, and the 1.12 hook idiom (an addon
-    /// captures a handler with `GetScript` and calls it bare) reaches the same frame.
+    /// XML handlers receive TBC's `self` parameter as well as the legacy `this` global. A captured
+    /// handler follows the same positional convention when called directly.
     #[test]
-    fn a_handler_body_is_the_chunk_and_self_is_a_global() {
-        let s = UiScript::new().unwrap();
+    fn an_xml_handler_receives_self_and_keeps_the_this_global() {
+        let mut s = UiScript::new().unwrap();
         let doc = parse(
             r#"<Ui>
                 <Frame name="Hooked" hidden="true">
                     <Scripts>
-                        <OnShow>SEEN = this:GetName() SELF_SEEN = self</OnShow>
+                        <OnShow>SEEN = self:GetName() SELF_IS_THIS = (self == this)</OnShow>
                     </Scripts>
                 </Frame>
             </Ui>"#,
@@ -2427,20 +2426,20 @@ mod chunk_name_tests {
         let report = load_in(&s, &doc, "Test.xml", &no_files);
         assert!(report.errors.is_empty(), "{:?}", report.errors);
 
-        s.run("self = 'the global' SEEN = nil Hooked:Show()")
-            .unwrap();
+        s.run("SEEN = nil Hooked:Show()").unwrap();
+        s.resolve();
         assert_eq!(s.eval::<String>("return SEEN").unwrap(), "Hooked");
         assert_eq!(
-            s.eval::<String>("return SELF_SEEN").unwrap(),
-            "the global",
-            "`self` is no parameter of the body"
+            s.eval::<bool>("return SELF_IS_THIS").unwrap(),
+            true,
+            "the positional frame and legacy `this` name the same object"
         );
 
         s.run(
             "SEEN = nil \
              local original = Hooked:GetScript(\"OnShow\") \
              this = Hooked \
-             original() \
+             original(Hooked) \
              this = nil",
         )
         .unwrap();

@@ -5,7 +5,7 @@
 use anyhow::Result;
 
 use crate::messages::{self, opcode, JumpInfo, MoveMode, TransportPose};
-use crate::world::movement::{client_uptime_ms, movement_info};
+use crate::world::movement::{client_uptime_ms, movement_info, skipped_movement_ms};
 
 use super::WorldWriter;
 
@@ -69,7 +69,7 @@ impl WorldWriter {
     pub fn move_time_skipped(&mut self, guid: u64, lag_ms: u32) -> Result<()> {
         self.send(
             opcode::CMSG_MOVE_TIME_SKIPPED,
-            &messages::move_time_skipped(guid, lag_ms),
+            &messages::move_time_skipped(guid, skipped_movement_ms(lag_ms)),
         )
     }
 

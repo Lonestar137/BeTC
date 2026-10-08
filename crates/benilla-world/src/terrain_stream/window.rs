@@ -10,7 +10,7 @@
 //! - Deviation: a one-chunk keep band ([`KEEP_BAND_CHUNKS`]), because a tile reload re-decodes and
 //!   re-spawns where the reference's is a cheap read: a tile releases only past `outer + 1`.
 
-use benilla_formats::{world_to_chunk, CHUNK_SIZE, TILE_SIZE};
+use benilla_formats::{CHUNK_SIZE, TILE_SIZE, world_to_chunk};
 
 /// Chunks per tile edge; `chunk >> 4` is the tile.
 const CHUNKS_PER_TILE: i32 = 16;
@@ -177,9 +177,11 @@ mod tests {
     fn the_window_clamps_to_the_grid() {
         let w = at_chunk(777.0, (0, 63), (0, 15));
         let tiles = w.wanted_tiles();
-        assert!(tiles
-            .iter()
-            .all(|&(x, y)| (0..64).contains(&x) && (0..64).contains(&y)));
+        assert!(
+            tiles
+                .iter()
+                .all(|&(x, y)| (0..64).contains(&x) && (0..64).contains(&y))
+        );
         assert!(tiles.contains(&(0, 63)) && tiles.contains(&(1, 62)));
         assert!(w.keeps((0, 63)) && !w.keeps((-1, 63)) && !w.keeps((0, 64)));
     }

@@ -7,7 +7,7 @@
 
 use benilla_m2::M2Model;
 
-use super::key_anim::{bake_track, KeyAnim, SeqLoops, SeqSlot};
+use super::key_anim::{KeyAnim, SeqLoops, SeqSlot, bake_track};
 
 /// One baked UV-offset loop, the translation channel's [`KeyAnim`] of raw `(x, y)`.
 pub type UvAnim = KeyAnim<[f32; 2]>;

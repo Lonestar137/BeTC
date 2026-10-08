@@ -5,13 +5,13 @@ use bevy::prelude::*;
 use bevy::ui_render::ui_material::MaterialNode;
 use bevy::window::PrimaryWindow;
 
-use crate::glue::art::{GlueArt, BACKDROP, DIM, GOLD, NAME_EDGE};
+use crate::glue::art::{BACKDROP, DIM, GOLD, GlueArt, NAME_EDGE};
 use crate::glue::backdrop::{backdrop_border, tiled_bg_node};
 use crate::glue::widgets::{
-    abs, glue_button, outlined_text, overlay, GlueBtnKind, GlueText, Hilight, LockHighlight,
+    GlueBtnKind, GlueText, Hilight, LockHighlight, abs, glue_button, outlined_text, overlay,
 };
 use crate::glue_strings::GlueStrings;
-use crate::portrait::{GluePreview, PortraitImages, PortraitSource, GLUE_SLOT};
+use crate::portrait::{GLUE_SLOT, GluePreview, PortraitImages, PortraitSource};
 use benilla_assets::WorldAssets;
 
 use super::wow_font;
@@ -85,6 +85,7 @@ pub(super) fn materialize_screen(
     portraits: Res<PortraitImages>,
     mut art: ResMut<GlueArt>,
     world_assets: Option<ResMut<WorldAssets>>,
+    offline: Option<Res<crate::net::NetOffline>>,
     mut images: ResMut<Assets<Image>>,
     mut add_mats: ResMut<Assets<crate::glue::add_material::AddUiMaterial>>,
     strings: Option<Res<GlueStrings>>,
@@ -94,6 +95,7 @@ pub(super) fn materialize_screen(
     if let Some(mut wa) = world_assets {
         art.ensure_loaded(&mut wa, &mut images, &mut add_mats);
     }
+    let offline = offline.is_some();
     let with_art = art.button_up.is_some();
     let s = crate::glue::screen_scale(window.single().ok());
     match existing.single() {
@@ -106,6 +108,7 @@ pub(super) fn materialize_screen(
                     &portraits,
                     &art,
                     strings.as_deref(),
+                    offline,
                     &window,
                 );
             }
@@ -118,6 +121,7 @@ pub(super) fn materialize_screen(
                     &portraits,
                     &art,
                     strings.as_deref(),
+                    offline,
                     &window,
                 );
             }
@@ -131,6 +135,7 @@ fn spawn_screen(
     portraits: &PortraitImages,
     art: &GlueArt,
     strings: Option<&GlueStrings>,
+    offline: bool,
     window: &Query<&Window, With<PrimaryWindow>>,
 ) {
     let font = wow_font(assets);
@@ -284,7 +289,11 @@ fn spawn_screen(
                     art,
                     &font,
                     SelectAction::Back,
-                    strings.text("BACK", "Back"),
+                    if offline {
+                        strings.text("QUIT", "Quit")
+                    } else {
+                        strings.text("BACK", "Back")
+                    },
                     100.0,
                     35.0,
                     GlueBtnKind::Small,

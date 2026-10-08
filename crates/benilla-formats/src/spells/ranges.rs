@@ -213,14 +213,20 @@ impl SpellRangeCatalog {
 
 const SPELL_RANGE: &str = "DBFilesClient\\SpellRange.dbc";
 const SPELL_RANGE_FIELDS: usize = 22;
+const TBC_SPELL_RANGE_FIELDS: usize = 38;
 
 /// Load `SpellRange.dbc` off the patch chain.
 pub fn load_spell_ranges(chain: &mut Chain) -> Result<SpellRangeCatalog> {
+    let fields = if chain.client_build() == Some(8606) {
+        TBC_SPELL_RANGE_FIELDS
+    } else {
+        SPELL_RANGE_FIELDS
+    };
     let bytes = chain
         .read_file(SPELL_RANGE)
         .context("reading SpellRange.dbc")?;
     let mut schema = Schema::new("SpellRange");
-    for i in 0..SPELL_RANGE_FIELDS {
+    for i in 0..fields {
         match i {
             1 => schema.add_field(SchemaField::new("MinRange", FieldType::Float32)),
             2 => schema.add_field(SchemaField::new("MaxRange", FieldType::Float32)),

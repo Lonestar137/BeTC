@@ -57,11 +57,7 @@ fn ini_int(value: &str) -> i32 {
         .fold(0i32, |acc, d| {
             acc.wrapping_mul(10).wrapping_add(i32::from(d - b'0'))
         });
-    if negative {
-        n.wrapping_neg()
-    } else {
-        n
-    }
+    if negative { n.wrapping_neg() } else { n }
 }
 
 #[cfg(test)]

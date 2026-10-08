@@ -9,7 +9,7 @@
 //! [`tga_to_rgba`] checks the header before the pixels, so it can serve as the fallback after a
 //! failed `BLP2` sniff: TGA has no magic.
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 
 /// Decode a TGA to RGBA8 `(width, height, pixels)`, rows top-down like [`crate::blp_to_rgba`].
 pub fn tga_to_rgba(bytes: &[u8]) -> Result<(u32, u32, Vec<u8>)> {
@@ -230,10 +230,12 @@ mod tests {
 
         // An index outside the map is an error, not a black pixel.
         let bad = tga_paletted(1, 1, 1, &pal, 24, &[9]);
-        assert!(tga_to_rgba(&bad)
-            .unwrap_err()
-            .to_string()
-            .contains("outside the map"));
+        assert!(
+            tga_to_rgba(&bad)
+                .unwrap_err()
+                .to_string()
+                .contains("outside the map")
+        );
     }
 
     /// A minimal TGA: an 18-byte header and pixels.

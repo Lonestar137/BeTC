@@ -1,7 +1,8 @@
 //! This frame's move-flag word, the reference's `CMovement+0x40`, rebuilt from state every frame
 //! so the animation selector, the outbound `MSG_MOVE_*` stream and the local gates (the sit
 //! refusal, the cast self-cancel) read one answer. The wire word keeps the direction bits live in
-//! mid-air, as a 1.12.1 capture shows the reference's do; the pose word freezes them at takeoff.
+//! mid-air for local state; the movement sender defers new directions on the wire until their start
+//! or landing packet. The pose word freezes them at takeoff.
 
 use crate::creature_anim::move_flags;
 
@@ -9,7 +10,7 @@ use super::{input, state, Player};
 
 /// The two flag words this frame, plus the two facts the wire lifecycle needs from the arc.
 pub(super) struct FrameFlags {
-    /// What goes on the wire (and into the local gates): direction bits stay live mid-air.
+    /// The live direction state for local gates; the movement sender defers new mid-air starts.
     pub wire: u32,
     /// What the animation sees: direction bits frozen at take-off.
     pub pose: u32,
@@ -99,11 +100,10 @@ pub(super) fn this_frame(
         landed = arc.landed;
         if airborne {
             move_flags_now |= move_flags::FALLING;
-            // In mid-air the wire's direction bits track the keys, as the reference's do (in a
-            // 1.12.1 capture a strafe pressed mid-air lands as `(Forward, StrafeLeft)`); only the
-            // velocity basis freezes (`0x7c5a20` skips it while FALLING), and observers pick the
-            // landing anim off the touchdown flags (`0x602c60`). The pose keeps the takeoff
-            // directions, re-seeded by a new arc and by the standstill air nudge.
+            // The local word tracks live keys; the movement sender keeps new directions off
+            // unrelated air packets until a start or landing packet carries them. The velocity
+            // basis freezes (`0x7c5a20` skips it while FALLING), and observers pick the landing
+            // anim off the touchdown flags (`0x602c60`). The pose keeps takeoff directions.
             if arc.new_arc || air_nudged {
                 player.airborne_dirs = move_flags_now & move_flags::ANY_MOVE;
             }

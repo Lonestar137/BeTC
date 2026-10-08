@@ -233,9 +233,10 @@ mod tests {
             Some("Interface\\Icons\\Ability_Hunter_Pet_Wolf")
         );
         // A warlock minion has one too, for `GetPetIcon`.
-        assert!(fams
-            .icon(15)
-            .is_some_and(|i| i.starts_with("Interface\\Icons\\")));
+        assert!(
+            fams.icon(15)
+                .is_some_and(|i| i.starts_with("Interface\\Icons\\"))
+        );
 
         for id in 1..=27 {
             let Some(f) = fams.get(id) else { continue };

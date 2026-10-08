@@ -274,6 +274,10 @@ impl CreatureCatalog {
 
 /// CreatureModelData.dbc: 16 fields in build 5875 (no `mountHeight`).
 pub(crate) fn creature_model_data_schema() -> Schema {
+    creature_model_data_schema_for(false)
+}
+
+fn creature_model_data_schema_for(tbc: bool) -> Schema {
     let mut s = Schema::new("CreatureModelData");
     for (name, ty) in [
         ("ID", FieldType::UInt32),
@@ -295,11 +299,29 @@ pub(crate) fn creature_model_data_schema() -> Schema {
     ] {
         s.add_field(SchemaField::new(name, ty));
     }
+    if tbc {
+        for (name, ty) in [
+            ("MountHeight", FieldType::Float32),
+            ("GeoBoxMinX", FieldType::Float32),
+            ("GeoBoxMinY", FieldType::Float32),
+            ("GeoBoxMinZ", FieldType::Float32),
+            ("GeoBoxMaxX", FieldType::Float32),
+            ("GeoBoxMaxY", FieldType::Float32),
+            ("GeoBoxMaxZ", FieldType::Float32),
+            ("WorldEffectScale", FieldType::Float32),
+        ] {
+            s.add_field(SchemaField::new(name, ty));
+        }
+    }
     s
 }
 
 /// CreatureDisplayInfo.dbc: 12 fields in build 5875.
 pub(crate) fn creature_display_info_schema() -> Schema {
+    creature_display_info_schema_for(false)
+}
+
+fn creature_display_info_schema_for(tbc: bool) -> Schema {
     let mut s = Schema::new("CreatureDisplayInfo");
     for (name, ty) in [
         ("ID", FieldType::UInt32),
@@ -319,6 +341,10 @@ pub(crate) fn creature_display_info_schema() -> Schema {
         ("NPCSoundID", FieldType::UInt32),
     ] {
         s.add_field(SchemaField::new(name, ty));
+    }
+    if tbc {
+        s.add_field(SchemaField::new("ParticleColorID", FieldType::UInt32));
+        s.add_field(SchemaField::new("Unused13", FieldType::UInt32));
     }
     s
 }
@@ -347,11 +373,16 @@ pub(crate) fn creature_display_info_extra_schema() -> Schema {
 
 /// Load the creature DBCs from the patch chain into a [`CreatureCatalog`].
 pub fn load_creature_catalog(chain: &mut Chain) -> Result<CreatureCatalog> {
+    let tbc = chain.client_build() == Some(8606);
     let models = {
         let bytes = chain
             .read_file(CREATURE_MODEL_DATA)
             .with_context(|| format!("reading {CREATURE_MODEL_DATA}"))?;
-        let rs = parse(&bytes, creature_model_data_schema(), "CreatureModelData")?;
+        let rs = parse(
+            &bytes,
+            creature_model_data_schema_for(tbc),
+            "CreatureModelData",
+        )?;
         let mut m = HashMap::with_capacity(rs.records().len());
         for r in rs.records() {
             if let (Some(id), Some(name)) = (u32_at(r, 0), str_at(&rs, r, 2)) {
@@ -383,7 +414,7 @@ pub fn load_creature_catalog(chain: &mut Chain) -> Result<CreatureCatalog> {
             .with_context(|| format!("reading {CREATURE_DISPLAY_INFO}"))?;
         let rs = parse(
             &bytes,
-            creature_display_info_schema(),
+            creature_display_info_schema_for(tbc),
             "CreatureDisplayInfo",
         )?;
         let mut d = HashMap::with_capacity(rs.records().len());

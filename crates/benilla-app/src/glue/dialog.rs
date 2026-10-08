@@ -12,11 +12,11 @@ use bevy::prelude::*;
 
 use benilla_ui::widget::EditBoxState;
 
-use crate::glue::art::{GlueArt, GOLD};
+use crate::glue::art::{GOLD, GlueArt};
 use crate::glue::backdrop::{backdrop_border, tiled_bg_node};
 use crate::glue::widgets::{
-    glue_button, glue_edit_box, outlined_text_centered, overlay, paint_glue_field, GlueBtnKind,
-    GlueFieldPart, GlueText,
+    GlueBtnKind, GlueFieldPart, GlueText, glue_button, glue_edit_box, outlined_text_centered,
+    overlay, paint_glue_field,
 };
 use crate::glue_strings::GlueStrings;
 use crate::sound::GlueSound;

@@ -3,6 +3,7 @@
 //! rotation (drag at `CHARACTER_ROTATION_CONSTANT` 0.6°/px, or hold a rotate button at ±2°/frame).
 //! A bare selection click is silent, as in the reference.
 
+use bevy::ecs::system::SystemParam;
 use bevy::input::mouse::AccumulatedMouseMotion;
 use bevy::prelude::*;
 
@@ -12,12 +13,18 @@ use crate::sound::GlueSound;
 
 use super::dialog::DeleteDialog;
 use super::screen::SelectAction;
-use super::{class_name, send_pick, ClientState, Roster};
+use super::{ClientState, Roster, class_name, send_pick};
 
-use crate::glue::{drag_yaw, ROTATE_RATE};
+use crate::glue::{ROTATE_RATE, drag_yaw};
 
 /// The double-click window: the conventional interval, where the reference takes the OS's.
 const DOUBLE_CLICK_SECS: f32 = 0.4;
+
+#[derive(SystemParam)]
+pub(super) struct OfflineExit<'w> {
+    mode: Option<Res<'w, crate::net::NetOffline>>,
+    exit: MessageWriter<'w, AppExit>,
+}
 
 /// Button presses and the keyboard: Enter enters the world, Escape and Back return to the login
 /// screen, the arrows cycle the selection with wrap.
@@ -27,6 +34,7 @@ pub(super) fn select_input(
     clicks: Res<crate::glue::GlueClicks>,
     keys: Res<ButtonInput<KeyCode>>,
     mut roster: ResMut<Roster>,
+    mut offline_exit: OfflineExit,
     mut realms: ResMut<crate::realm_select::Realms>,
     pick: Res<CharPick>,
     mut dialog: ResMut<DeleteDialog>,
@@ -97,6 +105,7 @@ pub(super) fn select_input(
             // `CHANGE_REALM`: the realm list rises over this screen with the session kept, so
             // Cancel returns here. The pending pick is cleared, or the other realm's roster would
             // be answered with a guid from this one.
+            SelectAction::ChangeRealm if offline_exit.mode.is_some() => {}
             SelectAction::ChangeRealm => {
                 sounds.write(GlueSound("gsLoginChangeRealmOK"));
                 roster.pending_pick = None;
@@ -113,12 +122,17 @@ pub(super) fn select_input(
         back_to_login = true;
     }
     if back_to_login {
-        // Back drops the parked session and both intents, so it does not auto-relogin.
         sounds.write(GlueSound("gsCharacterSelectionExit"));
-        roster.pending_pick = None;
-        intent.clear();
-        let _ = pick.0.send(crate::net::CharRequest::Abandon);
-        next.set(ClientState::Login);
+        if offline_exit.mode.is_some() {
+            offline_exit.exit.write(AppExit::Success);
+            return;
+        } else {
+            // Back drops the parked session and both intents, so it does not auto-relogin.
+            roster.pending_pick = None;
+            intent.clear();
+            let _ = pick.0.send(crate::net::CharRequest::Abandon);
+            next.set(ClientState::Login);
+        }
     }
     let n = roster.chars.len();
     if n > 1 {

@@ -226,6 +226,8 @@ fn scene_token(scene: GlueScene) -> &'static str {
     match scene {
         GlueScene::MainMenu => "MainMenu",
         GlueScene::Race(race) => match race {
+            10 => "BloodElf",
+            11 => "Draenei",
             2 | 8 => "Orc",   // Troll shares Orc's scene
             3 | 7 => "Dwarf", // Gnome shares Dwarf's
             4 => "NightElf",

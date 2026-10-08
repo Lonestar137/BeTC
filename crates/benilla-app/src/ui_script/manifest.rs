@@ -227,17 +227,42 @@ pub(super) fn load_core_bindings(script: &UiScript) -> Vec<String> {
 
 /// The defaults, set 0, off the player's chain: `WTF\DefaultBindings.wtf` (`0x846e44`), which
 /// `0x4b62b0` reads line by line (`0x4b6140`); empty when the chain lacks it.
+const OFFLINE_DEFAULT_BINDINGS: &str = "\
+bind W MOVEFORWARD\r\n\
+bind S MOVEBACKWARD\r\n\
+bind A TURNLEFT\r\n\
+bind D TURNRIGHT\r\n\
+bind Q STRAFELEFT\r\n\
+bind E STRAFERIGHT\r\n\
+bind SPACE JUMP\r\n\
+bind BUTTON1 CAMERAORSELECTORMOVE\r\n\
+bind BUTTON2 TURNORACTION\r\n\
+bind NUMLOCK TOGGLEAUTORUN\r\n";
+
+fn parse_default_bindings(bytes: &[u8]) -> Vec<benilla_ui::script::keybind::KeyBinding> {
+    benilla_ui::script::keybind::parse_bindings_wtf(&String::from_utf8_lossy(bytes))
+}
+
 pub(crate) fn default_bindings() -> Vec<benilla_ui::script::keybind::KeyBinding> {
     match reference_ui::read(reference_ui::DEFAULT_BINDINGS) {
-        Some(bytes) => {
-            benilla_ui::script::keybind::parse_bindings_wtf(&String::from_utf8_lossy(&bytes))
-        }
+        Some(bytes) => parse_default_bindings(&bytes),
         None => {
             warn!(
                 "ui_script: {} is not in the patch chain — every command ships unbound",
                 reference_ui::DEFAULT_BINDINGS
             );
             Vec::new()
+        }
+    }
+}
+
+/// Offline first-run controls when the player's install has no per-user WTF defaults to load.
+pub(crate) fn offline_default_bindings() -> Vec<benilla_ui::script::keybind::KeyBinding> {
+    match reference_ui::read(reference_ui::DEFAULT_BINDINGS) {
+        Some(bytes) => parse_default_bindings(&bytes),
+        None => {
+            info!("ui_script: using offline first-run movement bindings");
+            parse_default_bindings(OFFLINE_DEFAULT_BINDINGS.as_bytes())
         }
     }
 }
@@ -516,6 +541,23 @@ mod tests {
     <Bindings><Binding name="NESTEDROW">Probe("nested")</Binding></Bindings>
     <Binding name="ITUNES_PLAYPAUSE" header="ITUNES_REMOTE" platform="mac">Probe("mac")</Binding>
 </Bindings>"#;
+
+    #[test]
+    fn offline_first_run_bindings_include_jump_and_normal_mouse_roles() {
+        let bindings = parse_default_bindings(OFFLINE_DEFAULT_BINDINGS.as_bytes());
+        for binding in [
+            ("W", "MOVEFORWARD"),
+            ("S", "MOVEBACKWARD"),
+            ("SPACE", "JUMP"),
+            ("BUTTON1", "CAMERAORSELECTORMOVE"),
+            ("BUTTON2", "TURNORACTION"),
+        ] {
+            assert!(
+                bindings.iter().any(|(key, action)| key == binding.0 && action == binding.1),
+                "missing {binding:?}"
+            );
+        }
+    }
 
     /// The core's commands are the chain's `Bindings.xml`, loaded after the toc's files (which
     /// see none) as `UI_Init` does (`0x48ffed`, then `0x490018`): its order, its headers and its

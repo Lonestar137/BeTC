@@ -1,6 +1,6 @@
 //! `Map.dbc`: a server `mapId` to its MPQ directory (`0` "Azeroth", `1` "Kalimdor", `36`
-//! "DeadminesInstance") for `MapTiles::load`, plus the columns the client reads per map. Records
-//! are 42 four-byte fields; `MapName` and the two descriptions are localized blocks of nine.
+//! "DeadminesInstance") for `MapTiles::load`, plus the columns the client reads per map. Build
+//! 5875 records have 42 fields; build 8606 records have 125, with localized strings inline.
 
 use std::collections::HashMap;
 
@@ -12,8 +12,67 @@ use crate::dbc::{f32_at, parse, str_at, u32_at};
 
 const MAP: &str = "DBFilesClient\\Map.dbc";
 
-/// Field index of `LoadingScreenID`, a `LoadingScreens.dbc` id; 0 on the dev and test maps.
-const LOADING_SCREEN_FIELD: usize = 38;
+#[derive(Clone, Copy)]
+struct MapLayout {
+    field_count: usize,
+    locale_width: usize,
+    localized_fields: &'static [(usize, &'static str)],
+    loading_screen: usize,
+    min_level: usize,
+    max_level: usize,
+    max_players: usize,
+    field_16: usize,
+    field_17: usize,
+    field_18: usize,
+    bracket_span: Option<usize>,
+    group_queue: Option<usize>,
+    minimap_icon_scale: usize,
+}
+
+const VANILLA_LAYOUT: MapLayout = MapLayout {
+    field_count: 42,
+    locale_width: 9,
+    localized_fields: &[
+        (4, "MapName"),
+        (20, "MapDescription0"),
+        (29, "MapDescription1"),
+    ],
+    loading_screen: 38,
+    min_level: 13,
+    max_level: 14,
+    max_players: 15,
+    field_16: 16,
+    field_17: 17,
+    field_18: 18,
+    bracket_span: Some(39),
+    group_queue: Some(40),
+    minimap_icon_scale: 41,
+};
+
+// Build 8606 Map.dbc, measured from its WDBC header and row layout. Localized fields have 16
+// locale offsets plus the flags word; the unused locale offsets stay integer-typed.
+const TBC_LAYOUT: MapLayout = MapLayout {
+    field_count: 125,
+    locale_width: 17,
+    localized_fields: &[
+        (4, "MapName"),
+        (28, "MapDescriptionAlliance"),
+        (45, "MapDescriptionHorde"),
+        (66, "Requirement"),
+        (83, "HeroicRequirement"),
+        (100, "UnknownRequirement"),
+    ],
+    loading_screen: 62,
+    min_level: 21,
+    max_level: 22,
+    max_players: 23,
+    field_16: 24,
+    field_17: 25,
+    field_18: 26,
+    bracket_span: None,
+    group_queue: None,
+    minimap_icon_scale: 65,
+};
 
 /// `Map.dbc`'s per-map data, keyed by map id.
 pub struct MapCatalog {
@@ -30,31 +89,29 @@ pub struct MapCatalog {
     battleground: HashMap<u32, MapBattlegroundColumns>,
 }
 
-/// The `Map.dbc` columns the battleground verbs read by row offset (`GetBattlefieldInfo`
-/// `0x4ab0b0`, the list handler `0x4aa6c0`); `+0x4·k` is field `k`.
+/// The `Map.dbc` values used by battleground presentation. Build 8606 stores the first six at
+/// fields 21-26 and descriptions at 28/45; Vanilla stores them at 13-18 and 20/29.
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct MapBattlegroundColumns {
-    /// Field 13 (`+0x34`), the bracket base and `GetBattlefieldInfo`'s third value.
+    /// Minimum level: field 21 in build 8606, field 13 in Vanilla.
     pub min_level: u32,
-    /// Field 14 (`+0x38`), `GetBattlefieldInfo`'s fourth value.
+    /// Maximum level: field 22 in build 8606, field 14 in Vanilla.
     pub max_level: u32,
-    /// Field 15 (`+0x3c`): a group join needs both the party and the raid count `<=` this, else
-    /// message 442 and nothing sent (`0x4a9f60`).
+    /// Maximum players: field 23 in build 8606, field 15 in Vanilla.
     pub max_players: u32,
-    /// Field 16 (`+0x40`, signed), `GetBattlefieldInfo`'s fifth value; `-1` on every battleground.
+    /// The next raw integer: field 24 in build 8606, field 16 in Vanilla.
     pub field_16: i32,
-    /// Fields 17 and 18 (`+0x44`/`+0x48`, f32), `GetBattlefieldInfo`'s sixth and seventh values.
+    /// The next two raw floats: fields 25/26 in build 8606, 17/18 in Vanilla.
     pub field_17: f32,
     pub field_18: f32,
-    /// Fields 20 and 29 (`+0x50`, `+0x74`), the localized descriptions by faction-group index:
-    /// `0` for a `FactionTemplate` mask with bit `0x4`, `1` for bit `0x2` (`0x5efe00`).
+    /// Localized descriptions in Alliance/Horde order: fields 28/45 in build 8606, 20/29 in
+    /// Vanilla.
     pub descriptions: [String; 2],
-    /// Field 39 (`+0x9c`), the level-bracket span; `0` means one bracket and zeroed bounds.
+    /// Bracket span in Vanilla. TBC does not store this in `Map.dbc`.
     pub bracket_span: u32,
-    /// Field 40 (`+0xa0`), non-zero for a group queue (`CanJoinBattlefieldAsGroup` `0x4ac380`).
+    /// Group-queue flag in Vanilla. TBC does not store this in `Map.dbc`.
     pub group_queue: u32,
-    /// Field 41 (`+0xa4`, f32), `MinimapIconScale`: what `GetBattlefieldMapIconScale()` answers
-    /// for the active queue slot's map (`0x4ac3d0`).
+    /// `MinimapIconScale`: field 65 in build 8606, field 41 in Vanilla.
     pub minimap_icon_scale: f32,
 }
 
@@ -111,45 +168,44 @@ impl MapCatalog {
     }
 }
 
-const MAP_NAME_FIELD: usize = 4;
-
 const INSTANCE_TYPE_FIELD: usize = 2;
 
-const MIN_LEVEL_FIELD: usize = 13;
-const MAX_LEVEL_FIELD: usize = 14;
-const MAX_PLAYERS_FIELD: usize = 15;
-const FIELD_16: usize = 16;
-const FIELD_17: usize = 17;
-const FIELD_18: usize = 18;
-const DESCRIPTION_0_FIELD: usize = 20;
-const DESCRIPTION_1_FIELD: usize = 29;
-const BRACKET_SPAN_FIELD: usize = 39;
-const GROUP_QUEUE_FIELD: usize = 40;
-const MINIMAP_ICON_SCALE_FIELD: usize = 41;
-
 /// The unread fields are `u32` placeholders: only the 42 × 4 = 168-byte record has to add up.
-fn map_schema() -> Schema {
+fn map_schema(layout: MapLayout) -> Schema {
     let mut s = Schema::new("Map");
     s.add_field(SchemaField::new("ID", FieldType::UInt32));
     s.add_field(SchemaField::new("Directory", FieldType::String));
-    for i in 2..42 {
-        match i {
-            INSTANCE_TYPE_FIELD => s.add_field(SchemaField::new("InstanceType", FieldType::UInt32)),
-            MAP_NAME_FIELD => s.add_field(SchemaField::new("MapName", FieldType::String)),
-            DESCRIPTION_0_FIELD => {
-                s.add_field(SchemaField::new("MapDescription0", FieldType::String))
+    let mut i = 2;
+    while i < layout.field_count {
+        if let Some((_, name)) = layout
+            .localized_fields
+            .iter()
+            .find(|(start, _)| *start == i)
+        {
+            s.add_field(SchemaField::new(*name, FieldType::String));
+            for locale in 1..layout.locale_width {
+                s.add_field(SchemaField::new(
+                    format!("_{name}_{locale}"),
+                    FieldType::UInt32,
+                ));
             }
-            DESCRIPTION_1_FIELD => {
-                s.add_field(SchemaField::new("MapDescription1", FieldType::String))
-            }
-            FIELD_17 | FIELD_18 | MINIMAP_ICON_SCALE_FIELD => {
-                s.add_field(SchemaField::new(format!("_f{i}"), FieldType::Float32))
-            }
-            LOADING_SCREEN_FIELD => {
-                s.add_field(SchemaField::new("LoadingScreenID", FieldType::UInt32))
-            }
-            _ => s.add_field(SchemaField::new(format!("_pad{i}"), FieldType::UInt32)),
+            i += layout.locale_width;
+            continue;
         }
+        let ty = if [layout.field_17, layout.field_18, layout.minimap_icon_scale].contains(&i) {
+            FieldType::Float32
+        } else {
+            FieldType::UInt32
+        };
+        let name = if i == INSTANCE_TYPE_FIELD {
+            "InstanceType".to_string()
+        } else if i == layout.loading_screen {
+            "LoadingScreenID".to_string()
+        } else {
+            format!("_field{i}")
+        };
+        s.add_field(SchemaField::new(name, ty));
+        i += 1;
     }
     s
 }
@@ -159,7 +215,12 @@ pub fn load_map_catalog(chain: &mut Chain) -> Result<MapCatalog> {
     let bytes = chain
         .read_file(MAP)
         .with_context(|| format!("reading {MAP}"))?;
-    let rs = parse(&bytes, map_schema(), "Map")?;
+    let layout = if chain.client_build() == Some(8606) {
+        TBC_LAYOUT
+    } else {
+        VANILLA_LAYOUT
+    };
+    let rs = parse(&bytes, map_schema(layout), "Map")?;
     let mut dirs = HashMap::with_capacity(rs.records().len());
     let mut names = HashMap::with_capacity(rs.records().len());
     let mut loading_screens = HashMap::new();
@@ -170,32 +231,38 @@ pub fn load_map_catalog(chain: &mut Chain) -> Result<MapCatalog> {
         battleground.insert(
             id,
             MapBattlegroundColumns {
-                min_level: u32_at(r, MIN_LEVEL_FIELD).unwrap_or(0),
-                max_level: u32_at(r, MAX_LEVEL_FIELD).unwrap_or(0),
-                max_players: u32_at(r, MAX_PLAYERS_FIELD).unwrap_or(0),
-                field_16: u32_at(r, FIELD_16).unwrap_or(0) as i32,
-                field_17: f32_at(r, FIELD_17).unwrap_or(0.0),
-                field_18: f32_at(r, FIELD_18).unwrap_or(0.0),
+                min_level: u32_at(r, layout.min_level).unwrap_or(0),
+                max_level: u32_at(r, layout.max_level).unwrap_or(0),
+                max_players: u32_at(r, layout.max_players).unwrap_or(0),
+                field_16: u32_at(r, layout.field_16).unwrap_or(0) as i32,
+                field_17: f32_at(r, layout.field_17).unwrap_or(0.0),
+                field_18: f32_at(r, layout.field_18).unwrap_or(0.0),
                 descriptions: [
-                    str_at(&rs, r, DESCRIPTION_0_FIELD).unwrap_or_default(),
-                    str_at(&rs, r, DESCRIPTION_1_FIELD).unwrap_or_default(),
+                    str_at(&rs, r, layout.localized_fields[1].0).unwrap_or_default(),
+                    str_at(&rs, r, layout.localized_fields[2].0).unwrap_or_default(),
                 ],
-                bracket_span: u32_at(r, BRACKET_SPAN_FIELD).unwrap_or(0),
-                group_queue: u32_at(r, GROUP_QUEUE_FIELD).unwrap_or(0),
-                minimap_icon_scale: f32_at(r, MINIMAP_ICON_SCALE_FIELD).unwrap_or(1.0),
+                bracket_span: layout
+                    .bracket_span
+                    .and_then(|field| u32_at(r, field))
+                    .unwrap_or(0),
+                group_queue: layout
+                    .group_queue
+                    .and_then(|field| u32_at(r, field))
+                    .unwrap_or(0),
+                minimap_icon_scale: f32_at(r, layout.minimap_icon_scale).unwrap_or(1.0),
             },
         );
         if let Some(dir) = str_at(&rs, r, 1) {
             dirs.insert(id, dir);
         }
-        if let Some(name) = str_at(&rs, r, MAP_NAME_FIELD).filter(|n| !n.is_empty()) {
+        if let Some(name) = str_at(&rs, r, layout.localized_fields[0].0).filter(|n| !n.is_empty()) {
             names.insert(id, name);
         }
         // Type 0 is recorded too, so `None` means only that no such map exists.
         if let Some(ty) = u32_at(r, INSTANCE_TYPE_FIELD) {
             instance_types.insert(id, ty);
         }
-        if let Some(ls) = u32_at(r, LOADING_SCREEN_FIELD).filter(|&v| v != 0) {
+        if let Some(ls) = u32_at(r, layout.loading_screen).filter(|&v| v != 0) {
             loading_screens.insert(id, ls);
         }
     }
@@ -217,6 +284,19 @@ mod tests {
         let data = crate::wow_data_or_skip!();
         let mut chain = crate::open_chain(&data).expect("open chain");
         let catalog = load_map_catalog(&mut chain).expect("Map.dbc");
+        if chain.client_build() == Some(8606) {
+            let wsg = catalog.battleground(489).expect("Warsong Gulch");
+            assert_eq!(
+                (wsg.min_level, wsg.max_level, wsg.max_players, wsg.field_16),
+                (10, 70, 10, -1)
+            );
+            let ab = catalog.battleground(529).expect("Arathi Basin");
+            assert_eq!((ab.min_level, ab.max_players, ab.field_16), (20, 15, -1));
+            assert!((ab.minimap_icon_scale - 1.25).abs() < 1e-6);
+            assert_eq!(wsg.bracket_span, 0, "TBC stores brackets outside Map.dbc");
+            assert_eq!(wsg.group_queue, 0, "not a build-8606 Map.dbc column");
+            return;
+        }
         let wsg = catalog.battleground(489).expect("Warsong Gulch");
         assert_eq!(
             (wsg.min_level, wsg.max_level, wsg.max_players, wsg.field_16),
@@ -253,5 +333,21 @@ mod tests {
             catalog.battleground(0).is_some(),
             "every row carries the columns — the client resolves map 0's when nothing was listed"
         );
+    }
+
+    #[test]
+    fn build_8606_map_layout_resolves_sunstrider_isle() {
+        let data = crate::wow_data_or_skip!();
+        if !crate::is_tbc_data_dir(&data) {
+            crate::skipped("resolved install is not TBC", &[data]);
+            return;
+        }
+        let mut chain = crate::open_chain(&data).expect("open build-8606 chain");
+        let catalog = load_map_catalog(&mut chain).expect("parse build-8606 Map.dbc");
+
+        assert_eq!(chain.client_build(), Some(8606));
+        assert_eq!(catalog.directory(530), Some("Expansion01"));
+        assert_eq!(catalog.name(530), Some("Outland"));
+        assert!(catalog.loading_screen_id(530).is_some());
     }
 }

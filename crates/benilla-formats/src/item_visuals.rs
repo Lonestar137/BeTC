@@ -425,9 +425,11 @@ mod tests {
             (0..3000).filter(|&id| e.tooltip_hides_name(id)).collect();
         assert_eq!(
             hidden,
-            [124, 285, 303, 543, 563, 564, 1683, 1783, 1803, 1823, 1824, 1825]
-                .into_iter()
-                .collect(),
+            [
+                124, 285, 303, 543, 563, 564, 1683, 1783, 1803, 1823, 1824, 1825
+            ]
+            .into_iter()
+            .collect(),
             "the totem-granted imbues (Flametongue/Windfury Totem), Orb of Fire and Firestone 1-4"
         );
         // The name stays, for the replace confirm.

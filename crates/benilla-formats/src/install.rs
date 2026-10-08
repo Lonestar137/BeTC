@@ -14,6 +14,8 @@
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
+use anyhow::{Context, Result, bail};
+
 /// The launcher's project folder, handed in by its entry point ([`set_project_folder`]).
 static LAUNCHER_FOLDER: OnceLock<PathBuf> = OnceLock::new();
 
@@ -51,10 +53,135 @@ fn benilla_checkout() -> Option<&'static Path> {
     Path::new(env!("CARGO_MANIFEST_DIR")).ancestors().nth(2)
 }
 
-/// The vanilla `Data` directory, or `None` when there is no install. Uncached, so a `$WOW_DATA`
-/// change is seen.
+/// A client `Data` directory, or `None` when there is no install. A TBC install root passed via
+/// `$WOW_DATA` is normalized to its `Data/` child. Uncached, so an environment change is seen.
 pub fn wow_data() -> Option<PathBuf> {
-    candidates().into_iter().find(|c| c.is_dir())
+    candidates().into_iter().find_map(|candidate| {
+        let nested = candidate.join("Data");
+        if is_tbc_data_dir(&nested) {
+            Some(nested)
+        } else if candidate.is_dir() {
+            Some(candidate)
+        } else {
+            None
+        }
+    })
+}
+
+/// Build-8606 install metadata derived from its `Data/` directory and locale subfolder.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TbcInstall {
+    pub data_dir: PathBuf,
+    pub locale_dir: PathBuf,
+    pub locale: String,
+    pub locale_id: u16,
+}
+
+/// Whether a directory has the TBC archive signature and at least one supported locale folder.
+pub fn is_tbc_data_dir(data_dir: &Path) -> bool {
+    has_file(data_dir, "common.MPQ")
+        && has_file(data_dir, "expansion.MPQ")
+        && std::fs::read_dir(data_dir).is_ok_and(|entries| {
+            entries.flatten().any(|entry| {
+                entry.file_type().is_ok_and(|kind| kind.is_dir())
+                    && entry.file_name().to_str().and_then(locale_id).is_some()
+            })
+        })
+}
+
+/// Detect TBC 2.4.3's core archives and select its actual locale; `$WOW_LOCALE` disambiguates an
+/// install containing more than one supported locale.
+pub fn tbc_install(data_dir: &Path) -> Result<TbcInstall> {
+    if !has_file(data_dir, "common.MPQ") || !has_file(data_dir, "expansion.MPQ") {
+        bail!(
+            "{} is not a TBC Data directory (common.MPQ and expansion.MPQ are required)",
+            data_dir.display()
+        );
+    }
+    let mut locales = std::fs::read_dir(data_dir)
+        .with_context(|| format!("listing TBC Data directory {}", data_dir.display()))?
+        .filter_map(|entry| {
+            let entry = entry.ok()?;
+            if !entry.file_type().ok()?.is_dir() {
+                return None;
+            }
+            let name = entry.file_name().into_string().ok()?;
+            let id = locale_id(&name)?;
+            has_file(&entry.path(), &format!("locale-{name}.MPQ")).then_some((
+                name,
+                id,
+                entry.path(),
+            ))
+        })
+        .collect::<Vec<_>>();
+    locales.sort_by(|a, b| a.0.cmp(&b.0));
+
+    let selected = if let Some(want) = std::env::var_os("WOW_LOCALE") {
+        let want = want.to_string_lossy();
+        locales
+            .iter()
+            .find(|(name, _, _)| name.eq_ignore_ascii_case(&want))
+            .cloned()
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "WOW_LOCALE={want} is not present under {}",
+                    data_dir.display()
+                )
+            })?
+    } else if locales.len() == 1 {
+        locales.remove(0)
+    } else if locales.is_empty() {
+        bail!(
+            "no supported TBC locale archive found under {}",
+            data_dir.display()
+        );
+    } else {
+        bail!(
+            "multiple TBC locales found under {}; set WOW_LOCALE to one of: {}",
+            data_dir.display(),
+            locales
+                .iter()
+                .map(|(name, _, _)| name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    };
+
+    Ok(TbcInstall {
+        data_dir: data_dir.to_path_buf(),
+        locale: selected.0,
+        locale_id: selected.1,
+        locale_dir: selected.2,
+    })
+}
+
+fn has_file(directory: &Path, name: &str) -> bool {
+    std::fs::read_dir(directory).is_ok_and(|entries| {
+        entries.flatten().any(|entry| {
+            entry.file_type().is_ok_and(|kind| kind.is_file())
+                && entry
+                    .file_name()
+                    .to_string_lossy()
+                    .eq_ignore_ascii_case(name)
+        })
+    })
+}
+
+fn locale_id(name: &str) -> Option<u16> {
+    [
+        ("deDE", 0x0407),
+        ("enUS", 0x0409),
+        ("enGB", 0x0809),
+        ("esES", 0x0c0a),
+        ("esMX", 0x080a),
+        ("frFR", 0x040c),
+        ("koKR", 0x0412),
+        ("ruRU", 0x0419),
+        ("zhCN", 0x0804),
+        ("zhTW", 0x0404),
+    ]
+    .into_iter()
+    .find_map(|(locale, id)| locale.eq_ignore_ascii_case(name).then_some(id))
 }
 
 /// Every place [`wow_data`] looks, in order, whether or not it exists, for a "looked in" message.
@@ -229,9 +356,11 @@ mod tests {
             probe(None, Some("/games/benilla")).last(),
             Some(&PathBuf::from("/games/benilla/WoW/Data"))
         );
-        assert!(!probe(Some("/opt/wow/Data"), None)
-            .iter()
-            .any(|p| p.starts_with("/games")));
+        assert!(
+            !probe(Some("/opt/wow/Data"), None)
+                .iter()
+                .any(|p| p.starts_with("/games"))
+        );
     }
 
     #[test]

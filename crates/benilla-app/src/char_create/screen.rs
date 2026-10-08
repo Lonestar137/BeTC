@@ -1,6 +1,6 @@
 //! The create screen's layout, the reference's `CharacterCreate.xml` in Bevy UI. The glue engine
-//! scales a 1024×768 virtual screen to the window, so every authored offset and size below is the
-//! reference's number times `height / 768`.
+//! fits a 1024×768 virtual screen to the window, so authored offsets and sizes share one scale and
+//! a narrow window letterboxes the canvas vertically instead of compressing its controls.
 
 use bevy::prelude::*;
 use bevy::ui_render::ui_material::MaterialNode;
@@ -9,17 +9,19 @@ use bevy::window::PrimaryWindow;
 use crate::char_select::{race_name, wow_font};
 use crate::entities::CharCreate;
 use crate::glue_strings::GlueStrings;
-use crate::portrait::{GlueLook, GluePreview, PortraitImages, PortraitSource, GLUE_SLOT};
+use crate::portrait::{GLUE_SLOT, GlueLook, GluePreview, PortraitImages, PortraitSource};
 use benilla_assets::WorldAssets;
 
 use super::parts::{CharCreateUi, DialRow, DynIcon, DynText, DynTint, StatusLine};
-use super::{CreateAction, CreateSelection, ALLIANCE, HORDE, INITIAL_FACING};
+use super::{
+    ALLIANCE, CreateAction, CreateSelection, HORDE, INITIAL_FACING, TBC_ALLIANCE, TBC_HORDE,
+};
 use crate::glue::art::{
-    tc_rect, GlueArt, ALLIANCE_BORDER, ALLIANCE_FILL, BACKDROP, BTN_BG, DIM, GOLD, INFO_TEXT,
+    ALLIANCE_BORDER, ALLIANCE_FILL, BACKDROP, BTN_BG, DIM, GOLD, GlueArt, INFO_TEXT, tc_rect,
 };
 use crate::glue::widgets::{
-    abs, dial_arrow, glue_button, icon_button, outlined_text, ArtSwap, FallbackFace, GlueBtnKind,
-    GlueText, Hilight,
+    ArtSwap, FallbackFace, GlueBtnKind, GlueText, Hilight, abs, dial_arrow, glue_button,
+    icon_button, icon_button_sized, outlined_text,
 };
 
 const SCREEN_Z: i32 = 1100;
@@ -54,6 +56,9 @@ pub(super) fn enter_create(
         &art,
         strings.as_deref(),
         &window,
+        catalog
+            .as_deref()
+            .is_some_and(|catalog| catalog.0.race_file(10).is_some()),
     );
 }
 
@@ -63,6 +68,7 @@ pub(super) fn rescale_screen(
     mut commands: Commands,
     existing: Query<(Entity, &CharCreateUi)>,
     assets: Res<AssetServer>,
+    catalog: Option<Res<CharCreate>>,
     portraits: Res<PortraitImages>,
     art: Res<GlueArt>,
     strings: Option<Res<GlueStrings>>,
@@ -79,6 +85,9 @@ pub(super) fn rescale_screen(
                 &art,
                 strings.as_deref(),
                 &window,
+                catalog
+                    .as_deref()
+                    .is_some_and(|catalog| catalog.0.race_file(10).is_some()),
             );
         }
     }
@@ -91,6 +100,7 @@ fn spawn_screen(
     art: &GlueArt,
     strings: Option<&GlueStrings>,
     window: &Query<&Window, With<PrimaryWindow>>,
+    tbc: bool,
 ) {
     let font = wow_font(assets);
     // The edit box types in `GlueEditBoxFont`, ARIALN, not FRIZQT (`GlueFonts.xml`).
@@ -141,7 +151,7 @@ fn spawn_screen(
     // The chrome hangs off the canvas, the boxed scene's rect, never the window.
     let mut canvas = commands.spawn((crate::glue::glue_canvas(), ChildOf(root)));
     canvas.with_children(|ui| {
-        left_tower(ui, art, &font, s, strings);
+        left_tower(ui, art, &font, s, strings, tbc);
 
         // `CharacterCreateWoWLogo` (256×128 at (3,-7)), after the tower, as the reference's
         // frame order draws it over the border art.
@@ -198,6 +208,7 @@ fn left_tower(
     font: &Handle<Font>,
     s: f32,
     strings: &GlueStrings,
+    tbc: bool,
 ) {
     let px = |v: f32| Val::Px(v * s);
     ui.spawn((Node {
@@ -260,20 +271,26 @@ fn left_tower(
                 );
             }
 
-            // Two columns of 48² buttons at (33,68) and (127,68), row pitch 48+5.
-            for (faction, left) in [(ALLIANCE, 33.0), (HORDE, 127.0)] {
+            // Build 8606 adds a fifth race per faction; its compact buttons fit above gender.
+            let factions: [(&[u8], f32); 2] = if tbc {
+                [(&TBC_ALLIANCE, 33.0), (&TBC_HORDE, 127.0)]
+            } else {
+                [(&ALLIANCE, 33.0), (&HORDE, 127.0)]
+            };
+            let race_button_size = if tbc { 38.0 } else { 48.0 };
+            for (faction, left) in factions {
                 tower
                     .spawn((Node {
                         position_type: PositionType::Absolute,
                         left: px(left),
                         top: px(68.0),
                         flex_direction: FlexDirection::Column,
-                        row_gap: px(5.0),
+                        row_gap: px(if tbc { 2.0 } else { 5.0 }),
                         ..default()
                     },))
                     .with_children(|col| {
-                        for race in faction {
-                            icon_button(
+                        for &race in faction {
+                            icon_button_sized(
                                 col,
                                 font,
                                 CreateAction::Race(race),
@@ -283,6 +300,8 @@ fn left_tower(
                                 race_name(race),
                                 art,
                                 s,
+                                race_button_size,
+                                tbc && race >= 10,
                             );
                         }
                     });

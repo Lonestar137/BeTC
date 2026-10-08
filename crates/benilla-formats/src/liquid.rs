@@ -7,7 +7,7 @@
 
 use benilla_adt::MclqChunk;
 
-use crate::terrain::{snap_to_lattice, UNIT_SIZE};
+use crate::terrain::{UNIT_SIZE, snap_to_lattice};
 
 /// A liquid's animated texture set and render path; ADT liquid is only Still, Ocean or Magma.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -276,7 +276,7 @@ impl LiquidMesh {
 #[cfg(test)]
 mod tests {
 
-    use benilla_adt::{parse_adt, ParsedAdt};
+    use benilla_adt::{ParsedAdt, parse_adt};
 
     use super::*;
 

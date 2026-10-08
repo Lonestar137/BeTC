@@ -4,11 +4,11 @@
 use std::io::Cursor;
 
 use anyhow::Result;
-use benilla_wmo::{parse_wmo, Color, ParsedWmo, WmoGroup, WmoLiquid};
+use benilla_wmo::{Color, ParsedWmo, WmoGroup, WmoLiquid, parse_wmo};
 
-use super::{find_wmo_chunk, WmoRoot};
+use super::{WmoRoot, find_wmo_chunk};
 use crate::liquid::{LiquidKind, LiquidMesh};
-use crate::models::{remap_submesh, ModelBlend, RenderSubmesh, WmoBatchClass};
+use crate::models::{ModelBlend, RenderSubmesh, WmoBatchClass, remap_submesh};
 
 /// MLIQ grid spacing in yards, the reference's `[0x810cc0]` (`0x40855555`): the water
 /// (`0x6b6420`/`0x6b6630`) and magma/slime (`0x6b68f0`) kernels both place vertex `(i, j)` at
@@ -349,11 +349,7 @@ fn portal_distance(p: [f32; 3], poly: &[[f32; 3]], plane: [f32; 4]) -> f32 {
         let d = [wp[0] - e[0] * t, wp[1] - e[1] * t, wp[2] - e[2] * t];
         best = best.min((d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt());
     }
-    if inside {
-        0.0
-    } else {
-        best
-    }
+    if inside { 0.0 } else { best }
 }
 
 /// One byte of the white-lerp (`0x6c43d0`): the bits of `(255 − ch)·t + ch + 512` as f32, `>> 14`.

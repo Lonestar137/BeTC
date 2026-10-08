@@ -9,12 +9,12 @@ use std::collections::HashMap;
 use anyhow::{Context, Result};
 use benilla_dbc::{FieldType, Schema, SchemaField};
 
-use crate::dbc::{f32_at, i32_at, parse, str_at, u32_at};
 use crate::Chain;
+use crate::dbc::{f32_at, i32_at, parse, str_at, u32_at};
 
 pub mod chain_effects;
 
-pub use chain_effects::{ChainEffect, ChainProc, CHAIN_MAX_BEAMS};
+pub use chain_effects::{CHAIN_MAX_BEAMS, ChainEffect, ChainProc};
 
 const SPELL_VISUAL: &str = "DBFilesClient\\SpellVisual.dbc";
 const SPELL_VISUAL_KIT: &str = "DBFilesClient\\SpellVisualKit.dbc";

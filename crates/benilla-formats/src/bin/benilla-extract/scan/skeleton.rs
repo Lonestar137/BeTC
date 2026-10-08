@@ -85,7 +85,7 @@ struct RawBoneTrack {
 }
 
 impl RawBoneTrack {
-    fn read(b: &[u8], o: usize, comps: usize) -> Option<Self> {
+    fn read(b: &[u8], o: usize, comps: usize, value_size: usize) -> Option<Self> {
         let u32_at = |p: usize| -> Option<u32> {
             b.get(p..p + 4)
                 .map(|s| u32::from_le_bytes(s.try_into().unwrap()))
@@ -105,7 +105,7 @@ impl RawBoneTrack {
         let ranges = (0..rn)
             .map_while(|i| Some((u32_at(ro + i * 8)?, u32_at(ro + i * 8 + 4)?)))
             .collect();
-        let stride = comps * 4;
+        let stride = value_size;
         let n = tn.min(vn);
         let mut ts = Vec::with_capacity(n);
         let mut vals = Vec::with_capacity(n);
@@ -114,9 +114,24 @@ impl RawBoneTrack {
             let mut v = [0.0f32; 4];
             let mut ok = true;
             for (c, slot) in v.iter_mut().take(comps).enumerate() {
-                match f32_at(vo + i * stride + c * 4) {
-                    Some(f) => *slot = f,
-                    None => ok = false,
+                let at = vo + i * stride + c * if value_size == 8 && comps == 4 { 2 } else { 4 };
+                if value_size == 8 && comps == 4 {
+                    match u16_at(at) {
+                        Some(raw) => {
+                            let raw = raw as i16;
+                            *slot = if raw < 0 {
+                                (f32::from(raw) + 32768.0) / 32767.0
+                            } else {
+                                (f32::from(raw) - 32767.0) / 32767.0
+                            };
+                        }
+                        None => ok = false,
+                    }
+                } else {
+                    match f32_at(at) {
+                        Some(f) => *slot = f,
+                        None => ok = false,
+                    }
                 }
             }
             if !ok {
@@ -263,6 +278,9 @@ pub fn bonescan(chain: &mut Chain, prefix: Option<&str>) -> Result<()> {
         if b.len() < 0x40 || &b[0..4] != b"MD20" {
             continue;
         }
+        let Some(layout) = benilla_formats::m2_bone_layout(&b) else {
+            continue;
+        };
         scanned += 1;
         let u32_at = |o: usize| -> usize {
             b.get(o..o + 4)
@@ -290,12 +308,16 @@ pub fn bonescan(chain: &mut Chain, prefix: Option<&str>) -> Result<()> {
         let (bn, bo) = (u32_at(0x34), u32_at(0x38));
         let (mut m_step, mut m_empty, mut m_edge) = (0u64, 0u64, 0u64);
         for bi in 0..bn {
-            let brec = bo + bi * 0x6c;
-            if brec + 0x6c > b.len() {
+            let brec = bo + bi * layout.stride;
+            if brec + layout.stride > b.len() {
                 break;
             }
-            for (off, comps, ch) in [(0x0c, 3, "trans"), (0x28, 4, "rot"), (0x44, 3, "scale")] {
-                let Some(tr) = RawBoneTrack::read(&b, brec + off, comps) else {
+            for (off, comps, size, ch) in [
+                (layout.translation, 3, 12, "trans"),
+                (layout.rotation, 4, layout.rotation_value_size, "rot"),
+                (layout.scale, 3, 12, "scale"),
+            ] {
+                let Some(tr) = RawBoneTrack::read(&b, brec + off, comps, size) else {
                     continue;
                 };
                 if tr.ts.is_empty() {
@@ -411,13 +433,18 @@ pub fn bonescan(chain: &mut Chain, prefix: Option<&str>) -> Result<()> {
         // head or tail sample from the window.
         for a in benilla_formats::parse_m2_animations(&b) {
             for bk in &a.bones {
-                for (off, comps, emitted) in [
-                    (0x0c, 3, bk.translation.len()),
-                    (0x28, 4, bk.rotation.len()),
-                    (0x44, 3, bk.scale.len()),
+                for (off, comps, size, emitted) in [
+                    (layout.translation, 3, 12, bk.translation.len()),
+                    (
+                        layout.rotation,
+                        4,
+                        layout.rotation_value_size,
+                        bk.rotation.len(),
+                    ),
+                    (layout.scale, 3, 12, bk.scale.len()),
                 ] {
-                    let brec = bo + bk.bone as usize * 0x6c;
-                    let Some(tr) = RawBoneTrack::read(&b, brec + off, comps) else {
+                    let brec = bo + bk.bone as usize * layout.stride;
+                    let Some(tr) = RawBoneTrack::read(&b, brec + off, comps, size) else {
                         continue;
                     };
                     if tr.gseq != 0xffff {

@@ -9,7 +9,7 @@
 use std::io::{Cursor, Read, Seek, SeekFrom};
 
 use crate::Chain;
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 
 use crate::terrain::TILE_SIZE;
 
@@ -281,7 +281,7 @@ mod tests {
         assert_eq!(INNER_N, 256);
         assert_eq!(MARE_BYTES, 1090);
         assert_eq!(OUTER_N + INNER_N, 545); // verts per tile
-                                            // 16×16 cells × 4 tris × 3: the reference's draw count.
+        // 16×16 cells × 4 tris × 3: the reference's draw count.
         assert_eq!(INNER_EDGE * INNER_EDGE * 12, 3072);
         assert!((CHUNK_SIZE - TILE_SIZE / 16.0).abs() < 1e-3);
     }

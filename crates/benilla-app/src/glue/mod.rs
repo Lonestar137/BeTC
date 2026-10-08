@@ -12,7 +12,7 @@ use bevy::ecs::entity::EntityHashSet;
 use bevy::prelude::*;
 use bevy::ui::FocusPolicy;
 
-use art::{tc_rect, GlueArt, BTN_BG, BTN_HOVER, BUTTON_TC, GOLD};
+use art::{BTN_BG, BTN_HOVER, BUTTON_TC, GOLD, GlueArt, tc_rect};
 use widgets::{ArtSwap, GlueBtn, GlueCaption, GlueDisabled, OutlineCopy};
 
 /// The glue widgets' look passes, registered once for every glue screen.
@@ -136,10 +136,20 @@ pub(crate) const ROTATE_RATE: f32 = 120.0 * std::f32::consts::PI / 180.0;
 /// the window height, so an authored coordinate draws at `value · this`. Every spawn site and
 /// rescale check reads it here.
 ///
-/// No lower clamp: a floor would push the bottom controls off a short window. Capped at 2.2 on a
-/// tall window; whether the reference caps its glue scale is untraced.
+/// Fit the 1024×768 authored width as well as height on narrow windows. No lower clamp: a floor
+/// would push controls off-screen. Capped at 2.2 on a large window.
 pub(crate) fn screen_scale(window: Option<&Window>) -> f32 {
-    window.map(|w| (w.height() / 768.0).min(2.2)).unwrap_or(1.0)
+    window
+        .map(|w| (w.height() / 768.0).min(w.width() / 1024.0).min(2.2))
+        .unwrap_or(1.0)
+}
+
+fn glue_canvas_vertical_bars(window: Option<&Window>) -> (f32, f32) {
+    let Some(window) = window.filter(|w| w.width() / w.height().max(1.0) < 4.0 / 3.0) else {
+        return (0.0, 0.0);
+    };
+    let bar = ((window.height() - 768.0 * screen_scale(Some(window))) * 0.5).max(0.0);
+    (bar, bar)
 }
 
 /// The rect a glue screen's chrome lays out into: the pillarboxed scene's box, not the window, as
@@ -187,11 +197,15 @@ pub(crate) fn fit_glue_canvas(
         window,
         window.and_then(|w| crate::portrait::glue_box_aspect(w.width() / w.height().max(1.0))),
     );
+    let (top, bottom) = glue_canvas_vertical_bars(window);
     let (left, right) = (Val::Px(left), Val::Px(right));
+    let (top, bottom) = (Val::Px(top), Val::Px(bottom));
     for mut node in &mut canvases {
-        if node.left != left || node.right != right {
+        if node.left != left || node.right != right || node.top != top || node.bottom != bottom {
             node.left = left;
             node.right = right;
+            node.top = top;
+            node.bottom = bottom;
         }
     }
 }
@@ -340,8 +354,8 @@ mod tests {
         FallbackFace, GlueBtn, GlueCaption, GlueDisabled, Hilight, LockHighlight,
     };
     use super::{
-        glue_button_visuals, glue_canvas, glue_clicks, glue_hilights, screen_scale, FocusPolicy,
-        GlueArt, GlueClicks, GOLD,
+        FocusPolicy, GOLD, GlueArt, GlueClicks, glue_button_visuals, glue_canvas,
+        glue_canvas_vertical_bars, glue_clicks, glue_hilights, screen_scale,
     };
     use bevy::prelude::*;
     use bevy::window::WindowResolution;
@@ -492,6 +506,20 @@ mod tests {
                 LOWEST_CONTROL * s
             );
         }
+    }
+
+    #[test]
+    fn a_narrow_window_scales_and_centers_the_authored_canvas() {
+        let window = Window {
+            resolution: WindowResolution::new(637, 956),
+            ..default()
+        };
+        let scale = screen_scale(Some(&window));
+        let (top, bottom) = glue_canvas_vertical_bars(Some(&window));
+        assert!(1024.0 * scale <= window.width());
+        assert!(768.0 * scale <= window.height());
+        assert!((top - bottom).abs() < f32::EPSILON);
+        assert!(top > 0.0, "the reduced 4:3 canvas is vertically centered");
     }
 
     // ── The sheen ────────────────────────────────────────────────────────────────────────────

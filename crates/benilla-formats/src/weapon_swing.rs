@@ -6,8 +6,8 @@
 use anyhow::{Context, Result};
 use benilla_dbc::{FieldType, Schema, SchemaField};
 
-use crate::dbc::{parse, u32_at};
 use crate::Chain;
+use crate::dbc::{parse, u32_at};
 
 /// The reference's `swingType` bound: the play site (`0x457f63`) and the loader both stop at 3.
 const SWING_TYPES: usize = 3;

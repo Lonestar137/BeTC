@@ -7,7 +7,7 @@ use benilla_formats::{
 };
 use bevy::animation::animatable::Animatable;
 use bevy::animation::animation_curves::{AnimatableCurve, AnimatableKeyframeCurve};
-use bevy::animation::{animated_field, AnimationClip, AnimationTargetId};
+use bevy::animation::{AnimationClip, AnimationTargetId, animated_field};
 use bevy::asset::RenderAssetUsages;
 use bevy::math::Mat3;
 use bevy::mesh::{Indices, PrimitiveTopology, VertexAttributeValues};
@@ -283,13 +283,14 @@ pub(crate) fn arm_subtree_roots(
             .iter()
             .find(|a| a.id == hand_attach_id)
             .map(|a| a.bone as usize)?;
-        loop {
+        for _ in 0..skel.bones.len() {
             let b = skel.bones.get(bone)?;
             if matches!(b.key_bone, 2 | 3) {
                 return Some(bone);
             }
             bone = usize::try_from(b.parent).ok()?;
         }
+        None
     };
     Some((shoulder_of(1)?, shoulder_of(2)?))
 }
@@ -320,7 +321,8 @@ pub(crate) fn finger_subtree_roots(skel: &Skeleton) -> [Vec<usize>; 2] {
 /// Whether bone `i` is `root` or one of its descendants.
 pub(crate) fn in_subtree(skel: &Skeleton, i: usize, root: usize) -> bool {
     let mut cur = i;
-    loop {
+    // Malformed M2s can contain cyclic parent links; stop after every bone has been visited.
+    for _ in 0..skel.bones.len() {
         if cur == root {
             return true;
         }
@@ -333,6 +335,7 @@ pub(crate) fn in_subtree(skel: &Skeleton, i: usize, root: usize) -> bool {
             None => return false,
         }
     }
+    false
 }
 
 /// Bake the [`M2Attachment`] table to bone-local offsets, dropping a record with a bad bone.
@@ -744,6 +747,41 @@ fn merged_static_mesh_impl(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn skeleton_ancestry_walks_stop_on_parent_cycles() {
+        let bone = |parent, key_bone| benilla_formats::SkeletonBone {
+            parent,
+            pivot: [0.0; 3],
+            key_bone,
+            billboard: None,
+            parent_arm: None,
+        };
+        let skeleton = benilla_formats::Skeleton {
+            bones: vec![bone(-1, -1), bone(2, 8), bone(1, 15)],
+        };
+
+        assert!(in_subtree(&skeleton, 2, 1));
+        assert!(!in_subtree(&skeleton, 1, 0));
+        assert_eq!(
+            arm_subtree_roots(
+                &skeleton,
+                &[
+                    ModelAttachment {
+                        id: 1,
+                        bone: 1,
+                        offset: Vec3::ZERO,
+                    },
+                    ModelAttachment {
+                        id: 2,
+                        bone: 2,
+                        offset: Vec3::ZERO,
+                    },
+                ],
+            ),
+            None
+        );
+    }
 
     /// One sequence record with the given bones, the rest neutral.
     fn sequence(duration: f32, bones: Vec<benilla_formats::BoneKeys>) -> ModelAnimation {

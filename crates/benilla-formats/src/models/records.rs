@@ -3,6 +3,8 @@
 
 use benilla_bytes::ByteExt;
 
+use super::m2_bone_layout;
+
 /// An M2 light (the MD20 lights array, loaded by `0x70ebd0`), `position` relative to `bone` (`-1`
 /// for the origin). The reference commits a point light on a placed prop as a hardware `GL_LIGHT`
 /// with the fixed attenuation `1 / (0.7·d + 0.03·d²)`, diffuse only; the glue scenes light their
@@ -111,24 +113,37 @@ fn quat_rotate_z(q: [f32; 4]) -> [f32; 3] {
     ]
 }
 
-fn track_first_quat(bytes: &[u8], track: usize) -> Option<[f32; 4]> {
+fn track_first_quat(bytes: &[u8], track: usize, value_size: usize) -> Option<[f32; 4]> {
     let nval = bytes.u32_at(track + 0x14)? as usize;
     let ofs = bytes.u32_at(track + 0x18)? as usize;
     if nval == 0 {
         return None;
     }
-    Some([
-        bytes.f32_at(ofs)?,
-        bytes.f32_at(ofs + 4)?,
-        bytes.f32_at(ofs + 8)?,
-        bytes.f32_at(ofs + 12)?,
-    ])
+    if value_size == 8 {
+        let component = |offset| bytes.u16_at(offset).map(super::m2_quat_component);
+        Some([
+            component(ofs)?,
+            component(ofs + 2)?,
+            component(ofs + 4)?,
+            component(ofs + 6)?,
+        ])
+    } else {
+        Some([
+            bytes.f32_at(ofs)?,
+            bytes.f32_at(ofs + 4)?,
+            bytes.f32_at(ofs + 8)?,
+            bytes.f32_at(ofs + 12)?,
+        ])
+    }
 }
 
 /// A bone's model-space +Z at the track origin, its first rotation keys composed up the parent
-/// chain. Bone table `count@0x34`/`ofs@0x38`, stride `0x6c`: flags `u32@4` (`0x04` keeps the
-/// root's orientation), parent `i16@8`, rotation `@0x28`. Rotation animation is not applied.
+/// chain. Bone table `count@0x34`/`ofs@0x38`; the versioned layout gives flags `u32@4`, parent
+/// `i16@8`, and the first rotation track. Rotation animation is not applied.
 fn bone_z_axis(bytes: &[u8], bone: i16) -> [f32; 3] {
+    let Some(layout) = m2_bone_layout(bytes) else {
+        return [0.0, 0.0, 1.0];
+    };
     let (Some(count), Some(ofs)) = (bytes.u32_at(0x34), bytes.u32_at(0x38)) else {
         return [0.0, 0.0, 1.0];
     };
@@ -140,8 +155,9 @@ fn bone_z_axis(bytes: &[u8], bone: i16) -> [f32; 3] {
         if idx < 0 || idx as usize >= count {
             break;
         }
-        let rec = ofs + idx as usize * 0x6c;
-        if let Some(q) = track_first_quat(bytes, rec + 0x28) {
+        let rec = ofs + idx as usize * layout.stride;
+        if let Some(q) = track_first_quat(bytes, rec + layout.rotation, layout.rotation_value_size)
+        {
             chain.push(q);
         }
         let flags = bytes.u32_at(rec + 4).unwrap_or(0);
@@ -306,6 +322,7 @@ mod tests {
     /// A 2-bone chain: the root turned 90° about +X, the child 90° about its own +Z.
     fn two_bone_chain() -> Vec<u8> {
         let mut b = vec![0u8; 0x400];
+        b[4..8].copy_from_slice(&256u32.to_le_bytes());
         let put_u32 =
             |b: &mut Vec<u8>, at: usize, v: u32| b[at..at + 4].copy_from_slice(&v.to_le_bytes());
         let put_quat = |b: &mut Vec<u8>, at: usize, q: [f32; 4]| {

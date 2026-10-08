@@ -7,8 +7,8 @@
 use anyhow::{Context, Result};
 use benilla_dbc::{FieldType, Schema, SchemaField};
 
-use crate::dbc::{parse, str_at, u32_at};
 use crate::Chain;
+use crate::dbc::{parse, str_at, u32_at};
 
 const GM_TICKET_CATEGORY: &str = "DBFilesClient\\GMTicketCategory.dbc";
 

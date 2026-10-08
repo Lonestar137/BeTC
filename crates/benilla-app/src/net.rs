@@ -21,6 +21,10 @@ use benilla_world::schedule::WorldStage;
 
 mod apply;
 pub(crate) mod handlers;
+#[cfg(feature = "network")]
+pub(crate) mod io;
+#[cfg(not(feature = "network"))]
+#[path = "net/io_offline.rs"]
 pub(crate) mod io;
 mod motion;
 mod objects;
@@ -39,9 +43,11 @@ use motion::{
 };
 // `pub(crate)`: `creature_anim` reads the shuffle latch it produces, and a test runs both.
 pub(crate) use motion::drive_display_facing;
+#[cfg(feature = "dev")]
+pub(crate) use motion::ground_derived;
 pub(crate) use motion::{
-    ground_derived, grounded_y, jump_seed, CreatureSwimming, FacingStep, RemoteMotion, Spline,
-    SplineStopped, UnitMoveModes,
+    grounded_y, jump_seed, CreatureSwimming, FacingStep, RemoteMotion, Spline, SplineStopped,
+    UnitMoveModes,
 };
 // Only the ground-census probe reads this, so a build without the instruments leaves it unused.
 // Not a `cfg`: seam knowledge lives in three fixed places, and this file is not one of them.
@@ -60,6 +66,15 @@ pub(crate) struct NetPlugin {
 #[derive(Resource)]
 pub(crate) struct NetOffline;
 
+/// Local roster requests and synthetic session events, used only by the build without transport.
+#[cfg(feature = "offline")]
+#[derive(Resource)]
+pub(crate) struct OfflineChannels {
+    pub(crate) picks: Receiver<CharRequest>,
+    pub(crate) events: Sender<SessionEvent>,
+    pub(crate) commands: Receiver<ClientCommand>,
+}
+
 impl Plugin for NetPlugin {
     fn build(&self, app: &mut App) {
         // The release-on-enter for the ask-once caches this plugin owns.
@@ -67,6 +82,14 @@ impl Plugin for NetPlugin {
         crate::query_cache::register::<crate::go_templates::GameObjectTemplates>(app);
         crate::query_cache::register::<crate::items::Items>(app);
         let handles = io::spawn_net(self.connect);
+        #[cfg(feature = "offline")]
+        if !self.connect {
+            app.insert_resource(OfflineChannels {
+                picks: handles.pick_receiver,
+                events: handles.event_sender.clone(),
+                commands: handles.command_receiver,
+            });
+        }
         if !self.connect {
             app.insert_resource(NetOffline);
         }

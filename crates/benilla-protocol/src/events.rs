@@ -88,9 +88,9 @@ pub enum SessionEnd {
 /// `AUTH_LOGON_FAILED_SUSPENDED` to realmd but `AUTH_OK` to the world server.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LoginRefusal {
-    /// realmd's logon-proof `AuthLogonResult` (`crate::AuthReject`).
+    /// realmd's logon-proof result.
     Logon(u8),
-    /// The world server's `SMSG_AUTH_RESPONSE` code (`crate::WorldAuthReject`).
+    /// The world server's `SMSG_AUTH_RESPONSE` code.
     World(u8),
 }
 
@@ -121,7 +121,7 @@ pub enum SessionEvent {
         realm: Option<String>,
     },
     /// A login failed before the roster; `refusal` is `None` for a transport failure. A `terminal`
-    /// one ([`crate::WardenRequired`]) no retry can fix: show `reason` and stop.
+    /// one with a terminal server requirement no retry can fix: show `reason` and stop.
     LoginFailed {
         refusal: Option<LoginRefusal>,
         reason: String,

@@ -5,7 +5,7 @@
 
 use std::time::Instant;
 
-use benilla_assets::{chunks_to_mesh, AdtTile};
+use benilla_assets::{AdtTile, chunks_to_mesh};
 use bevy::camera::primitives::MeshAabb;
 use bevy::prelude::*;
 

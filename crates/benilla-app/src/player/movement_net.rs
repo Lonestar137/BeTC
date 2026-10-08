@@ -47,6 +47,9 @@ const IN_MOTION: u32 = move_flags::ANY_MOVE
     | move_flags::FALLING_FAR
     | move_flags::SWIMMING
     | move_flags::ON_TRANSPORT;
+/// New direction keys are deferred in the air; unrelated packets keep the arc's existing directions.
+const DEFERRED_AIR_MOVE: u32 =
+    move_flags::FORWARD | move_flags::BACKWARD | move_flags::STRAFE_LEFT | move_flags::STRAFE_RIGHT;
 
 /// This frame's input to the `CMSG_MOVE_TIME_SKIPPED` report ([`stream_skipped_time`]).
 pub(super) struct SkipClock {
@@ -108,6 +111,11 @@ pub(super) fn stream_self_movement(
     // `|o| > 4π` unrelayed (`VerifyMovementInfo`, `GridDefines.h:203`), a stop included.
     let facing = player.face_yaw.rem_euclid(std::f32::consts::TAU);
     let wire_flags = move_flags_now & OUTBOUND_FLAG_MASK;
+    let packet_flags = if wire_flags & move_flags::FALLING != 0 {
+        (wire_flags & !DEFERRED_AIR_MOVE) | (player.airborne_dirs & DEFERRED_AIR_MOVE)
+    } else {
+        wire_flags
+    };
     // The jump tail, on every airborne packet: the take-off vertical speed and the horizontal
     // velocity frozen at take-off, in world XY.
     let wire_jump = (wire_flags & move_flags::FALLING != 0).then(|| {
@@ -134,7 +142,7 @@ pub(super) fn stream_self_movement(
             guid: ack.guid,
             counter: ack.counter,
             speed: ack.speed,
-            flags: wire_flags,
+            flags: packet_flags,
             pos: wow_pos,
             orientation: facing,
             pitch: swim_pitch,
@@ -156,7 +164,7 @@ pub(super) fn stream_self_movement(
             guid: k.guid,
             counter: k.counter,
             launch: k.launch,
-            flags: wire_flags,
+            flags: packet_flags,
             pos: wow_pos,
             orientation: facing,
             transport,
@@ -174,17 +182,17 @@ pub(super) fn stream_self_movement(
                 bevy::log::info!(
                     "cast-trace: SEND move {:?} flags={:#x} pos=[{:.3},{:.3},{:.3}] o={:.3}",
                     $kind,
-                    wire_flags,
+                    packet_flags,
                     wow_pos[0],
                     wow_pos[1],
                     wow_pos[2],
                     facing
                 );
             }
-            super::move_trace::sent($kind, wire_flags, facing, wow_pos);
+            super::move_trace::sent($kind, packet_flags, facing, wow_pos);
             let _ = sender.send(ClientCommand::Move {
                 kind: $kind,
-                flags: wire_flags,
+                flags: packet_flags,
                 pos: wow_pos,
                 orientation: facing,
                 // Written only while SWIMMING is set.
@@ -775,6 +783,7 @@ mod tests {
         let (tx, rx) = crossbeam_channel::unbounded();
         let mut player = Player {
             move_flags: move_flags::FALLING, // the standing jump: airborne, no direction
+            airborne_dirs: move_flags::FORWARD,
             // Post-nudge: the mover re-seeded it this frame (Bevy −Z = WoW +X, so |xy| = 2.5).
             horiz_vel: bevy::prelude::Vec3::new(0.0, 0.0, -2.5),
             ..Default::default()
@@ -844,10 +853,85 @@ mod tests {
     }
 
     #[test]
+    fn facing_does_not_publish_a_deferred_air_start_before_landing() {
+        let (tx, rx) = crossbeam_channel::unbounded();
+        let mut player = Player {
+            move_flags: move_flags::STRAFE_RIGHT | move_flags::FALLING,
+            airborne_dirs: move_flags::STRAFE_RIGHT,
+            ..Default::default()
+        };
+        player.face_yaw = 1.0;
+        let arc = || ArcEdges {
+            jumped: false,
+            wire_launch: false,
+            air_nudged: false,
+            landed: false,
+            fall_time: 300,
+        };
+
+        stream_self_movement(
+            &tx,
+            &mut player,
+            move_flags::FORWARD | move_flags::STRAFE_RIGHT | move_flags::FALLING,
+            0.0,
+            arc(),
+            0.3,
+            &[],
+            None,
+            None,
+            no_skip(),
+        );
+        let ClientCommand::Move { kind, flags, .. } =
+            rx.try_recv().expect("the facing update still streams")
+        else {
+            panic!("expected a Move command");
+        };
+        assert_eq!(kind, MoveKind::SetFacing);
+        assert_eq!(
+            flags & DEFERRED_AIR_MOVE,
+            move_flags::STRAFE_RIGHT,
+            "the new forward press stays deferred; the active strafe remains on the arc"
+        );
+
+        stream_self_movement(
+            &tx,
+            &mut player,
+            move_flags::FORWARD | move_flags::STRAFE_RIGHT,
+            0.0,
+            ArcEdges {
+                landed: true,
+                fall_time: 800,
+                ..arc()
+            },
+            0.8,
+            &[],
+            None,
+            None,
+            no_skip(),
+        );
+        let ClientCommand::Move { kind, flags, .. } = rx
+            .try_recv()
+            .expect("the landing reports the live direction")
+        else {
+            panic!("expected a Move command");
+        };
+        assert_eq!(kind, MoveKind::FallLand);
+        assert_eq!(
+            flags & DEFERRED_AIR_MOVE,
+            move_flags::FORWARD | move_flags::STRAFE_RIGHT
+        );
+        assert!(
+            rx.try_recv().is_err(),
+            "landing itself carries the deferred start"
+        );
+    }
+
+    #[test]
     fn airborne_turn_transitions_and_facing_still_stream() {
         let (tx, rx) = crossbeam_channel::unbounded();
         let mut player = Player {
             move_flags: move_flags::FORWARD | move_flags::FALLING,
+            airborne_dirs: move_flags::FORWARD,
             ..Default::default()
         };
         stream_self_movement(

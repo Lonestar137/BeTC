@@ -92,6 +92,9 @@ pub(super) fn sandbox(lua: &Lua) -> mlua::Result<()> {
 /// Install the stdlib layer: the bare globals, `time`/`date` and the positional `format`.
 pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
     install_error_handler(lua)?;
+    // The offline UI has no tainted addon execution or combat lockdown phase.
+    lua.globals()
+        .set("issecure", lua.create_function(|_, ()| Ok(true))?)?;
     install_time(lua)?;
     // Before the Lua layer, whose `debugprofile*` pair keeps its own `GetTime`.
     super::clock::install(lua)?;
@@ -326,6 +329,25 @@ do
 
     string.format = reformat
     format = reformat
+end
+
+-- The stock controls panel asks for these client-level modifier assignments during XML load.
+MODIFIER_CLICK = MODIFIER_CLICK or {}
+local modifierClickDefaults = {
+    AUTOLOOTTOGGLE = "SHIFT",
+    CHATLINK = "SHIFT",
+    COMPAREITEMS = "SHIFT",
+    DRESSUP = "CTRL",
+    OPENALLBAGS = "SHIFT",
+    PICKUPACTION = "SHIFT",
+    SELFCAST = "ALT",
+}
+function GetModifiedClick(name)
+    return MODIFIER_CLICK[name] or modifierClickDefaults[name]
+end
+function SetModifiedClick(name, key)
+    if modifierClickDefaults[name] == nil then return end
+    MODIFIER_CLICK[name] = key
 end
 "#;
 

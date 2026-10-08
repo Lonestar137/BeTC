@@ -89,11 +89,7 @@ fn sstr_hash_folded(bytes: &[u8]) -> u32 {
             .wrapping_add(3)
             .wrapping_add(s1);
     }
-    if s1 != 0 {
-        s1
-    } else {
-        1
-    }
+    if s1 != 0 { s1 } else { 1 }
 }
 
 /// `0x41aab0`'s malformed-byte sentinel; above 0xff, so a malformed run stays inside its word.
@@ -270,7 +266,7 @@ fn truncate_utf8(s: &str, cap: usize) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{load_language_words, Chain};
+    use crate::{Chain, load_language_words};
 
     /// `(language, skill, input, expected)`: the reference's `0x49b560` output, emulated over the
     /// shipped `LanguageWords.dbc`.

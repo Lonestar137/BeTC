@@ -18,7 +18,7 @@ trace_chrome = ["benilla-app/trace_chrome"]
 
 [dependencies]
 # `default-features = false`, or `--no-default-features` here still builds benilla-app with `dev`.
-benilla-app = { path = "../benilla-app", default-features = false }
+benilla-app = { path = "../benilla-app", default-features = false, features = ["network"] }
 
 [build-dependencies]
 benilla-buildstamp = { path = "../benilla-buildstamp" }

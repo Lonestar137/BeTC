@@ -16,9 +16,9 @@ use std::collections::HashMap;
 use anyhow::{Context, Result};
 use benilla_dbc::{FieldType, Schema, SchemaField};
 
-use super::{blend_alpha, weather_slot, LightCatalog, Submersion, FALLBACK_LIGHT_ID, SLOT_CLEAR};
-use crate::dbc::{parse, str_at, u32_at};
+use super::{FALLBACK_LIGHT_ID, LightCatalog, SLOT_CLEAR, Submersion, blend_alpha, weather_slot};
 use crate::Chain;
+use crate::dbc::{parse, str_at, u32_at};
 
 /// Flag `0x1`: the model's sequence 0 plays across the game day, `time = duration × day fraction`.
 pub const SKYBOX_FULL_DAY: u32 = 0x1;
@@ -157,7 +157,11 @@ impl LightCatalog {
             0 => params[SLOT_CLEAR],
             p => p,
         };
-        of(param).or_else(|| (slot != SLOT_CLEAR).then(|| of(params[SLOT_CLEAR])).flatten())
+        of(param).or_else(|| {
+            (slot != SLOT_CLEAR)
+                .then(|| of(params[SLOT_CLEAR]))
+                .flatten()
+        })
     }
 
     /// The weighted skyboxes at `pos` for the living: the global (or fallback) light at alpha 1,

@@ -473,7 +473,7 @@ type EyeVert = ((f32, f32, f32), [f32; 2]);
 
 /// Clip an eye-space triangle to `depth ≥ near`, fanning what is left back into triangles.
 fn clip_near(tri: &[EyeVert], near: f32) -> Vec<[EyeVert; 3]> {
-    let inside = |p: &EyeVert| p.0 .2 >= near;
+    let inside = |p: &EyeVert| p.0.2 >= near;
     let mut poly: Vec<EyeVert> = Vec::with_capacity(4);
     for i in 0..3 {
         let a = tri[i];
@@ -483,10 +483,10 @@ fn clip_near(tri: &[EyeVert], near: f32) -> Vec<[EyeVert; 3]> {
             poly.push(a);
         }
         if ia != ib {
-            let t = (near - a.0 .2) / (b.0 .2 - a.0 .2);
+            let t = (near - a.0.2) / (b.0.2 - a.0.2);
             let lerp = |p: f32, q: f32| p + (q - p) * t;
             poly.push((
-                (lerp(a.0 .0, b.0 .0), lerp(a.0 .1, b.0 .1), near),
+                (lerp(a.0.0, b.0.0), lerp(a.0.1, b.0.1), near),
                 [lerp(a.1[0], b.1[0]), lerp(a.1[1], b.1[1])],
             ));
         }

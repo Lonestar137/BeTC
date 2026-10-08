@@ -247,7 +247,7 @@ fn gettime_starts_at_zero_and_tracks_tick() {
     assert!((t - 0.5).abs() < 1e-6, "two 0.25s ticks = 0.5 (got {t})");
 }
 
-/// The rest of the engine's bare string and math globals, and the later-client names it lacks.
+/// The rest of the engine's bare string and math globals, plus the offline secure-context answer.
 #[test]
 fn the_rest_of_the_bare_globals() {
     let s = script();
@@ -260,7 +260,7 @@ fn the_rest_of_the_bare_globals() {
         -- string.match/gmatch, and claiming otherwise misleads an addon that feature-detects.
         assert(strmatch == nil and gmatch == nil and strrev == nil)
         assert(strlenutf8 == nil and strcmputf8i == nil)
-        assert(securecall == nil and hooksecurefunc == nil and issecure == nil)
+        assert(securecall == nil and hooksecurefunc == nil and issecure())
 
         -- math family
         assert(exp(0) == 1 and log(1) == 0 and log10(100) == 2)
@@ -278,8 +278,28 @@ fn the_rest_of_the_bare_globals() {
     .unwrap();
 }
 
-/// 1.12 runs Lua 5.0 (`0x811b30`, "Lua: Lua 5.0 Copyright..."); this VM is mlua's `lua51`, and the
-/// 5.0 idioms vanilla addons use run on it, above all the implicit vararg `arg` table.
+#[test]
+fn modified_click_settings_have_tbc_defaults_and_can_be_changed() {
+    let script = script();
+    assert_eq!(
+        script
+            .eval::<String>("return GetModifiedClick('AUTOLOOTTOGGLE')")
+            .unwrap(),
+        "SHIFT"
+    );
+    script
+        .run("SetModifiedClick('SELFCAST', 'CTRL')")
+        .unwrap();
+    assert_eq!(
+        script
+            .eval::<String>("return GetModifiedClick('SELFCAST')")
+            .unwrap(),
+        "CTRL"
+    );
+}
+
+/// TBC FrameXML needs Lua 5.1 syntax; legacy libraries also use Lua 5.0's implicit vararg `arg`
+/// table and standard-library aliases.
 #[test]
 fn the_lua_5_0_dialect_vanilla_addons_are_written_in_runs_here() {
     let s = script();
@@ -290,10 +310,8 @@ fn the_lua_5_0_dialect_vanilla_addons_are_written_in_runs_here() {
         local n, first, second = varargs("a", "b")
         assert(n == 2 and first == "a" and second == "b")
 
-        -- 5.1's parser synthesizes `arg` only for a vararg function that does NOT also mention
-        -- `...` in its body, so mixing the two spellings in one function would leave `arg` nil.
-        -- `...` as a value is not in this grammar at all, so nothing can clear the flag and
-        -- EVERY vararg function has its `arg`.
+        -- The compatibility parser keeps the Lua 5.0 `arg` table even when the function also
+        -- uses TBC's Lua 5.1 vararg expression.
         local function fixed_and_varargs(a, ...) return a, arg.n, arg[1] end
         local a, n, first = fixed_and_varargs("a", "b", "c")
         assert(a == "a" and n == 2 and first == "b")
@@ -302,11 +320,10 @@ fn the_lua_5_0_dialect_vanilla_addons_are_written_in_runs_here() {
         assert(table.getn({ 1, 2, 3 }) == 3)
         assert(string.gfind ~= nil)          -- 5.1 renamed this to string.gmatch
         assert(math.mod(7, 3) == 1)
-        -- ...and the 5.1 OPERATORS 5.0 lacks are not in the grammar: `%`, `#`, and `...` as a
-        -- value all fail to compile, exactly as they do on the 1.12 client.
-        assert(loadstring("return 7 % 3") == nil)
-        assert(loadstring("return #({1})") == nil)
-        assert(loadstring("return function(...) return ... end") == nil)
+        -- TBC's Lua 5.1 operators and vararg expressions compile as stock FrameXML expects.
+        assert(loadstring("return 7 % 3") ~= nil)
+        assert(loadstring("return #({1})") ~= nil)
+        assert(loadstring("return function(...) return ... end") ~= nil)
     "##,
     )
     .unwrap();

@@ -86,6 +86,8 @@ mod minimap;
 mod nameplates;
 mod names;
 mod net;
+#[cfg(feature = "offline")]
+mod offline;
 mod npc_text;
 mod pending_item_ops;
 /// Ships in part (the FPS journal and the clocks it reads); the rest is `dev`.
@@ -222,24 +224,39 @@ pub use benilla_protocol::{messages::ObjectType, ObjectFields};
 pub use net::Objects;
 pub use target::Interact;
 
+/// The process mode is fixed before plugins are installed; offline mode never starts a network IO
+/// thread and enters the local roster instead of the inherited login screen.
+#[derive(Resource, Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum GameMode {
+    #[default]
+    Networked,
+    Offline,
+}
+
 /// Builds and runs the client app. `build` is the launcher's compile-time git stamp, passed in as
 /// data so the sha lives in the shim's fingerprint and a commit does not recompile this crate.
 pub fn run(build: BuildId) -> AppExit {
-    launch(build, None)
+    launch(build, None, GameMode::Networked)
+}
+
+/// Launch the local game without the network/auth feature; available to the offline launcher.
+#[cfg(feature = "offline")]
+pub fn run_offline(build: BuildId) -> AppExit {
+    launch(build, None, GameMode::Offline)
 }
 
 /// [`run`], plus `extend` adding a crate's own plugins: how a feature 1.12.1 lacks is built on top
 /// of benilla (`examples/extended_launcher.rs`), the build marked `extended` wherever it is named.
 /// `extend` gets the client fully built and runs before the probe fleet, which sees what it adds.
 pub fn run_with(build: BuildId, extend: impl FnOnce(&mut App)) -> AppExit {
-    launch(build, Some(Box::new(extend)))
+    launch(build, Some(Box::new(extend)), GameMode::Networked)
 }
 
 /// What a crate on top of benilla adds to the built app ([`run_with`]).
 type Extension<'a> = Box<dyn FnOnce(&mut App) + 'a>;
 
 /// The one body behind [`run`] and [`run_with`], not generic, so a launcher compiles none of it.
-fn launch(build: BuildId, extend: Option<Extension<'_>>) -> AppExit {
+fn launch(build: BuildId, extend: Option<Extension<'_>>, mode: GameMode) -> AppExit {
     // `WOW_HOVER_LOG_REPORT=<csv>` and `WOW_CAPTURE=list` print and exit before any setup.
     if let Ok(path) = std::env::var("WOW_HOVER_LOG_REPORT") {
         dev::report_recorded_hover_log(&path);
@@ -272,6 +289,7 @@ fn launch(build: BuildId, extend: Option<Extension<'_>>) -> AppExit {
     let mut app = App::new();
     // The panel footer and the build banner read the stamp back.
     app.insert_resource(build);
+    app.insert_resource(mode);
     // Static-scene transform tracking pinned on: the default threshold re-decides every frame with
     // two full scans of the rows the tracking exists to skip, and this scene is static-heavy. It
     // costs more only when most rows move in one frame (a load burst into a near-empty world).
@@ -428,7 +446,12 @@ fn launch(build: BuildId, extend: Option<Extension<'_>>) -> AppExit {
     // load-bearing ordering edges and the test that builds it headless.
     .add_plugins(game_plugins::GamePlugins {
         connect: !capturing,
-        start: run_mode::start_state(),
+        mode,
+        start: if mode == GameMode::Offline {
+            char_select::ClientState::CharSelect
+        } else {
+            run_mode::start_state()
+        },
     });
 
     // benilla-assets' loaders go into the live `AssetServer`, so they register after `AssetPlugin`.

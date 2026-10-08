@@ -16,7 +16,7 @@
 use bevy::prelude::*;
 use std::collections::HashMap;
 
-use benilla_formats::{load_loading_screens, LoadingScreenCatalog};
+use benilla_formats::{LoadingScreenCatalog, load_loading_screens};
 
 use benilla_assets::LockRecover;
 use benilla_assets::MapCatalogRes;
@@ -27,6 +27,7 @@ use benilla_world::world_map::CurrentMap;
 
 /// The cover's input half: while it is up the client takes no input (a source cut in `PreUpdate`).
 mod input;
+#[cfg(feature = "dev")]
 pub(crate) use input::CoverInput;
 
 // The bar, from the `LoadingScreen.cpp` descriptor table at `0x7ffd34` (read by `0x407150`):
@@ -219,7 +220,9 @@ impl LoadingScreen {
     fn snap_landed(&mut self, map: Option<u32>) {
         if let (Some(raised), Some(dest)) = (self.map, map) {
             if raised != dest {
-                info!("loading screen: snap landed on map {dest} — raised for map {raised}, art holds");
+                info!(
+                    "loading screen: snap landed on map {dest} — raised for map {raised}, art holds"
+                );
             }
         }
         self.awaiting_snap = false;
@@ -571,13 +574,14 @@ fn drive_loading_screen(
             {
                 screen.last_wait_log = now;
                 info!(
-                    "loading screen: waiting {:.1}s — {}/{} resident, {} placements pending, \
+                    "loading screen: waiting {:.1}s — {}/{} resident, {} placements pending {:?}, \
                      {} colliders pending, {} merges pending, awaiting_snap={}, settling={}, \
                      warm={}, ui_pending={}",
                     now - screen.active_since,
                     progress.ready,
                     progress.total,
                     progress.placements_pending,
+                    progress.pending_placement_models,
                     progress.colliders_pending,
                     progress.merge_pending,
                     screen.awaiting_snap,

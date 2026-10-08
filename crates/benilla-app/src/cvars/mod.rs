@@ -1024,7 +1024,10 @@ fn session_values(world: &World) -> Vec<(&'static str, Option<String>)> {
         out.push(("renderScale", v.map(|r| r.0.to_string())));
     }
     // `$WOW_HOST` is the session's realmlist, which a test run must never write into the file.
-    if set("WOW_HOST") {
+    if world.get_resource::<crate::GameMode>().copied().unwrap_or_default()
+        == crate::GameMode::Networked
+        && set("WOW_HOST")
+    {
         let v = world.get_resource::<crate::realmlist::Realmlist>();
         out.push((
             crate::realmlist::CVAR_REALMLIST,
@@ -3446,6 +3449,10 @@ mod tests {
             ("gxCursor", "OptionsFrame.lua's Hardware Cursor box"),
             ("gxFixLag", "OptionsFrame.lua's Fix Input Lag box"),
             ("gxRefresh", "OptionsFrame.lua's refresh-rate dropdown"),
+            (
+                "showChat",
+                "OptionsFrame.xml's local chat/console visibility toggle",
+            ),
         ];
         let app_src = crate::test_support::src_dir();
         let ui_src = app_src

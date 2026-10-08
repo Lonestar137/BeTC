@@ -71,6 +71,13 @@ impl Factions {
         &self.0
     }
 
+    #[cfg(feature = "offline")]
+    pub(crate) fn race_template(&self, race: u8) -> Option<u32> {
+        self.0
+            .race_templates()
+            .find_map(|(candidate, id)| (candidate == race).then_some(id))
+    }
+
     /// Wrap a catalog, for tests; a running client builds the resource once, from the DBC.
     #[cfg(test)]
     pub(crate) fn from_catalog(catalog: FactionCatalog) -> Self {

@@ -585,10 +585,12 @@ fn real_spell_catalog_reads_tooltip_columns() {
 
     // Frost Armor: 30 minutes, instant, its description naming the chill proc 6136.
     let frost_armor = cat.get(168).unwrap();
-    assert!(frost_armor
-        .aura_description
-        .as_deref()
-        .is_some_and(|s| !s.is_empty()));
+    assert!(
+        frost_armor
+            .aura_description
+            .as_deref()
+            .is_some_and(|s| !s.is_empty())
+    );
     assert_eq!(frost_armor.duration_index, 30);
     assert_eq!(durations.get(30).unwrap().base_ms, 1_800_000, "30 minutes");
     assert_eq!(frost_armor.casting_time_index, 1);
@@ -638,7 +640,7 @@ fn spell_schema_decodes_token_float_columns() {
         .copy_from_slice(&20.0f32.to_le_bytes());
     raw.extend_from_slice(&row);
     raw.push(0);
-    let set = parse(&raw, spell_schema(), "Spell.dbc").expect("synthetic Spell.dbc");
+    let set = parse(&raw, spell_schema(false), "Spell.dbc").expect("synthetic Spell.dbc");
     let spell = set.records().first().unwrap();
     assert_eq!(f32_at(spell, COL_DAMAGE_MULTIPLIER_1), Some(0.5));
     assert_eq!(
@@ -982,7 +984,7 @@ fn real_prospecting_effect_is_absent_from_5875() {
     let data = crate::wow_data_or_skip!();
     let mut chain = crate::open_chain(&data).expect("open chain");
     let raw = chain.read_file(SPELL).expect("Spell.dbc");
-    let set = parse(&raw, spell_schema(), "Spell.dbc").expect("parse Spell.dbc");
+    let set = parse(&raw, spell_schema(false), "Spell.dbc").expect("parse Spell.dbc");
 
     let mut slots = 0usize;
     for r in set.records() {
@@ -1094,7 +1096,7 @@ fn real_item_target_family_and_its_gate_columns() {
     // The reference walks all three effect slots for an enchant (`0x495de4`-`0x496050`), while
     // `SpellDisplay` keeps slot 0: no item-target row has its enchant elsewhere. Read raw.
     let raw = chain.read_file(SPELL).expect("Spell.dbc");
-    let set = parse(&raw, spell_schema(), "Spell.dbc").expect("parse Spell.dbc");
+    let set = parse(&raw, spell_schema(false), "Spell.dbc").expect("parse Spell.dbc");
     let is_enchant = |e: u32| {
         e == crate::SPELL_EFFECT_ENCHANT_ITEM || e == crate::SPELL_EFFECT_ENCHANT_ITEM_TEMPORARY
     };
@@ -1213,7 +1215,7 @@ fn real_spell_catalog_cost_columns() {
     // `manaCostPerlevel` (33) is nonzero on 72 creature spells, so `power_cost` applies it though
     // no player tooltip shows it.
     let bytes = chain.read_file(super::SPELL).expect("reading Spell.dbc");
-    let rs = super::parse(&bytes, super::spell_schema(), "Spell.dbc").expect("Spell.dbc");
+    let rs = super::parse(&bytes, super::spell_schema(false), "Spell.dbc").expect("Spell.dbc");
     let mut per_level_rows = 0u32;
     for r in rs.records() {
         let id = super::u32_at(r, 0).unwrap_or(0);

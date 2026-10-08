@@ -3,7 +3,7 @@
 //! edge. The world map resolves the cell under the cursor to a zone through it (`0x4a6ec0`); the
 //! loader (`0x4a5d00`) remaps cells to `WorldMapArea` ids.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 
 use crate::chain::Chain;
 

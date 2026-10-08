@@ -6,8 +6,8 @@ use std::collections::HashMap;
 use anyhow::{Context, Result};
 use benilla_dbc::{FieldType, Schema, SchemaField};
 
-use crate::dbc::{f32_at, parse, u32_at};
 use crate::Chain;
+use crate::dbc::{f32_at, parse, u32_at};
 
 /// Half-minutes in a game day (band time axis); `1440` = noon.
 pub(super) const DAY: u32 = 2880;

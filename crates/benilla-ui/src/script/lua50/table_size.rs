@@ -111,7 +111,7 @@ pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
                     _ => {
                         return Err(mlua::Error::runtime(
                             "bad argument #2 to 'insert' (number expected)",
-                        ))
+                        ));
                     }
                 };
                 if pos > n {

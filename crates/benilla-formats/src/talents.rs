@@ -11,8 +11,8 @@ use std::collections::HashMap;
 use anyhow::{Context, Result};
 use benilla_dbc::{FieldType, Schema, SchemaField};
 
-use crate::dbc::{parse, str_at, u32_at};
 use crate::Chain;
+use crate::dbc::{parse, str_at, u32_at};
 
 const TALENT: &str = "DBFilesClient\\Talent.dbc";
 const TALENT_TAB: &str = "DBFilesClient\\TalentTab.dbc";

@@ -10,7 +10,7 @@ use benilla_formats::CollisionMesh;
 use bevy::ecs::system::SystemState;
 use bevy::prelude::*;
 use bevy::tasks::futures_lite::future;
-use bevy::tasks::{block_on, AsyncComputeTaskPool, Task};
+use bevy::tasks::{AsyncComputeTaskPool, Task, block_on};
 
 /// Wall clock per frame for attaching finished colliders (one costs ~0.004 ms plus ~1.8e-5 ms per
 /// triangle); the rest wait, and the streamer loads far enough ahead that none is reachable yet.
@@ -274,7 +274,7 @@ mod tests {
     use bevy::app::TaskPoolPlugin;
     use bevy::ecs::system::RunSystemOnce;
 
-    use benilla_formats::{ChunkMesh, CHUNK_SIZE};
+    use benilla_formats::{CHUNK_SIZE, ChunkMesh};
 
     /// One flat MCNK at `(ix, iy)` with only what the wall builder reads. The tile's NW corner is
     /// the WoW origin: rows step −x and columns −y, as `adt_to_tile_mesh` lays them out.

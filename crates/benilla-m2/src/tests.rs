@@ -54,6 +54,37 @@ fn minimal_header_parses_to_an_empty_model() {
     assert!(m.texture_transform_lookup.is_empty());
 }
 
+#[test]
+fn tbc_bone_records_skip_bone_name_crc_before_tracks_and_pivot() {
+    let mut b = header();
+    b[4..8].copy_from_slice(&263u32.to_le_bytes());
+    let bones_ofs = b.len() as u32;
+    for (key, parent, pivot) in [(-1i32, -1i16, [0.0f32, 0.0, 0.0]), (6, 0, [1.0, 2.0, 3.0])] {
+        let mut bone = vec![0u8; 112];
+        bone[0..4].copy_from_slice(&key.to_le_bytes());
+        bone[4..8].copy_from_slice(&0x200u32.to_le_bytes());
+        bone[8..10].copy_from_slice(&parent.to_le_bytes());
+        bone[12..16].copy_from_slice(&0x1234_5678u32.to_le_bytes()); // boneNameCRC
+        for (i, value) in pivot.into_iter().enumerate() {
+            bone[100 + i * 4..104 + i * 4].copy_from_slice(&value.to_le_bytes());
+        }
+        b.extend(bone);
+    }
+    set_arr(&mut b, OFS_BONES, 2, bones_ofs);
+
+    let fmt = parse(&b).expect("TBC bone records parse");
+    let bones = &fmt.model().bones;
+    assert_eq!(bones.len(), 2);
+    assert_eq!(bones[0].parent, -1);
+    assert_eq!(bones[0].pivot.x, 0.0);
+    assert_eq!(bones[1].key_bone, 6);
+    assert_eq!(bones[1].parent, 0);
+    assert_eq!(
+        (bones[1].pivot.x, bones[1].pivot.y, bones[1].pivot.z),
+        (1.0, 2.0, 3.0)
+    );
+}
+
 /// One v256 M2Track (stride 0x1c): interp@0, gseq@2, timestamps M2Array@0x0c, values M2Array@0x14.
 fn m2track(interp: u16, gseq: u16, ts: (u32, u32), vals: (u32, u32)) -> Vec<u8> {
     let mut t = vec![0u8; 0x1c];
@@ -77,7 +108,7 @@ fn a_negative_fix16_key_decodes_signed() {
     let val_ofs = b.len() as u32;
     b.extend(0x7fffu16.to_le_bytes()); // +1.0, drawn
     b.extend(0x8001u16.to_le_bytes()); // −1.0, hidden
-                                       // One M2Color: a keyless RGB track, then the alpha track.
+    // One M2Color: a keyless RGB track, then the alpha track.
     let color_ofs = b.len() as u32;
     b.extend(m2track(0, 0xffff, (0, 0), (0, 0)));
     b.extend(m2track(1, 0xffff, (2, ts_ofs), (2, val_ofs)));

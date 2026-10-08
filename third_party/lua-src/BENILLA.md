@@ -5,10 +5,8 @@ the version mlua 0.11 resolves to. Wired in through `[patch.crates-io]` in the w
 
 ## Why a fork exists at all
 
-benilla's Lua has to accept exactly the grammar the 1.12.1 client's Lua accepts, no more and no
-less. Every hunk below is that one rule: three restore 5.0 constructs 5.1 deleted, three delete 5.1
-constructs 5.0 never had. A grammar difference in either direction is invisible to every instrument
-until an addon trips over it, and the addon corpus asks about the difference directly.
+benilla's UI runtime hosts stock TBC 2.4.3 FrameXML and legacy UI libraries. It accepts TBC's Lua 5.1
+grammar while retaining selected Lua 5.0 compatibility behavior required by older UI code.
 
 The 1.12 addon corpus is Lua 5.0 code. It uses the iterator-less generic-for:
 
@@ -25,11 +23,13 @@ metamethod would need a per-type default metatable for tables, which 5.1 does no
 the chunk source means parsing Lua with a regex; and `lua-src` ships 5.1 through 5.5, every one of
 which removed it.
 
-## What is not being done
+## Grammar compatibility
 
-benilla is not adopting Lua 5.0. It stays on 5.1.5 and restores the behaviour of a single opcode
-that Lua itself shipped and labelled `/* for compatibility only */`. Every other 5.1 fix, and the
-whole of mlua's surface, stay exactly as upstream.
+benilla stays on Lua 5.1.5. TBC vararg expressions and the length operator remain enabled for the
+installed FrameXML. `LUA_COMPAT_VARARG` also exposes the implicit `arg` table used by older UI
+libraries. The iterator-less generic-for remains an opcode-level Lua 5.0 compatibility rule. The
+5.0-shaped standard library is a separate layer in `benilla-ui` and must be expanded where TBC
+FrameXML requires it.
 
 ## The delta, and the command that proves it
 
@@ -48,20 +48,17 @@ Five hunks restore what 5.1 changed or removed:
 | `lparser.c` | 5.0's compat-semicolon skip restored at the top of `constructor()`'s field loop, 5.0's own line verbatim | one extra `;` after a field separator inside a table constructor (`Back_Title = AL["Factions"];;`, which AtlasLoot writes) is accepted by the client and was a parse error here |
 | `lparser.c` | `recfield`'s `cc->nh++` moved back inside its `TK_NAME` arm, 5.0's own placement | a `[expr] = value` constructor field credits neither `OP_NEWTABLE` size hint in 5.0, so the table is born on the dummy node |
 
-Three delete what 5.1 added, all in `lparser.c`, all byte-read out of the client's own parser
-(`simpleexp 0x6fd240`, `getunopr 0x6fe0a0`, `getbinopr 0x6fe0c0`), all landing on 5.0's own
-`unexpected symbol` at `prefixexp 0x6fde40`:
+Three parser features required by TBC FrameXML remain enabled:
 
-| hunk | why |
-|---|---|
-| `simpleexp`'s `case TK_DOTS` deleted: `...` is not an expression | the Ace2 corpus asks which interpreter it is on by compiling `return function(...) return ... end`; 170 `loadstring` sites in the corpus are that question, and 92 library files in 24 folders branch on the answer |
-| `getunopr`'s `case '#'` deleted: no length operator | the client's `getunopr` tests exactly two tokens (`-`, `not`) and its `OPR_NOUNOPR` is 2, a three-member enum; 5.0 asks a table with `table.getn` and a string with `string.len` |
-| `getbinopr`'s `case '%'` deleted: no modulo operator | the client's `getbinopr` switch is based at `'*'` (0x2A), so `%` (0x25) is below its range and reaches `OPR_NOBINOPR` = 14, a fifteen-member `BinOpr`; 5.0 spells it `math.mod` |
+| file | hunk | why |
+|---|---|---|
+| `lparser.c` | `simpleexp` accepts `TK_DOTS` as a vararg expression | TBC FrameXML forwards `...` from event and helper functions |
+| `lparser.c` | `getunopr` accepts `#` as `OPR_LEN` | TBC FrameXML uses the Lua 5.1 length operator |
+| `lparser.c` | `getbinopr` accepts `%` as `OPR_MOD` | TBC FrameXML uses Lua 5.1 modulo expressions |
 
-The deletions are safe because nothing the reference runs uses those constructs: a comment- and
-string-stripping scan of the 1.12 FrameXML (177 files), GlueXML, Blizzard's own addons and the
-corpus finds zero sites of all three. No chunk of benilla's own Lua may use a construct the client's
-parser rejects.
+The grammar intentionally accepts TBC vararg, length, and modulo syntax alongside the legacy iterator-less
+generic-for. Library functions, event-handler calling conventions, and secure-frame APIs remain
+separate compatibility requirements and must be validated against build 8606.
 
 To verify the Lua sources against upstream at any time:
 

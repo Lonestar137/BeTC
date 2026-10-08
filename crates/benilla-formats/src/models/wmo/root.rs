@@ -4,7 +4,7 @@
 use std::io::Cursor;
 
 use anyhow::Result;
-use benilla_wmo::{parse_wmo, ParsedWmo};
+use benilla_wmo::{ParsedWmo, parse_wmo};
 
 use super::find_wmo_chunk;
 

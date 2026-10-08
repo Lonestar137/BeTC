@@ -5,7 +5,7 @@
 //! `REGION_MAP_METHODS`), and `LootButton`'s own `0x847ce4` holds only `SetSlot`.
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::script::{widget_method_census, UiScript};
+use crate::script::{UiScript, widget_method_census};
 
 /// `(class, its own registrar table, the tables it inherits)`. `WorldFrame` is a `Frame` to Lua
 /// and `TitleRegion` a bare `Region`; like `TaxiRouteFrame`, neither has a table of its own.
@@ -159,7 +159,24 @@ const NOT_YET_ANSWERED: &[(&str, &str, &str)] = &[
 ];
 
 /// Methods answered here that 1.12 does not register on that class, each with why it stays.
-const ALLOWED_BEYOND: &[(&str, &str, &str)] = &[];
+const ALLOWED_BEYOND: &[(&str, &str, &str)] = &[
+    // TBC secure templates need per-frame attributes and their change callback for action/unit UI.
+    (
+        "GetAttribute",
+        "Button CheckButton ColorSelect DressUpModel EditBox Frame GameTooltip LootButton MessageFrame Minimap Model MovieFrame PlayerModel ScrollFrame ScrollingMessageFrame SimpleHTML Slider StatusBar TabardModel WorldFrame",
+        "TBC secure-frame attributes",
+    ),
+    (
+        "SetAttribute",
+        "Button CheckButton ColorSelect DressUpModel EditBox Frame GameTooltip LootButton MessageFrame Minimap Model MovieFrame PlayerModel ScrollFrame ScrollingMessageFrame SimpleHTML Slider StatusBar TabardModel WorldFrame",
+        "TBC secure-frame attributes",
+    ),
+    (
+        "SetFormattedText",
+        "FontString",
+        "TBC FontString formatting",
+    ),
+];
 
 /// The reference's widget rows, `table_va -> {name}`.
 fn reference_tables() -> BTreeMap<String, BTreeSet<String>> {

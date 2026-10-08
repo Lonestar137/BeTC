@@ -207,9 +207,11 @@ mod tests {
         }
 
         // Two keys at one time: Bevy's constructor fails, so the channel is absent.
-        assert!(PoseTrack::new(&[(0.5, Vec3::X), (0.5, Vec3::Y)])
-            .sample(0.5)
-            .is_none());
+        assert!(
+            PoseTrack::new(&[(0.5, Vec3::X), (0.5, Vec3::Y)])
+                .sample(0.5)
+                .is_none()
+        );
     }
 
     #[test]

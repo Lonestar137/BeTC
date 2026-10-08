@@ -19,7 +19,7 @@ use crate::creature_type::CreatureTypeSources;
 use crate::names::NameCache;
 use crate::net::{Guid, NetCommands, ObjectStore, Reputations, SelfPlayer};
 use crate::target::Factions;
-use crate::ui_script::{gate, VmMemo};
+use crate::ui_script::{VmMemo, gate};
 
 /// What a held unit's snapshot reads beside its descriptor.
 pub(super) struct HeldUnits<'a> {
@@ -177,9 +177,9 @@ mod tests {
     use crate::names::CreatureRecord;
     use crate::net::GuidIndex;
     use crate::target::Selection;
-    use crate::ui_party::{GroupState, GROUPTYPE_RAID};
-    use benilla_protocol::messages::{member_status, GroupMemberEntry};
+    use crate::ui_party::{GROUPTYPE_RAID, GroupState};
     use benilla_protocol::ObjectFields;
+    use benilla_protocol::messages::{GroupMemberEntry, member_status};
 
     const ME: u64 = 0x10;
     /// party1 and raid2, party2 and raid3, party3 and raid4.
@@ -462,7 +462,7 @@ mod tests {
     /// declared order puts the feed after it: read off the schedule graph.
     #[test]
     fn the_chain_feed_runs_after_the_aura_feed_it_reads() {
-        use crate::game_plugins::schedule_tests::{census, headless_client, SyncPoints};
+        use crate::game_plugins::schedule_tests::{SyncPoints, census, headless_client};
 
         let mut app = headless_client();
         let c = census(&mut app, Update, SyncPoints::Declared);

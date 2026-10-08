@@ -84,6 +84,22 @@ pub(crate) fn config_path() -> Option<PathBuf> {
     home().map(|h| h.join("config.toml"))
 }
 
+/// The offline profile and local roster index.
+#[cfg(feature = "offline")]
+pub(crate) fn offline_profile_path() -> Option<PathBuf> {
+    home().map(|h| h.join("offline/profile.toml"))
+}
+
+/// One character's durable game snapshot. IDs are constrained path-safe tokens, never display
+/// names.
+#[cfg(feature = "offline")]
+pub(crate) fn offline_character_path(id: &str) -> Option<PathBuf> {
+    if id.len() != 32 || !id.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
+    home().map(|h| h.join("offline/characters").join(id).join("save.toml"))
+}
+
 /// `benilla-config/macros/account.txt`: the account-wide macro tab (indices 1..=18).
 pub(crate) fn macros_account_path() -> Option<PathBuf> {
     home().map(|h| h.join("macros/account.txt"))
@@ -249,6 +265,55 @@ pub(crate) fn write_atomic_bytes(path: &Path, contents: &[u8]) -> std::io::Resul
     std::fs::rename(&tmp, path)
 }
 
+/// Replace an offline save atomically, retaining the previous complete document as `<path>.bak`.
+#[cfg(feature = "offline")]
+pub(crate) fn write_atomic_bytes_with_backup(path: &Path, contents: &[u8]) -> std::io::Result<()> {
+    let dir = path.parent().unwrap_or_else(|| Path::new("."));
+    std::fs::create_dir_all(dir)?;
+
+    if path.exists() {
+        let backup = suffixed_path(path, ".bak");
+        let backup_tmp = suffixed_path(path, ".bak.tmp");
+        {
+            let mut file = std::fs::File::create(&backup_tmp)?;
+            std::io::copy(&mut std::fs::File::open(path)?, &mut file)?;
+            file.sync_all()?;
+        }
+        std::fs::rename(backup_tmp, backup)?;
+    }
+
+    let tmp = suffixed_path(path, ".tmp");
+    {
+        let mut file = std::fs::File::create(&tmp)?;
+        file.write_all(contents)?;
+        file.sync_all()?;
+    }
+    std::fs::rename(tmp, path)?;
+    sync_directory(dir)
+}
+
+#[cfg(feature = "offline")]
+fn suffixed_path(path: &Path, suffix: &str) -> PathBuf {
+    let mut name = path.as_os_str().to_os_string();
+    name.push(suffix);
+    PathBuf::from(name)
+}
+
+#[cfg(feature = "offline")]
+pub(crate) fn backup_path(path: &Path) -> PathBuf {
+    suffixed_path(path, ".bak")
+}
+
+#[cfg(all(feature = "offline", unix))]
+fn sync_directory(path: &Path) -> std::io::Result<()> {
+    std::fs::File::open(path)?.sync_all()
+}
+
+#[cfg(all(feature = "offline", not(unix)))]
+fn sync_directory(_: &Path) -> std::io::Result<()> {
+    Ok(())
+}
+
 /// Test plumbing for the persistence env vars: `set_var` is process-global, so every such test
 /// takes [`ENV_LOCK`] and scopes its overrides in [`EnvGuard`]s.
 #[cfg(test)]
@@ -282,6 +347,29 @@ pub(crate) mod test_env {
 mod tests {
     use super::test_env::{EnvGuard, ENV_LOCK};
     use super::*;
+
+    #[cfg(feature = "offline")]
+    #[test]
+    fn offline_documents_keep_a_previous_atomic_backup() {
+        let dir = std::env::temp_dir().join(format!("benilla-save-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("offline/characters/id/save.toml");
+        write_atomic_bytes_with_backup(&path, b"first").unwrap();
+        write_atomic_bytes_with_backup(&path, b"second").unwrap();
+
+        assert_eq!(std::fs::read(&path).unwrap(), b"second");
+        assert_eq!(std::fs::read(backup_path(&path)).unwrap(), b"first");
+        assert!(!suffixed_path(&path, ".tmp").exists());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[cfg(feature = "offline")]
+    #[test]
+    fn offline_character_paths_reject_non_id_components() {
+        assert!(offline_character_path("../escape").is_none());
+        assert!(offline_character_path("a").is_none());
+        assert!(offline_character_path(&"g".repeat(32)).is_none());
+    }
 
     /// Every per-character file keys on this token; ASCII names map unchanged.
     #[test]

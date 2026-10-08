@@ -3,11 +3,12 @@
 //! carry no `(listfile)`, so resolution is by name hash.
 
 use std::collections::HashSet;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use benilla_mpq::Archive;
 
+use crate::TbcInstall;
 use crate::VANILLA_BASE_ORDER;
 
 /// One entry from a chain listing: an internal path and its uncompressed size.
@@ -20,6 +21,9 @@ pub struct ChainEntry {
 pub struct Chain {
     /// Ascending priority: later archives win.
     archives: Vec<Archive>,
+    client_build: Option<u32>,
+    locale: Option<String>,
+    unmounted_archives: Vec<PathBuf>,
 }
 
 /// `patch-?.MPQ` as the reference's `FindFirstFileW` glob matches it (template `0x82edbc`, wrapper
@@ -59,6 +63,76 @@ fn mount_order(dir_names: &[String]) -> Vec<String> {
     order
 }
 
+/// TBC's paired patch layers: each newer global patch is followed by its locale patch, so the
+/// locale-specific file wins when both provide the same path.
+fn tbc_mount_order(
+    data_names: &[String],
+    locale_names: &[String],
+    locale: &str,
+) -> Vec<(bool, String)> {
+    let mut order = Vec::new();
+    let find = |names: &[String], wanted: &str| {
+        names
+            .iter()
+            .find(|name| name.eq_ignore_ascii_case(wanted))
+            .cloned()
+    };
+    let mut push = |is_locale: bool, names: &[String], wanted: String| {
+        if let Some(found) = find(names, &wanted) {
+            order.push((is_locale, found));
+        }
+    };
+
+    push(false, data_names, "common.MPQ".into());
+    push(false, data_names, "expansion.MPQ".into());
+    for name in [
+        format!("base-{locale}.MPQ"),
+        format!("locale-{locale}.MPQ"),
+        format!("expansion-locale-{locale}.MPQ"),
+        format!("speech-{locale}.MPQ"),
+        format!("expansion-speech-{locale}.MPQ"),
+    ] {
+        push(true, locale_names, name);
+    }
+
+    let mut versions = std::collections::BTreeSet::new();
+    for name in data_names {
+        if let Some(version) = patch_version(name, "patch") {
+            versions.insert(version);
+        }
+    }
+    for name in locale_names {
+        if let Some(version) = patch_version(name, &format!("patch-{locale}")) {
+            versions.insert(version);
+        }
+    }
+    for version in versions {
+        let root_name = if version == 1 {
+            "patch.MPQ".to_string()
+        } else {
+            format!("patch-{version}.MPQ")
+        };
+        let locale_name = if version == 1 {
+            format!("patch-{locale}.MPQ")
+        } else {
+            format!("patch-{locale}-{version}.MPQ")
+        };
+        push(false, data_names, root_name);
+        push(true, locale_names, locale_name);
+    }
+    order
+}
+
+fn patch_version(name: &str, stem: &str) -> Option<u32> {
+    let lower = name.to_ascii_lowercase();
+    let stem = stem.to_ascii_lowercase();
+    let rest = lower.strip_prefix(&stem)?.strip_suffix(".mpq")?;
+    if rest.is_empty() {
+        return Some(1);
+    }
+    rest.strip_prefix('-')?.parse().ok()
+}
+
 impl Chain {
     /// Open a `Data` directory's archives in [`mount_order`], or a single `.MPQ` file.
     ///
@@ -66,6 +140,10 @@ impl Chain {
     /// `"Failed to open archive"` and goes on, because a skipped corrupt archive surfaces only as
     /// missing files far downstream.
     pub fn open(path: &Path) -> Result<Self> {
+        if crate::is_tbc_data_dir(path) {
+            let install = crate::tbc_install(path)?;
+            return Self::open_tbc(&install);
+        }
         let mut archives = Vec::new();
         if path.is_dir() {
             let mut names: Vec<String> = std::fs::read_dir(path)
@@ -93,7 +171,77 @@ impl Chain {
                 Archive::open(path).with_context(|| format!("opening MPQ {}", path.display()))?,
             );
         }
-        Ok(Self { archives })
+        Ok(Self {
+            archives,
+            client_build: None,
+            locale: None,
+            unmounted_archives: Vec::new(),
+        })
+    }
+
+    /// Open the recognized build-8606 archives in client precedence order. Unknown MPQs, including
+    /// repack backups, are reported but never mounted.
+    pub fn open_tbc(install: &TbcInstall) -> Result<Self> {
+        let data_names = archive_names(&install.data_dir)?;
+        let locale_names = archive_names(&install.locale_dir)?;
+        let selected = tbc_mount_order(&data_names, &locale_names, &install.locale);
+        let mut archives = Vec::with_capacity(selected.len());
+        let mut mounted = HashSet::new();
+        for (is_locale, name) in selected {
+            let directory = if is_locale {
+                &install.locale_dir
+            } else {
+                &install.data_dir
+            };
+            let path = directory.join(&name);
+            mounted.insert((is_locale, name.to_ascii_lowercase()));
+            archives.push(
+                Archive::open_with_locale(&path, install.locale_id)
+                    .with_context(|| format!("opening TBC archive {}", path.display()))?,
+            );
+        }
+        if archives.is_empty() {
+            bail!(
+                "no supported TBC MPQs found in {}",
+                install.data_dir.display()
+            );
+        }
+        let unmounted_archives = data_names
+            .iter()
+            .map(|name| (false, name))
+            .chain(locale_names.iter().map(|name| (true, name)))
+            .filter(|(is_locale, name)| !mounted.contains(&(*is_locale, name.to_ascii_lowercase())))
+            .map(|(is_locale, name)| {
+                (if is_locale {
+                    &install.locale_dir
+                } else {
+                    &install.data_dir
+                })
+                .join(name)
+            })
+            .collect();
+        Ok(Self {
+            archives,
+            client_build: Some(8606),
+            locale: Some(install.locale.clone()),
+            unmounted_archives,
+        })
+    }
+
+    pub fn client_build(&self) -> Option<u32> {
+        self.client_build
+    }
+
+    pub fn locale(&self) -> Option<&str> {
+        self.locale.as_deref()
+    }
+
+    pub fn mounted_archives(&self) -> impl Iterator<Item = &Path> {
+        self.archives.iter().map(Archive::path)
+    }
+
+    pub fn unmounted_archives(&self) -> &[PathBuf] {
+        &self.unmounted_archives
     }
 
     /// The highest-priority archive with an entry for `name`, a delete marker included, as a
@@ -174,6 +322,22 @@ impl Chain {
     }
 }
 
+fn archive_names(directory: &Path) -> Result<Vec<String>> {
+    let mut names = std::fs::read_dir(directory)
+        .with_context(|| format!("listing {}", directory.display()))?
+        .filter_map(|entry| {
+            let entry = entry.ok()?;
+            entry
+                .path()
+                .is_file()
+                .then(|| entry.file_name().into_string().ok())?
+        })
+        .filter(|name| name.to_ascii_lowercase().ends_with(".mpq"))
+        .collect::<Vec<_>>();
+    names.sort_by_key(|name| name.to_ascii_lowercase());
+    Ok(names)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -240,5 +404,62 @@ mod tests {
             mount_order(&dir),
             owned(&["DBC.mpq", "Model.MPQ", "PATCH.mpq"])
         );
+    }
+
+    #[test]
+    fn tbc_patch_archives_mount_in_numeric_pairs_and_ignore_repack_backups() {
+        let data = owned(&[
+            "patch-2.MPQ",
+            "backup.MPQ",
+            "expansion.MPQ",
+            "common.MPQ",
+            "patch.MPQ",
+        ]);
+        let locale = owned(&[
+            "backup-enGB.MPQ",
+            "patch-enGB-2.MPQ",
+            "speech-enGB.MPQ",
+            "base-enGB.MPQ",
+            "locale-enGB.MPQ",
+            "patch-enGB.MPQ",
+            "expansion-locale-enGB.MPQ",
+            "expansion-speech-enGB.MPQ",
+        ]);
+        assert_eq!(
+            tbc_mount_order(&data, &locale, "enGB"),
+            vec![
+                (false, "common.MPQ".into()),
+                (false, "expansion.MPQ".into()),
+                (true, "base-enGB.MPQ".into()),
+                (true, "locale-enGB.MPQ".into()),
+                (true, "expansion-locale-enGB.MPQ".into()),
+                (true, "speech-enGB.MPQ".into()),
+                (true, "expansion-speech-enGB.MPQ".into()),
+                (false, "patch.MPQ".into()),
+                (true, "patch-enGB.MPQ".into()),
+                (false, "patch-2.MPQ".into()),
+                (true, "patch-enGB-2.MPQ".into()),
+            ]
+        );
+    }
+
+    #[test]
+    fn supplied_tbc_install_resolves_the_expansion_world_and_localized_dbc() {
+        let data = crate::wow_data_or_skip!();
+        if !crate::is_tbc_data_dir(&data) {
+            crate::skipped("resolved install is not TBC", &[data]);
+            return;
+        }
+        let chain = Chain::open(&data).expect("open the selected build-8606 archives");
+        assert_eq!(chain.client_build(), Some(8606));
+        assert_eq!(chain.locale(), Some("enGB"));
+        assert!(chain.contains("World\\Maps\\Expansion01\\Expansion01.wdt"));
+        assert!(chain.contains("DBFilesClient\\Map.dbc"));
+        assert!(
+            chain
+                .read("World\\Maps\\Expansion01\\Expansion01.wdt")
+                .is_ok()
+        );
+        assert!(chain.read("DBFilesClient\\Map.dbc").is_ok());
     }
 }

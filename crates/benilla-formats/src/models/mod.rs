@@ -33,6 +33,22 @@ pub use tex_anim::{rotation_2x2, uv_transform, UvAnim, UvRotAnim};
 pub use types::*;
 pub use wmo::*;
 
+/// The raw bone-record layout for a supported MD20 version.
+pub fn m2_bone_layout(bytes: &[u8]) -> Option<benilla_m2::M2BoneLayout> {
+    benilla_m2::bone_layout(u32::from_le_bytes(bytes.get(4..8)?.try_into().ok()?))
+}
+
+/// Decode one packed bone-rotation component (`i16`) using the client's asymmetric signed mapping.
+pub(crate) fn m2_quat_component(value: u16) -> f32 {
+    let value = value as i16;
+    let value = if value < 0 {
+        f32::from(value) + 32768.0
+    } else {
+        f32::from(value) - 32767.0
+    };
+    value / 32767.0
+}
+
 /// Build a compact submesh from global vertex indices. Also returns each local vertex's global
 /// index, from which the M2 path fills [`RenderSubmesh::joints`].
 fn remap_submesh(

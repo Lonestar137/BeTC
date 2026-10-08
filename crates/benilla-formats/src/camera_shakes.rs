@@ -13,8 +13,8 @@ use std::collections::HashMap;
 use anyhow::{Context, Result};
 use benilla_dbc::{FieldType, Schema, SchemaField};
 
-use crate::dbc::{f32_at, parse, u32_at};
 use crate::Chain;
+use crate::dbc::{f32_at, parse, u32_at};
 
 const CAMERA_SHAKES: &str = "DBFilesClient\\CameraShakes.dbc";
 const SPELL_EFFECT_CAMERA_SHAKES: &str = "DBFilesClient\\SpellEffectCameraShakes.dbc";
@@ -234,7 +234,9 @@ mod tests {
         }
         assert_eq!(
             named.iter().copied().collect::<Vec<_>>(),
-            vec![1, 4, 5, 6, 7, 8, 9, 11, 14, 15, 17, 18, 36, 37, 38, 76, 77, 78],
+            vec![
+                1, 4, 5, 6, 7, 8, 9, 11, 14, 15, 17, 18, 36, 37, 38, 76, 77, 78
+            ],
             "the 18 presets the spell side reaches"
         );
 

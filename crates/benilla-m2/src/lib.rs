@@ -1,6 +1,6 @@
-//! An M2 (MD20) model reader for WoW 1.12.1. Vanilla models are MD20 version 256 or 257: a header
-//! of `M2Array`s (`count`, file `offset`), the arrays they name, and the embedded skin profiles.
-//! Particle emitters and lights are not read here; benilla-formats reads them from the raw bytes.
+//! An M2 (MD20) reader for pre-Wrath model versions 256–263: a header of `M2Array`s (`count`, file
+//! `offset`), the arrays they name, and the embedded skin profiles. Particle emitters and lights
+//! are not read here; benilla-formats reads them from the raw bytes.
 
 mod error;
 mod model;
@@ -9,9 +9,9 @@ mod track;
 
 pub use error::Error;
 pub use model::{
-    M2ArrayString, M2Attachment, M2BlendMode, M2Bone, M2BoneFlags, M2Camera, M2EventMarker,
-    M2Format, M2Header, M2Material, M2Model, M2PlayableAnim, M2RawData, M2RenderFlags, M2Texture,
-    M2TextureTransform, M2TextureType, M2Vertex, C2, C3,
+    C2, C3, M2ArrayString, M2Attachment, M2BlendMode, M2Bone, M2BoneFlags, M2BoneLayout, M2Camera,
+    M2EventMarker, M2Format, M2Header, M2Material, M2Model, M2PlayableAnim, M2RawData,
+    M2RenderFlags, M2Texture, M2TextureTransform, M2TextureType, M2Vertex, bone_layout,
 };
 pub use skin::{Skin, SkinBatch, SkinSection};
 pub use track::{
@@ -22,7 +22,7 @@ pub use track::{
 use std::ffi::CString;
 use std::io::Cursor;
 
-use benilla_bytes::{capped, ByteExt};
+use benilla_bytes::{ByteExt, capped};
 
 use error::Result;
 use track::{track_fix16, track_quat, track_spline_f32, track_spline_vec3, track_vec3_timed};
@@ -216,13 +216,17 @@ pub fn parse_m2(cursor: &mut Cursor<&[u8]>) -> Result<M2Format> {
         });
     }
 
-    // Bones: 108 bytes in v256: key bone i32, flags u32, parent i16, submesh u16 (no boneNameCRC in
-    // vanilla), three 28-byte tracks, pivot C3 @96. The reference zeroes a NaN pivot component.
+    // The TBC boneNameCRC shifts tracks and pivots by four bytes from the Vanilla record.
+    let bone_layout = bone_layout(version).ok_or(Error::UnsupportedVersion(version))?;
     let bones_avail = b.len().saturating_sub(bones.1 as usize);
-    let mut bone_list = Vec::with_capacity(capped(bones.0 as usize, 108, bones_avail));
+    let mut bone_list =
+        Vec::with_capacity(capped(bones.0 as usize, bone_layout.stride, bones_avail));
     for i in 0..bones.0 as usize {
-        let bn = get(bones.1 as usize + i * 108, 108)?;
-        let mut pivot = rd_c3(bn, 96).ok_or(Error::Truncated)?;
+        let bn = get(
+            bones.1 as usize + i * bone_layout.stride,
+            bone_layout.stride,
+        )?;
+        let mut pivot = rd_c3(bn, bone_layout.pivot).ok_or(Error::Truncated)?;
         if pivot.x.is_nan() {
             pivot.x = 0.0;
         }

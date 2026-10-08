@@ -8,11 +8,11 @@ use bevy::input::keyboard::KeyboardInput;
 use crate::textinput::{self, HostClipboard};
 use bevy::prelude::*;
 
-use crate::glue::art::{tc_rect, GlueArt, GOLD};
+use crate::glue::art::{GOLD, GlueArt, tc_rect};
 use crate::glue::backdrop::{backdrop_border, tiled_bg_node};
 use crate::glue::widgets::{
-    caret_bar, glue_button, outlined_text, overlay, paint_glue_field, GlueBtnKind, GlueDisabled,
-    GlueFieldPart, GlueText,
+    GlueBtnKind, GlueDisabled, GlueFieldPart, GlueText, caret_bar, glue_button, outlined_text,
+    overlay, paint_glue_field,
 };
 use crate::glue_strings::GlueStrings;
 use crate::net::{CharPick, CharRequest};

@@ -9,8 +9,8 @@ use std::io::Cursor;
 
 use crate::Chain;
 use anyhow::{Context, Result};
-use benilla_adt::{parse_adt, CombinedAlphaMap, ParsedAdt};
-use benilla_wdt::{version::WowVersion, WdtFile, WdtReader};
+use benilla_adt::{CombinedAlphaMap, ParsedAdt, parse_adt};
+use benilla_wdt::{WdtFile, WdtReader, version::WowVersion};
 
 /// Edge length (texels) of a chunk's combined alpha map (always 64×64 in vanilla).
 pub const ALPHA_MAP_SIZE: u32 = 64;
@@ -707,6 +707,29 @@ mod tests {
         );
         // A column past the chunk's east edge is off the footprint entirely.
         assert_eq!(c.height_at([quarter_x, far_y - 5.0, 0.0]), None);
+    }
+
+    #[test]
+    fn authored_blood_elf_spawn_has_ground_in_build_8606() {
+        let data = crate::wow_data_or_skip!();
+        if !crate::is_tbc_data_dir(&data) {
+            crate::skipped("resolved install is not TBC", &[data]);
+            return;
+        }
+        const SPAWN: [f32; 3] = [10349.6, -6357.3, 33.4];
+        let mut chain = crate::open_chain(&data).expect("open build-8606 chain");
+        let (tile_x, tile_y) = find_tile_near(&mut chain, "Expansion01", SPAWN[0], SPAWN[1])
+            .expect("find the Blood Elf starting tile");
+        let tile = load_tile_mesh(&mut chain, "Expansion01", tile_x, tile_y)
+            .expect("parse the Blood Elf starting tile");
+        let ground = terrain_height_at(&tile.chunks, SPAWN)
+            .expect("the authored spawn is over solid terrain");
+
+        assert!(
+            (ground - SPAWN[2]).abs() < 1.0,
+            "spawn z {} differs from build-8606 terrain {ground}",
+            SPAWN[2]
+        );
     }
 
     /// 20 of the 43 shipped WDTs author no ADT tiles: their global WMO is the whole map.

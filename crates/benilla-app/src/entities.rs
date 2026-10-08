@@ -99,11 +99,15 @@ mod chain_beam;
 pub(crate) use chain_beam::ChainHops;
 use chain_beam::{simulate_chain_beams, spawn_chain_beams};
 // `equip_slot` is the one InventoryType → slot table; the dressing room places items by it.
-pub(crate) use attach::{equip_slot, BodyPartsDesc};
+pub(crate) use attach::equip_slot;
+#[cfg(feature = "dev")]
+pub(crate) use attach::BodyPartsDesc;
 pub(crate) use equipment::ItemDisplays;
 pub(crate) use equipment::{BoneAttach, Equipment};
 // For the `WOW_DRESS_CENSUS` instrument: what a body wears against what it resolved.
-pub(crate) use equipment::{attach_id, DressKey, HeldAttached, ATTACH_SLOT_NAMES};
+#[cfg(any(feature = "dev", test))]
+pub(crate) use equipment::ATTACH_SLOT_NAMES;
+pub(crate) use equipment::{attach_id, DressKey, HeldAttached};
 // Only the tests that build a `DressKey` name this type.
 #[cfg(test)]
 pub(crate) use equipment::ItemModelKind;
@@ -250,6 +254,24 @@ pub(crate) struct Creatures {
 }
 
 impl Creatures {
+    /// Find the installed build's display record for an authored creature model path.
+    #[cfg(any(feature = "offline", test))]
+    pub(crate) fn display_for_model_path(&self, path: &str) -> Option<u32> {
+        let key = path.replace('/', "\\").to_ascii_lowercase();
+        let mut displays: Vec<_> = self
+            .catalog
+            .display_models()
+            .filter_map(|(display, _)| {
+                self.catalog
+                    .model(display)
+                    .filter(|model| model.model_path.eq_ignore_ascii_case(&key))
+                    .map(|_| display)
+            })
+            .collect();
+        displays.sort_unstable();
+        displays.into_iter().next()
+    }
+
     /// A display's foley material (`Material.dbc` id), the creature half of the footfall rustle.
     pub(crate) fn foley_material(&self, display_id: u32) -> Option<u32> {
         self.catalog.foley_material(display_id)
@@ -1467,6 +1489,35 @@ mod overhead_slot_tests {
         );
 
         assert_eq!(overhead_slot(&body(&[]), true), None, "never parented");
+    }
+}
+
+#[cfg(test)]
+mod practice_display_tests {
+    use super::*;
+
+    #[test]
+    fn build_8606_contains_the_authored_start_encounter_models() {
+        let Some(data) = benilla_formats::wow_data() else {
+            eprintln!("skipping: no client install");
+            return;
+        };
+        if !benilla_formats::is_tbc_data_dir(&data) {
+            eprintln!("skipping: resolved install is not TBC");
+            return;
+        }
+        let mut chain = benilla_formats::open_chain(&data).expect("open TBC archive chain");
+        let creatures = Creatures {
+            catalog: load_creature_catalog(&mut chain)
+                .expect("load the build-8606 creature display catalog"),
+            models: HashMap::new(),
+        };
+        for path in ["Creature\\Wolf\\Wolf.m2", "Creature\\ManaWyrm\\ManaWyrm.m2"] {
+            assert!(
+                creatures.display_for_model_path(path).is_some(),
+                "the installed client has no CreatureDisplayInfo for {path}"
+            );
+        }
     }
 }
 
