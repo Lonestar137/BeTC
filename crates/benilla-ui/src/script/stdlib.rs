@@ -376,6 +376,7 @@ if UnitCanAssist == nil then function UnitCanAssist() return nil end end
 if IsEquippableItem == nil then function IsEquippableItem() return nil end end
 if IsEquippedItem == nil then function IsEquippedItem() return nil end end
 if EquipItemByName == nil then function EquipItemByName() end end
+if UnitChannelInfo == nil then function UnitChannelInfo() return nil end end
 if SpellCanTargetItem == nil then function SpellCanTargetItem() return nil end end
 if SpellTargetItem == nil then function SpellTargetItem() end end
 if RunMacro == nil then function RunMacro() end end
@@ -690,5 +691,13 @@ mod date_table_tests {
                 .unwrap(),
             "Wednesday"
         );
+    }
+
+    #[test]
+    fn idle_channel_info_is_available_to_the_tbc_target_frame() {
+        let s = UiScript::new().unwrap();
+        assert!(s
+            .eval::<bool>("return UnitChannelInfo('target') == nil")
+            .unwrap());
     }
 }

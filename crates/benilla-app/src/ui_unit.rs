@@ -628,6 +628,8 @@ impl UnitTokens<'_, '_> {
         match base {
             UnitBase::Player => self.me(),
             UnitBase::Target => selection.target.zip(selection.guid),
+            // Focus is a recognised TBC token; focus storage has not been introduced yet.
+            UnitBase::Focus => None,
             // The same pick `ui_tooltip` pushes `"mouseover"` from.
             UnitBase::Mouseover => self
                 .hovered
@@ -1673,8 +1675,8 @@ mod tests {
         use super::*;
         use crate::net::GuidIndex;
         use crate::ui_party::{GROUPTYPE_RAID, GroupState};
-        use benilla_protocol::ObjectFields;
         use benilla_protocol::messages::{GroupMemberEntry, PartyMemberStatsInfo, member_status};
+        use benilla_protocol::ObjectFields;
         use bevy::ecs::system::RunSystemOnce;
 
         const ME: u64 = 0x10;
@@ -1996,8 +1998,8 @@ mod tests {
         use crate::net::GuidIndex;
         use crate::target::{Hovered, HoveredObject};
         use crate::ui_party::{GROUPTYPE_RAID, GroupState};
-        use benilla_protocol::ObjectFields;
         use benilla_protocol::messages::{GroupMemberEntry, member_status};
+        use benilla_protocol::ObjectFields;
         use bevy::ecs::system::RunSystemOnce;
 
         const ME: u64 = 0x10;

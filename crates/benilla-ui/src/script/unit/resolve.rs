@@ -1,5 +1,5 @@
 //! The unit-token resolver `0x515970`, token to guid, over the state it reads, which the app pushes
-//! as [`UnitGuids`]: a base (`player`, `pet`, `target`, `partyN`, `partypetN`, `raidN`,
+//! as [`UnitGuids`]: a base (`player`, `pet`, `target`, `focus`, `partyN`, `partypetN`, `raidN`,
 //! `raidpetN`, `mouseover`, `npc`), then any number of `target` hops, each off the current unit's
 //! `UNIT_FIELD_TARGET`. Every compare folds ASCII case (`SStrCmpI 0x64a4c0`, first at `0x5159b4`).
 
@@ -16,6 +16,8 @@ pub struct UnitGuids {
     pub pet: u64,
     /// The target global `[0xb4e2d8]`.
     pub target: u64,
+    /// The focus global. It is 0 until the player sets a focus.
+    pub focus: u64,
     /// The mouseover global `[0xb4e2c8]`, read only while it is a held unit (`0x515bd2`).
     pub mouseover: u64,
     /// The interaction NPC `[0xb4e2d0]`.
@@ -41,6 +43,7 @@ enum Base {
     Player,
     Pet,
     Target,
+    Focus,
     PartyPet,
     Party,
     RaidPet,
@@ -50,10 +53,11 @@ enum Base {
 
 /// Each prefix and its base, in the resolver's order; a prefix test compares `strlen(literal)`
 /// bytes, so `"playerfoo"` matches `player`.
-const PREFIXES: [(&str, Base); 8] = [
+const PREFIXES: [(&str, Base); 9] = [
     ("player", Base::Player),
     ("pet", Base::Pet),
     ("target", Base::Target),
+    ("focus", Base::Focus),
     ("partypet", Base::PartyPet),
     ("party", Base::Party),
     ("raidpet", Base::RaidPet),
@@ -69,6 +73,7 @@ pub enum UnitBase {
     Player,
     Pet,
     Target,
+    Focus,
     Mouseover,
     /// The interaction NPC; an exact compare, so it takes no `target` hop (`0x515bec`).
     Npc,
@@ -150,6 +155,7 @@ pub fn parse_unit_token(token: &str) -> UnitTokenParse {
         Base::Player => UnitBase::Player,
         Base::Pet => UnitBase::Pet,
         Base::Target => UnitBase::Target,
+        Base::Focus => UnitBase::Focus,
         Base::Mouseover => UnitBase::Mouseover,
         Base::PartyPet => numbered(UnitBase::PartyPet),
         Base::Party => numbered(UnitBase::Party),
@@ -194,6 +200,7 @@ impl UnitGuids {
             UnitBase::Pet if self.player == 0 => return None,
             UnitBase::Pet => self.pet,
             UnitBase::Target => self.target,
+            UnitBase::Focus => self.focus,
             UnitBase::Npc => self.npc,
             // Deviation: `0x4e81d0` has no bound and reads past its four-entry table, which is
             // stale memory, not a mechanism; past it, nobody.
@@ -256,6 +263,7 @@ mod tests {
             player: ME,
             pet: PET,
             target: MOB,
+            focus: 0,
             mouseover: MOB,
             npc: MOB,
             party: [P1, FAR, 0, 0],
@@ -329,6 +337,7 @@ mod tests {
             ("player", unit(Player, 0)),
             ("pet", unit(Pet, 0)),
             ("target", unit(Target, 0)),
+            ("focus", unit(Focus, 0)),
             ("mouseover", unit(Mouseover, 0)),
             ("npc", unit(Npc, 0)),
             ("party1", unit(Party(0), 0)),
@@ -336,6 +345,7 @@ mod tests {
             ("raid40", unit(Raid(39), 0)),
             ("raidpet2", unit(RaidPet(1), 0)),
             ("targettarget", unit(Target, 1)),
+            ("focustarget", unit(Focus, 1)),
             ("targettargettargettarget", unit(Target, 3)),
             ("playertarget", unit(Player, 1)),
             ("pettarget", unit(Pet, 1)),
@@ -379,7 +389,7 @@ mod tests {
         ] {
             assert_eq!(parse_unit_token(token), UnitTokenParse::Nobody, "{token}");
         }
-        for token in ["npctarget", "npc1", "bogus", "tar", "focus", "5", "targe"] {
+        for token in ["npctarget", "npc1", "bogus", "tar", "5", "targe"] {
             assert_eq!(parse_unit_token(token), UnitTokenParse::Unknown, "{token}");
         }
     }
@@ -397,6 +407,7 @@ mod tests {
             "raidpet3",
             "playerfoo",
             "targetfoo",
+            "focus",
             "partypet5",
         ] {
             assert_eq!(guids().resolve(t), Ok(None), "{t}");
@@ -421,7 +432,7 @@ mod tests {
 
     #[test]
     fn an_unrecognised_token_is_the_raise() {
-        for t in ["bogus", "focus", "none", "5", "npc1", "tar"] {
+        for t in ["bogus", "none", "5", "npc1", "tar"] {
             assert_eq!(guids().resolve(t), Err(()), "{t}");
         }
     }
