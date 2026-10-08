@@ -12,6 +12,14 @@ for client behavior and data. State project-owned gameplay decisions explicitly 
 content schema. Keep the install read-only and external, keep the executable offline, and run the
 appropriate gates. The plan's phase acceptance criteria determine when a phase is complete.
 
+### Fidelity default
+
+Unless this project explicitly records a different offline gameplay rule, reproduce TBC 2.4.3
+behavior and content semantics. This applies to UI, presentation, class progression, trainers,
+spells, quests, items, and world interactions. Multiplayer, runtime transport, server processes,
+accounts, realms, and runtime external databases are permanent exceptions: their gameplay authority
+is local and their source content is converted into a versioned local pack.
+
 ## The loop
 
 1. **Establish the fact.** For data, formats, UI, or presentation, use build 8606 files or observe

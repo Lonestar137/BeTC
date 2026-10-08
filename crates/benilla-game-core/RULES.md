@@ -36,3 +36,12 @@ build 8606 before expanding their content. Saved character positions always take
 The cast damage, hostile health, encounter placement, and respawn time are project decisions. This
 is the first combat slice, not a claim that the Phase 5 quest, AI, loot, XP, and save acceptance
 criteria are complete.
+
+## Class Progression
+
+- Class starter spells and later spell availability follow the converted TBC 2.4.3 server-content
+  records.
+- Later class spells are bought from trainers when the character meets the recorded level and
+  prerequisite requirements. They are not automatically learned on level-up.
+- The runtime consumes only the checked-in, versioned local content pack; conversion may read the
+  pinned source database but the game never connects to it.
