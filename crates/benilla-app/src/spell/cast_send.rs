@@ -475,6 +475,21 @@ fn send_spell_cast(
                     debug!(
                     "ui_action: cast {spell_id} refused locally — unbindable target ({reason:#x})"
                 );
+                    // The inputs the verdict read, for a refusal that looks wrong at the keyboard.
+                    warn!(
+                        "cast {spell_id} refused ({reason:#x}): selection {:?}; target store {} \
+                         (template {:?}, health {:?}, flags {:#x}); self store {} (template {:?}, \
+                         flags {:#x}); factions {}",
+                        ctx.selection_guid,
+                        ctx.rel.target_store.is_some(),
+                        ctx.rel.target_store.and_then(|s| s.0.unit_faction_template()),
+                        ctx.rel.target_store.and_then(|s| s.0.unit_health()),
+                        ctx.rel.target_store.map_or(0, |s| s.0.unit_flags()),
+                        ctx.rel.self_store.is_some(),
+                        ctx.rel.self_store.and_then(|s| s.0.unit_faction_template()),
+                        ctx.rel.self_store.map_or(0, |s| s.0.unit_flags()),
+                        ctx.rel.factions.is_some(),
+                    );
                     cast_errors.push_local(spell_id, reason);
                     return;
                 }
