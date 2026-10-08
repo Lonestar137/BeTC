@@ -183,8 +183,8 @@ impl Plugin for BindingsPlugin {
 /// player's chain (`WTF\DefaultBindings.wtf`), the account set, and the character's set if it has
 /// one. The keys are their own table, so a command a later file declares finds its keys there,
 /// and stock `ActionButton_OnLoad` paints its hotkey corner from `GetBindingKey` at load.
-/// Offline first run uses local movement defaults only when neither saved set exists; persisted
-/// diffs keep their original baseline.
+/// Offline first run uses local movement defaults; saved sets keep the baseline they were written
+/// against, with Escape-to-menu added as the one required offline control.
 ///
 /// The reference reads the defaults later in `UI_Init` (`0x4b62b0` at `0x4900c7`); here they are
 /// read first because the stored sets are diffs against them ([`store`]'s deviation), and nothing
@@ -199,9 +199,10 @@ pub(crate) fn seed_bindings_for_vm(world: &mut World, script: &mut UiScript) {
         .and_then(|(realm, name)| crate::local_state::bindings_character_path(realm, name));
     let has_saved_bindings = account.as_ref().is_some_and(|path| path.exists())
         || character.as_ref().is_some_and(|path| path.exists());
-    let defaults = if world.get_resource::<crate::GameMode>() == Some(&crate::GameMode::Offline)
-        && !has_saved_bindings
-    {
+    let offline = world.get_resource::<crate::GameMode>() == Some(&crate::GameMode::Offline);
+    let defaults = if offline && has_saved_bindings {
+        crate::ui_script::offline_saved_default_bindings()
+    } else if offline {
         crate::ui_script::offline_default_bindings()
     } else {
         crate::ui_script::default_bindings()
@@ -614,6 +615,7 @@ mod tests {
             if keystate == "down" then TurnLeftStart() else TurnLeftStop() end
         </Binding>
         <Binding name="JUMP">Jump()</Binding>
+        <Binding name="TOGGLEGAMEMENU">MENUS = (MENUS or 0) + 1</Binding>
         <Binding name="SITORSTAND">SitOrStand()</Binding>
         <Binding name="TOGGLESHEATH">ToggleSheath()</Binding>
         <Binding name="TOGGLEAUTORUN">ToggleAutoRun()</Binding>
@@ -808,6 +810,22 @@ mod tests {
 
         // `keystate` does not outlive the call: `RunCommand` sets it to nil (`0x4b7c42`).
         assert_eq!(lua_str(&app, "tostring(keystate)"), "nil");
+    }
+
+    #[test]
+    fn offline_escape_dispatches_the_game_menu_binding() {
+        let mut script = core_script();
+        script.set_default_bindings(crate::ui_script::offline_default_bindings());
+        script.load_binding_set(1);
+        let mut app = vm_harness(script);
+
+        press_key(&mut app, KeyCode::Escape);
+        app.update();
+        assert_eq!(lua_count(&app, "MENUS"), 1);
+
+        release_key(&mut app, KeyCode::Escape);
+        app.update();
+        assert_eq!(lua_count(&app, "MENUS"), 1, "Escape is a one-shot toggle");
     }
 
     /// A focused EditBox swallows every key (the reference's handler returns 1 on every path,

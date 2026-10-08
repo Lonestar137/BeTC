@@ -173,9 +173,27 @@ impl CreatureCatalog {
         self.display.iter().map(|(id, r)| (*id, r.model_id))
     }
 
+    /// Find a renderable display for a model path, accepting the client's `.mdx`/`.mdl` aliases.
+    /// Lowest display ID is deterministic when several appearances share one model.
+    pub fn display_for_model_path(&self, path: &str) -> Option<u32> {
+        let key = crate::models::model_path(&path.replace('/', "\\"));
+        self.display_models()
+            .filter_map(|(display, _)| {
+                self.model(display)
+                    .filter(|model| {
+                        model.scale.is_finite()
+                            && model.scale > 0.0
+                            && crate::models::model_path(&model.model_path.replace('/', "\\"))
+                                == key
+                    })
+                    .map(|_| display)
+            })
+            .min()
+    }
+
     /// `modelScale × creatureModelScale`. The server folds it into `OBJECT_FIELD_SCALE_X`, which
-    /// alone scales a unit (`0x613ef0`), so only the glue screens read this: the reference sizes
-    /// the serverless character-select pet by it (`0x472dc6`).
+    /// alone scales a unit (`0x613ef0`); glue screens size serverless pets with it (`0x472dc6`),
+    /// and the offline adapter folds it into practice-unit scale.
     pub fn model_scale(&self, display_id: u32) -> Option<f32> {
         let row = self.display.get(&display_id)?;
         let model = self.models.get(&row.model_id)?;
@@ -482,6 +500,57 @@ fn load_creature_display_info_extra(chain: &mut Chain) -> Result<HashMap<u32, Np
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn display_row(model_id: u32, scale: f32) -> DisplayRow {
+        DisplayRow {
+            model_id,
+            extended_id: 0,
+            scale,
+            textures: [None, None, None],
+            blood_level: 0,
+            size_class: -1,
+            model_alpha: 255,
+        }
+    }
+
+    fn model_row(path: &str, scale: f32) -> ModelRow {
+        ModelRow {
+            path: path.into(),
+            scale,
+            flags: 0,
+            size_class: 0,
+            blood: 0,
+            footprint_texture: -1,
+            footprint_length: 0.0,
+            footprint_width: 0.0,
+            collision_height: 0.0,
+            foley_material: 0,
+            footstep_shake: 0,
+            death_thud_shake: 0,
+        }
+    }
+
+    #[test]
+    fn model_path_lookup_normalizes_slashes_extensions_and_rejects_unrenderable_rows() {
+        let catalog = CreatureCatalog {
+            display: HashMap::from([(2, display_row(20, 1.0)), (9, display_row(90, 1.0))]),
+            models: HashMap::from([
+                (20, model_row(r"Creature\Wolf\Wolf.mdx", 0.0)),
+                (90, model_row(r"Creature\Wolf\Wolf.mdl", 1.25)),
+            ]),
+            extra: HashMap::new(),
+        };
+
+        assert_eq!(
+            catalog.display_for_model_path("creature/wolf/wolf.m2"),
+            Some(9),
+            "select the lowest usable display across slash and extension aliases"
+        );
+        assert_eq!(
+            catalog.display_for_model_path(r"Creature\Wolf\Missing.m2"),
+            None
+        );
+    }
 
     /// `BloodID = −1` is a tier-2 miss, so 595 displays reach tier 3 and bleed red.
     #[test]

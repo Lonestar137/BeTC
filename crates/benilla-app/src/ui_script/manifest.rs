@@ -237,6 +237,7 @@ bind E STRAFERIGHT\r\n\
 bind SPACE JUMP\r\n\
 bind BUTTON1 CAMERAORSELECTORMOVE\r\n\
 bind BUTTON2 TURNORACTION\r\n\
+bind ESCAPE TOGGLEGAMEMENU\r\n\
 bind NUMLOCK TOGGLEAUTORUN\r\n";
 
 fn parse_default_bindings(bytes: &[u8]) -> Vec<benilla_ui::script::keybind::KeyBinding> {
@@ -258,12 +259,28 @@ pub(crate) fn default_bindings() -> Vec<benilla_ui::script::keybind::KeyBinding>
 
 /// Offline first-run controls when the player's install has no per-user WTF defaults to load.
 pub(crate) fn offline_default_bindings() -> Vec<benilla_ui::script::keybind::KeyBinding> {
-    match reference_ui::read(reference_ui::DEFAULT_BINDINGS) {
+    let mut bindings = match reference_ui::read(reference_ui::DEFAULT_BINDINGS) {
         Some(bytes) => parse_default_bindings(&bytes),
         None => {
             info!("ui_script: using offline first-run movement bindings");
             parse_default_bindings(OFFLINE_DEFAULT_BINDINGS.as_bytes())
         }
+    };
+    ensure_offline_menu_binding(&mut bindings);
+    bindings
+}
+
+/// Preserve the client baseline for a saved keyset while keeping Escape available in offline play.
+pub(crate) fn offline_saved_default_bindings() -> Vec<benilla_ui::script::keybind::KeyBinding> {
+    let mut bindings = default_bindings();
+    ensure_offline_menu_binding(&mut bindings);
+    bindings
+}
+
+fn ensure_offline_menu_binding(bindings: &mut Vec<benilla_ui::script::keybind::KeyBinding>) {
+    let escape_bound = bindings.iter().any(|(key, _)| key == "ESCAPE");
+    if !escape_bound {
+        bindings.push(("ESCAPE".into(), "TOGGLEGAMEMENU".into()));
     }
 }
 
@@ -543,7 +560,7 @@ mod tests {
 </Bindings>"#;
 
     #[test]
-    fn offline_first_run_bindings_include_jump_and_normal_mouse_roles() {
+    fn offline_bindings_include_jump_mouse_roles_and_escape_menu() {
         let bindings = parse_default_bindings(OFFLINE_DEFAULT_BINDINGS.as_bytes());
         for binding in [
             ("W", "MOVEFORWARD"),
@@ -551,12 +568,40 @@ mod tests {
             ("SPACE", "JUMP"),
             ("BUTTON1", "CAMERAORSELECTORMOVE"),
             ("BUTTON2", "TURNORACTION"),
+            ("ESCAPE", "TOGGLEGAMEMENU"),
         ] {
             assert!(
-                bindings.iter().any(|(key, action)| key == binding.0 && action == binding.1),
+                bindings
+                    .iter()
+                    .any(|(key, action)| key == binding.0 && action == binding.1),
                 "missing {binding:?}"
             );
         }
+    }
+
+    #[test]
+    fn offline_bindings_supply_escape_when_the_client_default_set_omits_it() {
+        let _chain = fixture::lay(&[(
+            reference_ui::DEFAULT_BINDINGS,
+            Some(b"bind W MOVEFORWARD\r\n"),
+        )]);
+        let bindings = offline_default_bindings();
+        assert!(
+            bindings
+                .iter()
+                .any(|(key, action)| key == "ESCAPE" && action == "TOGGLEGAMEMENU"),
+            "Escape remains a reliable way to open the in-world menu"
+        );
+    }
+
+    #[test]
+    fn offline_saved_binding_baseline_adds_escape_without_movement_defaults() {
+        let _chain = fixture::lay(&[(reference_ui::DEFAULT_BINDINGS, None)]);
+        let bindings = offline_saved_default_bindings();
+        assert_eq!(bindings.len(), 1, "only the menu default is added");
+        assert!(bindings
+            .iter()
+            .any(|(key, action)| key == "ESCAPE" && action == "TOGGLEGAMEMENU"));
     }
 
     /// The core's commands are the chain's `Bindings.xml`, loaded after the toc's files (which

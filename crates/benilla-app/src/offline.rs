@@ -471,14 +471,22 @@ fn emit_world_entry(
         let race = snapshot.appearance.race;
         let entry = hostile_entry(race);
         let guid = hostile_guid(race, hostile.spawn_id);
-        let display_id = creatures.and_then(|catalog| match race {
-            10 => catalog.display_for_model_path("Creature\\ManaWyrm\\ManaWyrm.m2"),
-            11 => catalog.display_for_model_path("Creature\\Owlkin\\Owlkin.m2"),
-            _ => catalog.display_for_model_path("Creature\\Wolf\\Wolf.m2"),
-        });
+        let model_path = match race {
+            10 => "Creature\\ManaWyrm\\ManaWyrm.m2",
+            11 => "Creature\\Owlkin\\Owlkin.m2",
+            _ => "Creature\\Wolf\\Wolf.m2",
+        };
+        let display_id = creatures.and_then(|catalog| catalog.display_for_model_path(model_path));
+        if display_id.is_none() {
+            warn!("offline practice hostile has no renderable build-8606 display for {model_path}");
+        }
+        let scale = display_id
+            .and_then(|display_id| creatures.and_then(|catalog| catalog.model_scale(display_id)))
+            .unwrap_or(1.0);
         let mut mob_fields = vec![
             (2, 0x9), // OBJECT_FIELD_TYPE: object and unit
             (3, entry),
+            (4, scale.to_bits()), // OBJECT_FIELD_SCALE_X: display/model scale folded by the adapter
             (22, hostile.health),
             (28, hostile.max_health),
             (34, 1),
@@ -508,7 +516,7 @@ fn emit_world_entry(
             display_id,
             position: [hostile.position.x, hostile.position.y, hostile.position.z],
             orientation: hostile.position.orientation,
-            scale: 1.0,
+            scale,
             speeds: None,
             mover: None,
             transport_progress: None,

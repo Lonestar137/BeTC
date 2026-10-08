@@ -257,19 +257,7 @@ impl Creatures {
     /// Find the installed build's display record for an authored creature model path.
     #[cfg(any(feature = "offline", test))]
     pub(crate) fn display_for_model_path(&self, path: &str) -> Option<u32> {
-        let key = path.replace('/', "\\").to_ascii_lowercase();
-        let mut displays: Vec<_> = self
-            .catalog
-            .display_models()
-            .filter_map(|(display, _)| {
-                self.catalog
-                    .model(display)
-                    .filter(|model| model.model_path.eq_ignore_ascii_case(&key))
-                    .map(|_| display)
-            })
-            .collect();
-        displays.sort_unstable();
-        displays.into_iter().next()
+        self.catalog.display_for_model_path(path)
     }
 
     /// A display's foley material (`Material.dbc` id), the creature half of the footfall rustle.
@@ -317,8 +305,8 @@ impl Creatures {
         self.catalog.size_class(display_id)
     }
 
-    /// A display's `modelScale × creatureModelScale`; only the glue screens' pet reads it, as the
-    /// server folds it into a spawned unit's `OBJECT_FIELD_SCALE_X`.
+    /// A display's `modelScale × creatureModelScale`; glue-screen pets and offline practice units
+    /// read it, as the client/server fold it into a spawned unit's `OBJECT_FIELD_SCALE_X`.
     pub(crate) fn model_scale(&self, display_id: u32) -> Option<f32> {
         self.catalog.model_scale(display_id)
     }
@@ -1512,10 +1500,24 @@ mod practice_display_tests {
                 .expect("load the build-8606 creature display catalog"),
             models: HashMap::new(),
         };
-        for path in ["Creature\\Wolf\\Wolf.m2", "Creature\\ManaWyrm\\ManaWyrm.m2"] {
+        for (path, alias) in [
+            ("Creature\\Wolf\\Wolf.m2", "Creature/Wolf/Wolf.mdx"),
+            (
+                "Creature\\ManaWyrm\\ManaWyrm.m2",
+                "Creature/ManaWyrm/ManaWyrm.mdl",
+            ),
+        ] {
+            let display = creatures.display_for_model_path(path).unwrap_or_else(|| {
+                panic!("the installed client has no renderable display for {path}")
+            });
+            assert_eq!(
+                creatures.display_for_model_path(alias),
+                Some(display),
+                "model aliases resolve to the same appearance"
+            );
             assert!(
-                creatures.display_for_model_path(path).is_some(),
-                "the installed client has no CreatureDisplayInfo for {path}"
+                creatures.model_scale(display).is_some(),
+                "display {display} for {path} has a usable scale"
             );
         }
     }

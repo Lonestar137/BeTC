@@ -67,7 +67,7 @@ fn the_menu_options_button_swaps_the_menu_for_the_options_window() {
     s.run("ShowUIPanel(GameMenuFrame)").unwrap();
     let _ = s.take_sounds();
 
-    s.run("GameMenuButtonOptions:Click()").unwrap();
+    super::test_ui::click(&mut s, "GameMenuButtonOptions", "LeftButton");
     assert!(
         s.eval::<bool>("return BenillaOptionsFrame:IsVisible()")
             .unwrap(),

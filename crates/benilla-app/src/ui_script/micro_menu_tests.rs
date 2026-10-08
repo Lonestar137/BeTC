@@ -94,6 +94,38 @@ fn the_micro_row_sits_where_the_reference_puts_it() {
     assert!(s.errors().is_empty(), "script errors: {:?}", s.errors());
 }
 
+#[test]
+fn clicking_the_main_menu_micro_button_opens_and_closes_the_live_menu() {
+    let _data = benilla_formats::wow_data_or_skip!();
+    let mut s = UiScript::new().unwrap();
+    s.set_screen_size(1024.0, 768.0);
+    s.set_unit(
+        "player",
+        Some(UnitState {
+            exists: true,
+            name: Some("Testelf".into()),
+            level: 1,
+            ..Default::default()
+        }),
+    );
+    super::test_ui::load_ui(&s, "Interface\\FrameXML\\GlobalStrings.lua");
+    let failures = super::load_default_ui(&s);
+    assert!(failures.is_empty(), "manifest load errors: {failures:#?}");
+    s.resolve();
+
+    super::test_ui::click(&mut s, "MainMenuMicroButton", "LeftButton");
+    assert!(
+        s.eval::<bool>("return GameMenuFrame:IsVisible()").unwrap(),
+        "a real pointer click opens the menu"
+    );
+    super::test_ui::click(&mut s, "MainMenuMicroButton", "LeftButton");
+    assert!(
+        !s.eval::<bool>("return GameMenuFrame:IsVisible()").unwrap(),
+        "the same button closes the menu"
+    );
+    assert!(s.errors().is_empty(), "script errors: {:?}", s.errors());
+}
+
 /// `HitRectInsets top="18"` (`MainMenuBarMicroButtons.xml:8`): the art fills the lower 40 of 58.
 #[test]
 fn the_transparent_top_of_a_micro_button_does_not_capture_the_mouse() {
