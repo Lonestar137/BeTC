@@ -3,8 +3,8 @@
 use std::path::Path;
 
 use benilla_game_core::{
-    Appearance, CharacterId, CombatUpdate, GameCore, HostileState, SaveError, WorldPosition,
-    decode_profile, decode_snapshot,
+    decode_profile, decode_snapshot, Appearance, CharacterId, CombatUpdate, GameCore, HostileState,
+    SaveError, WorldPosition,
 };
 use benilla_protocol::{CharAction, CharCreateReq, EntityKind, ObjectFields, SessionEvent};
 use bevy::prelude::*;
@@ -12,13 +12,11 @@ use bevy::prelude::*;
 use crate::local_state;
 use crate::net::{CharActionResultMessage, CharListMessage, CharRequest, OfflineChannels};
 
+mod persistence;
+use persistence::OfflinePersistence;
+
 #[derive(Resource, Default)]
 pub(crate) struct OfflineGameCore(pub(crate) GameCore);
-
-#[derive(Resource)]
-struct OfflinePersistence {
-    writable: bool,
-}
 
 pub(crate) struct OfflineGamePlugin;
 
@@ -33,7 +31,7 @@ impl Plugin for OfflineGamePlugin {
             }
         };
         app.insert_resource(OfflineGameCore(core))
-            .insert_resource(OfflinePersistence { writable })
+            .insert_resource(OfflinePersistence::new(writable))
             .add_systems(Startup, publish_local_roster)
             .add_systems(
                 Update,
@@ -52,6 +50,7 @@ impl Plugin for OfflineGamePlugin {
                 Update,
                 update_local_player.after(benilla_world::schedule::WorldStage::Input),
             );
+        crate::shutdown::on_app_exit(app, save_on_exit.into_configs());
         let smoke = std::env::var_os("BENILLA_OFFLINE_SMOKE").is_some();
         if std::env::var_os("BENILLA_OFFLINE_BOOT_CHECK").is_some() && !smoke {
             app.add_systems(Update, exit_after_roster_boot);
@@ -196,23 +195,6 @@ fn read_checked_document<T>(
             path.display()
         )),
     }
-}
-
-fn save_core(core: &GameCore) -> Result<(), String> {
-    let profile_path = local_state::offline_profile_path()
-        .ok_or_else(|| "local state root is unavailable".to_string())?;
-    for id in core.character_ids() {
-        let path = local_state::offline_character_path(id.as_str())
-            .ok_or_else(|| format!("invalid character id {}", id.as_str()))?;
-        let bytes = core
-            .encode_snapshot(id)
-            .map_err(|error| error.to_string())?;
-        local_state::write_atomic_bytes_with_backup(&path, bytes.as_bytes())
-            .map_err(|error| format!("writing {}: {error}", path.display()))?;
-    }
-    let bytes = core.encode_profile().map_err(|error| error.to_string())?;
-    local_state::write_atomic_bytes_with_backup(&profile_path, bytes.as_bytes())
-        .map_err(|error| format!("writing {}: {error}", profile_path.display()))
 }
 
 fn drive_local_requests(
@@ -402,7 +384,7 @@ fn emit_world_entry(
     let display_id =
         catalog.and_then(|catalog| catalog.0.body_display(appearance.race, appearance.gender));
     let mut pairs = vec![
-        (2, 0x19),                               // OBJECT_FIELD_TYPE: object, unit, player
+        (2, 0x19),                                // OBJECT_FIELD_TYPE: object, unit, player
         (22, 100),                                // UNIT_FIELD_HEALTH
         (28, 100),                                // UNIT_FIELD_MAXHEALTH
         (34, u32::from(snapshot.level)),          // UNIT_FIELD_LEVEL
@@ -635,25 +617,20 @@ fn drive_offline_gameplay(
             continue;
         }
         let mana_cost = match &command {
-            crate::net::ClientCommand::CastSpell { spell_id, .. } => {
-                spells
-                    .as_deref()
-                    .and_then(|spells| {
-                        let spell = spells.catalog.get(*spell_id)?;
-                        let cast_time_ms = spells.cast_time_ms(
-                            spell,
-                            1,
-                            &crate::spell::SpellModifiers::default(),
-                        );
-                        Some((spell.mana_cost, cast_time_ms))
-                    })
-                    .or_else(|| {
-                        (*spell_id == benilla_game_core::FIREBALL_SPELL_ID).then_some((
-                            benilla_game_core::FIREBALL_MANA_COST,
-                            benilla_game_core::FIREBALL_CAST_MS,
-                        ))
-                    })
-            }
+            crate::net::ClientCommand::CastSpell { spell_id, .. } => spells
+                .as_deref()
+                .and_then(|spells| {
+                    let spell = spells.catalog.get(*spell_id)?;
+                    let cast_time_ms =
+                        spells.cast_time_ms(spell, 1, &crate::spell::SpellModifiers::default());
+                    Some((spell.mana_cost, cast_time_ms))
+                })
+                .or_else(|| {
+                    (*spell_id == benilla_game_core::FIREBALL_SPELL_ID).then_some((
+                        benilla_game_core::FIREBALL_MANA_COST,
+                        benilla_game_core::FIREBALL_CAST_MS,
+                    ))
+                }),
             _ => None,
         };
         if let Some((mana_cost, cast_time_ms)) = mana_cost {
@@ -875,13 +852,12 @@ fn send_gameplay_events(
 }
 
 fn save_after_command(core: &GameCore, persistence: &mut OfflinePersistence) {
-    if !persistence.writable {
-        return;
-    }
-    if let Err(error) = save_core(core) {
-        persistence.writable = false;
-        error!("offline save failed; persistence disabled: {error}");
-    }
+    persistence.queue(core);
+}
+
+fn save_on_exit(core: Res<OfflineGameCore>, mut persistence: ResMut<OfflinePersistence>) {
+    persistence.queue(&core.0);
+    persistence.finish();
 }
 
 fn update_local_player(
@@ -890,9 +866,8 @@ fn update_local_player(
     mut core: ResMut<OfflineGameCore>,
     mut persistence: ResMut<OfflinePersistence>,
     mut save_elapsed: Local<f32>,
-    mut exits: MessageReader<AppExit>,
 ) {
-    let exiting = exits.read().next().is_some();
+    persistence.poll();
     let Some(id) = core.0.active().cloned() else {
         return;
     };
@@ -915,7 +890,7 @@ fn update_local_player(
         }
         *save_elapsed += time.delta_secs();
     }
-    if exiting || *save_elapsed >= 5.0 {
+    if *save_elapsed >= 5.0 {
         *save_elapsed = 0.0;
         save_after_command(&core.0, &mut persistence);
     }
@@ -1010,7 +985,7 @@ fn exit_after_world_smoke(
             );
         }
         if let Ok(path) = std::env::var("BENILLA_OFFLINE_SMOKE_SHOT") {
-            use bevy::render::view::screenshot::{Screenshot, save_to_disk};
+            use bevy::render::view::screenshot::{save_to_disk, Screenshot};
             commands
                 .spawn(Screenshot::primary_window())
                 .observe(save_to_disk(path.clone()));
@@ -1187,7 +1162,10 @@ mod tests {
         let (warrior_spells, warrior_buttons) = starter_loadout(1);
         assert_eq!(warrior_spells, [benilla_game_core::ATTACK_SPELL_ID]);
         assert_eq!(warrior_buttons.len(), 1);
-        assert_eq!(warrior_buttons[0].action, benilla_game_core::ATTACK_SPELL_ID);
+        assert_eq!(
+            warrior_buttons[0].action,
+            benilla_game_core::ATTACK_SPELL_ID
+        );
     }
 
     #[test]
@@ -1315,11 +1293,9 @@ mod tests {
             ));
             advance_offline_combat(&mut core, &channels, benilla_game_core::FIREBALL_CAST_MS);
             let impact_events: Vec<_> = received.try_iter().collect();
-            assert!(
-                impact_events
-                    .iter()
-                    .any(|event| matches!(event, SessionEvent::SpellGo { spell_id: 133, .. }))
-            );
+            assert!(impact_events
+                .iter()
+                .any(|event| matches!(event, SessionEvent::SpellGo { spell_id: 133, .. })));
             assert!(impact_events.iter().any(
                 |event| matches!(event, SessionEvent::SpellDamageLog(log) if log.damage == 30)
             ));
@@ -1370,8 +1346,13 @@ mod tests {
             facial_hair: 0,
         };
         let mut core = GameCore::default();
-        core.create_character(id.clone(), "Alaera", appearance, starting_position(1).unwrap())
-            .unwrap();
+        core.create_character(
+            id.clone(),
+            "Alaera",
+            appearance,
+            starting_position(1).unwrap(),
+        )
+        .unwrap();
         core.enter_world().unwrap();
         let start = core.snapshot(&id).unwrap().position;
         core.update_active(
@@ -1393,7 +1374,7 @@ mod tests {
             commands: command_receiver,
         })
         .insert_resource(OfflineGameCore(core))
-        .insert_resource(OfflinePersistence { writable: false })
+        .insert_resource(OfflinePersistence::new(false))
         .insert_resource(Time::<()>::default());
 
         let target = hostile_guid(appearance.race, benilla_game_core::HOSTILE_SPAWN_ID);
@@ -1431,7 +1412,9 @@ mod tests {
                         == Some(benilla_game_core::HOSTILE_MAX_HEALTH - benilla_game_core::MELEE_DAMAGE)
         )));
 
-        commands.send(crate::net::ClientCommand::AttackStop).unwrap();
+        commands
+            .send(crate::net::ClientCommand::AttackStop)
+            .unwrap();
         app.world_mut()
             .run_system_once(drive_offline_gameplay)
             .expect("offline stop command is handled");
@@ -1466,8 +1449,13 @@ mod tests {
             facial_hair: 0,
         };
         let mut core = GameCore::default();
-        core.create_character(id.clone(), "Alaera", appearance, starting_position(1).unwrap())
-            .unwrap();
+        core.create_character(
+            id.clone(),
+            "Alaera",
+            appearance,
+            starting_position(1).unwrap(),
+        )
+        .unwrap();
         core.enter_world().unwrap();
 
         let (_pick_tx, picks) = crossbeam_channel::unbounded();
@@ -1480,7 +1468,7 @@ mod tests {
             commands: command_receiver,
         })
         .insert_resource(OfflineGameCore(core))
-        .insert_resource(OfflinePersistence { writable: false })
+        .insert_resource(OfflinePersistence::new(false))
         .insert_resource(Time::<()>::default());
 
         let target = hostile_guid(appearance.race, benilla_game_core::HOSTILE_SPAWN_ID);
@@ -1566,7 +1554,7 @@ mod tests {
             commands: command_rx,
         })
         .insert_resource(OfflineGameCore(core))
-        .insert_resource(OfflinePersistence { writable: false })
+        .insert_resource(OfflinePersistence::new(false))
         .insert_resource(Time::<()>::default());
         drop(pick_tx);
 
@@ -1607,6 +1595,90 @@ mod tests {
         assert_eq!(restored, Some(42));
         assert_eq!(std::fs::read_to_string(path).unwrap(), "42");
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn shutdown_saves_the_latest_pose_even_when_exit_is_announced_in_post_update() {
+        use crate::local_state::test_env::{EnvGuard, ENV_LOCK};
+
+        let _lock = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let dir = std::env::temp_dir().join(format!("benilla-offline-exit-{}", std::process::id()));
+        let _capture = EnvGuard::unset("WOW_CAPTURE");
+        let _home = EnvGuard::set("BENILLA_HOME", dir.to_str().unwrap());
+        let id = CharacterId::parse("00000000000000000000000000000001").unwrap();
+        let mut core = GameCore::default();
+        core.create_character(
+            id.clone(),
+            "Alaera",
+            Appearance {
+                race: 10,
+                class: 8,
+                gender: 0,
+                skin: 0,
+                face: 0,
+                hair_style: 0,
+                hair_color: 0,
+                facial_hair: 0,
+            },
+            starting_position(10).unwrap(),
+        )
+        .unwrap();
+        core.enter_world().unwrap();
+        let path = local_state::offline_character_path(id.as_str()).unwrap();
+        let initial = core.encode_snapshot(&id).unwrap();
+        local_state::write_atomic_bytes_with_backup(&path, initial.as_bytes()).unwrap();
+
+        let mut app = App::new();
+        app.insert_resource(OfflineGameCore(core))
+            .insert_resource(OfflinePersistence::new(true))
+            .insert_resource(crate::player::Player::default())
+            .insert_resource(Time::<()>::default())
+            .add_systems(Update, update_local_player)
+            .add_systems(PostUpdate, |mut exit: MessageWriter<AppExit>| {
+                exit.write(AppExit::Success);
+            });
+        crate::shutdown::on_app_exit(&mut app, save_on_exit.into_configs());
+        let latest = WorldPosition {
+            x: 10320.0,
+            y: -6390.0,
+            z: 35.0,
+            orientation: 1.0,
+            ..starting_position(10).unwrap()
+        };
+        {
+            let mut player = app.world_mut().resource_mut::<crate::player::Player>();
+            player.active = true;
+            player.pos = benilla_assets::coords::wow_to_bevy([latest.x, latest.y, latest.z]);
+        }
+        app.world_mut()
+            .resource_mut::<Time>()
+            .advance_by(std::time::Duration::from_millis(100));
+        app.update();
+
+        let saved = decode_snapshot(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(
+            (saved.position.x, saved.position.y, saved.position.z),
+            (latest.x, latest.y, latest.z)
+        );
+        assert_eq!(saved.play_time_ms, 100);
+        assert_eq!(
+            std::fs::read_to_string(local_state::backup_path(&path)).unwrap(),
+            initial
+        );
+        let profile = decode_profile(
+            &std::fs::read_to_string(local_state::offline_profile_path().unwrap()).unwrap(),
+        )
+        .unwrap();
+        assert!(GameCore::restore(profile, [saved]).is_ok());
+        app.update();
+        assert_eq!(
+            std::fs::read_to_string(local_state::backup_path(&path)).unwrap(),
+            initial
+        );
+        drop(app);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
