@@ -4,8 +4,10 @@
 //! A use (a [`SpatialCache::fetch`] hit or an insert) clears an entry's stamp to `None` and each
 //! sweep stamps every `None` with the current focus, so no call site needs the camera and a cache
 //! nothing sweeps never expires. Eviction only drops the dedup: a drawn entity keeps its handles.
+//! `WOW_ART_SCOPE_TRACE=1` logs the duration and counts for each cache sweep.
 
 use std::hash::Hash;
+use std::time::Instant;
 
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
@@ -16,6 +18,7 @@ use benilla_formats::TILE_SIZE;
 
 /// Real-clock seconds between sweeps (housekeeping, not world time); also the stamp's resolution.
 const SWEEP_SECS: f32 = 1.0;
+const SWEEP_SLOT_COUNT: usize = ArtSlot::ALL.len();
 
 /// Seven ADT tiles (3733 yd), the smallest round tile multiple clear of [`radius_floor`]
 /// (MONKEY (presets): five until `farclip`'s ceiling rose past 777).
@@ -119,16 +122,19 @@ impl ArtCensus {
     }
 }
 
-/// The sweep's shared state: the radius, this tick's focus, and whether this frame is a sweep frame.
+/// The sweep's shared state: the radius, this tick's focus, and per-cache deadline state.
 #[derive(Resource, Default)]
 pub struct ArtScopeState {
     /// Eviction radius in yards, `0` for none; zero until [`configure_art_scope`] runs.
     radius: f32,
     /// The view focus in WoW coords; `None` (no avatar, no camera) suspends stamping and sweeping.
     focus: Option<[f32; 3]>,
-    /// Set on the one frame per [`SWEEP_SECS`] that sweeps.
-    due: bool,
-    last_sweep: f32,
+    /// Set independently for each cache, with deadlines offset across [`SWEEP_SECS`].
+    due: [bool; SWEEP_SLOT_COUNT],
+    /// Next deadline per cache; initialized relative to the first observed real-clock time.
+    next_sweep: Option<[f32; SWEEP_SLOT_COUNT]>,
+    /// Optional per-cache timings for a live hitch trace.
+    trace_sweeps: bool,
     /// Real seconds since app start this frame; the cache's dwell floor is measured on it.
     now: f32,
 }
@@ -152,8 +158,18 @@ impl ArtScope<'_> {
     /// Sweeps one cache on sweep frames and records its residency.
     pub fn apply<K: Eq + Hash, V>(&mut self, cache: &mut SpatialCache<K, V>, slot: ArtSlot) {
         let dropped = match self.state.focus {
-            Some(focus) if self.state.due && self.state.radius > 0.0 => {
-                cache.scope(focus, self.state.radius, self.state.now)
+            Some(focus) if self.state.due[slot.idx()] && self.state.radius > 0.0 => {
+                let started = self.state.trace_sweeps.then(Instant::now);
+                let dropped = cache.scope(focus, self.state.radius, self.state.now);
+                if let Some(started) = started {
+                    info!(
+                        "art-scope: swept {} cache in {:.2} ms ({} live, {dropped} dropped)",
+                        slot.column(),
+                        started.elapsed().as_secs_f64() * 1000.0,
+                        cache.len(),
+                    );
+                }
+                dropped
             }
             _ => 0,
         };
@@ -171,8 +187,29 @@ impl ArtScope<'_> {
     }
 }
 
+fn due_caches(
+    now: f32,
+    next_sweep: &mut Option<[f32; SWEEP_SLOT_COUNT]>,
+) -> [bool; SWEEP_SLOT_COUNT] {
+    let deadlines = next_sweep.get_or_insert_with(|| {
+        std::array::from_fn(|i| now + SWEEP_SECS * (i + 1) as f32 / SWEEP_SLOT_COUNT as f32)
+    });
+    std::array::from_fn(|i| {
+        let deadline = &mut deadlines[i];
+        if now < *deadline {
+            return false;
+        }
+
+        // Coalesce missed intervals into one scan while preserving each cache's phase.
+        let intervals = ((now - *deadline) / SWEEP_SECS).floor() + 1.0;
+        *deadline += intervals * SWEEP_SECS;
+        true
+    })
+}
+
 fn configure_art_scope(mut state: ResMut<ArtScopeState>) {
     state.radius = radius_from_env();
+    state.trace_sweeps = std::env::var("WOW_ART_SCOPE_TRACE").is_ok_and(|v| v == "1");
     if state.radius > 0.0 {
         info!(
             "art-scope: within-map art evicts beyond {:.0} yd of the view focus",
@@ -183,8 +220,8 @@ fn configure_art_scope(mut state: ResMut<ArtScopeState>) {
     }
 }
 
-/// Publish this frame's focus and whether it sweeps. Unordered against every consumer: a stamp is
-/// at most one sweep stale, and reading `due` a frame early only moves the sweep a frame.
+/// Publish this frame's focus and per-cache sweep deadlines. Unordered against every consumer: a
+/// stamp is at most one sweep stale, and reading `due` a frame early only moves a sweep a frame.
 fn track_art_scope(
     mut state: ResMut<ArtScopeState>,
     time: Res<Time<Real>>,
@@ -195,10 +232,7 @@ fn track_art_scope(
     state.focus = (focus.body_pos().is_some() || cam.is_some()).then(|| focus.resolve(cam));
     let now = time.elapsed_secs();
     state.now = now;
-    state.due = now - state.last_sweep >= SWEEP_SECS;
-    if state.due {
-        state.last_sweep = now;
-    }
+    state.due = due_caches(now, &mut state.next_sweep);
 }
 
 /// Owns the sweep policy and the census; each cache's owner calls [`ArtScope::apply`].
@@ -216,6 +250,25 @@ impl Plugin for ArtScopePlugin {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sweep_deadlines_are_staggered_and_repeat_once_per_second() {
+        let mut deadlines = None;
+        assert_eq!(due_caches(10.0, &mut deadlines), [false; SWEEP_SLOT_COUNT]);
+
+        for cycle in 0..2 {
+            for slot in 0..SWEEP_SLOT_COUNT {
+                let now = 10.0 + cycle as f32 + (slot + 1) as f32 / SWEEP_SLOT_COUNT as f32 + 0.001;
+                let mut expected = [false; SWEEP_SLOT_COUNT];
+                expected[slot] = true;
+                assert_eq!(due_caches(now, &mut deadlines), expected, "at {now}");
+                assert_eq!(due_caches(now, &mut deadlines), [false; SWEEP_SLOT_COUNT]);
+            }
+        }
+
+        assert_eq!(due_caches(25.0, &mut deadlines), [true; SWEEP_SLOT_COUNT]);
+        assert_eq!(due_caches(25.0, &mut deadlines), [false; SWEEP_SLOT_COUNT]);
+    }
 
     #[test]
     fn the_radius_clears_the_streamers_own_reach() {

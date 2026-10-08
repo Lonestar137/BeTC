@@ -349,6 +349,12 @@ function SetModifiedClick(name, key)
     if modifierClickDefaults[name] == nil then return end
     MODIFIER_CLICK[name] = key
 end
+function IsModifiedClick(name)
+    local modifier = GetModifiedClick(name)
+    if modifier == "SHIFT" then return IsShiftKeyDown() end
+    if modifier == "CTRL" then return IsControlKeyDown() end
+    if modifier == "ALT" then return IsAltKeyDown() end
+end
 "#;
 
 /// `time()` and `date([format [, when]])`: 1.12 engine globals (`0x7035a0`, `0x7033a0`), Lua 5.0's

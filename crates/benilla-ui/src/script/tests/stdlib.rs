@@ -298,6 +298,30 @@ fn modified_click_settings_have_tbc_defaults_and_can_be_changed() {
     );
 }
 
+#[test]
+fn is_modified_click_tracks_the_configured_modifier_key() {
+    let mut script = script();
+
+    script.set_modifiers(false, false, false);
+    script
+        .run("assert(IsModifiedClick('CHATLINK') == nil)")
+        .unwrap();
+
+    script.set_modifiers(true, false, false);
+    script
+        .run("assert(IsModifiedClick('CHATLINK') == 1)")
+        .unwrap();
+
+    script.run("SetModifiedClick('CHATLINK', 'CTRL')").unwrap();
+    script.set_modifiers(false, true, false);
+    script
+        .run("assert(IsModifiedClick('CHATLINK') == 1)")
+        .unwrap();
+    script
+        .run("assert(IsModifiedClick('UNKNOWN') == nil)")
+        .unwrap();
+}
+
 /// TBC FrameXML needs Lua 5.1 syntax; legacy libraries also use Lua 5.0's implicit vararg `arg`
 /// table and standard-library aliases.
 #[test]

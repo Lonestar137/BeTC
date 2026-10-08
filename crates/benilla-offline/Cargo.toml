@@ -9,6 +9,13 @@ build = "build.rs"
 [lints]
 workspace = true
 
+[features]
+default = []
+# Opt in locally to the profiler and developer tools; the normal offline build stays lean.
+dev = ["benilla-app/dev"]
+# Emit per-system spans to a Chrome trace when investigating a slow frame.
+trace_chrome = ["benilla-app/trace_chrome"]
+
 [dependencies]
 benilla-app = { path = "../benilla-app", default-features = false, features = ["offline"] }
 

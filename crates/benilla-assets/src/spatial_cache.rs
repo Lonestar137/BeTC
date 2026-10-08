@@ -9,11 +9,11 @@ use std::hash::Hash;
 /// drop art it rebuilds on the way back; at gameplay speed the floor never binds.
 const MIN_DWELL_SECS: f32 = 30.0;
 
-/// Horizontal distance between two WoW-space points; height is ignored, as the streamer's window
-/// is a tile square.
-fn plan_dist(a: [f32; 3], b: [f32; 3]) -> f32 {
+/// Squared horizontal distance between two WoW-space points; height is ignored, as the streamer's
+/// window is a tile square.
+fn plan_dist_squared(a: [f32; 3], b: [f32; 3]) -> f32 {
     let (dx, dy) = (a[0] - b[0], a[1] - b[1]);
-    (dx * dx + dy * dy).sqrt()
+    dx * dx + dy * dy
 }
 
 /// A dedup cache that a sweep can empty of the art of places left behind. A lookup is
@@ -81,12 +81,16 @@ impl<K: Eq + Hash, V> SpatialCache<K, V> {
     /// more than `radius` yd away and idle for [`MIN_DWELL_SECS`]; returns how many were dropped.
     pub fn scope(&mut self, focus: [f32; 3], radius: f32, now: f32) -> usize {
         let before = self.map.len();
+        let radius_squared = radius * radius;
         self.map.retain(|_, (_, stamp)| match *stamp {
             None => {
                 *stamp = Some(Stamp { at: focus, t: now });
                 true
             }
-            Some(s) => plan_dist(s.at, focus) <= radius || now - s.t < MIN_DWELL_SECS,
+            Some(s) => {
+                (radius >= 0.0 && plan_dist_squared(s.at, focus) <= radius_squared)
+                    || now - s.t < MIN_DWELL_SECS
+            }
         });
         before - self.map.len()
     }
@@ -129,6 +133,15 @@ mod tests {
             "inside the radius"
         );
         assert_eq!(c.scope(FAR, R, LATER), 1, "beyond it");
+    }
+
+    #[test]
+    fn the_radius_boundary_is_inclusive() {
+        let mut c: SpatialCache<u32, u32> = SpatialCache::default();
+        c.insert(1, 10);
+        c.scope(HOME, R, NOW);
+        assert_eq!(c.scope([R, 0.0, 0.0], R, LATER), 0, "at the boundary");
+        assert_eq!(c.scope([R + 1.0, 0.0, 0.0], R, LATER), 1, "outside it");
     }
 
     #[test]

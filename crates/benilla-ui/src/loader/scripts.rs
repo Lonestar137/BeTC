@@ -2,7 +2,7 @@ use mlua::{Function, ObjectLike, Table};
 
 use crate::framexml::Element;
 
-use super::{Loader, children_named};
+use super::{children_named, Loader};
 
 impl Loader<'_> {
     /// `<Scripts>` (`0x769ef0`): `SetScript` for each handler. Returns the `OnLoad`, which the
@@ -77,8 +77,8 @@ impl Loader<'_> {
         onload
     }
 
-    /// Compile XML handler bodies with TBC's `(self, event, ...)` parameters while preserving the
-    /// legacy `this`/`event`/`argN` globals installed by the dispatcher. The loader reads no other
+    /// Compile XML handler bodies with TBC's positional parameters while preserving the legacy
+    /// `this`/`event`/`argN` globals installed by the dispatcher. The loader reads no other
     /// attribute of the element (no `function=`).
     pub(super) fn compile_handler(
         &mut self,
@@ -92,7 +92,14 @@ impl Loader<'_> {
         if body.is_empty() {
             return None;
         }
-        let source = format!("return function(self, event, ...)\n{body}\nend");
+        let params = if name.eq_ignore_ascii_case("OnEvent") {
+            "self, event, ..."
+        } else if name.eq_ignore_ascii_case("OnUpdate") {
+            "self, elapsed, ..."
+        } else {
+            "self, ..."
+        };
+        let source = format!("return function({params})\n{body}\nend");
         match self
             .lua()
             .load(&source)

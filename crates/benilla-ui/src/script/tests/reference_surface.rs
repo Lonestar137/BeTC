@@ -22,6 +22,7 @@ const BEYOND_1_12: &[&str] = &[
     // TBC FrameXML reads and writes the modified-click mapping through this table and its APIs.
     "MODIFIER_CLICK",
     "GetModifiedClick",
+    "IsModifiedClick",
     "SetModifiedClick",
     // Our Lua runtime is 5.1 where 1.12's is 5.0: 1.12's base library does not export `_G` (an
     // addon reaches the globals with `getfenv(0)`); ours does, as our `getglobal`/`setglobal` are

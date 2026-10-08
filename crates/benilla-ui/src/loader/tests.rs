@@ -1699,6 +1699,30 @@ mod loader_tests {
         );
     }
 
+    #[test]
+    fn xml_onupdate_binds_elapsed_as_its_second_parameter() {
+        let mut s = UiScript::new().unwrap();
+        let doc = parse(
+            r#"<Ui>
+                <Frame name="ElapsedProbe">
+                    <Scripts>
+                        <OnUpdate>seen_elapsed = elapsed; seen_self = self:GetName()</OnUpdate>
+                    </Scripts>
+                </Frame>
+            </Ui>"#,
+        );
+        let report = load(&s, &doc, &no_files);
+        assert!(report.errors.is_empty(), "errors: {:?}", report.errors);
+
+        s.tick(0.125);
+        let (elapsed, name) = s
+            .eval::<(Option<f64>, Option<String>)>("return seen_elapsed, seen_self")
+            .unwrap();
+        assert_eq!(elapsed, Some(0.125));
+        assert_eq!(name.as_deref(), Some("ElapsedProbe"));
+        assert!(s.errors().is_empty(), "errors: {:?}", s.errors());
+    }
+
     /// `CSimpleButton::LoadXML 0x7788c0` builds the label from `<NormalText>` (`0x778b6c`), clears
     /// its `ownsFontAttrs` (`0x778b7b`) and feeds the node to the Normal-state font (`0x783c30`,
     /// at `0x778baf`): the label takes the name and geometry, the state font the `inherits=`.

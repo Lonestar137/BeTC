@@ -4,7 +4,7 @@
 //! committing beyond the live one blames the advance; `NO-FLOOR` on every rung, the geometry;
 //! `STEEP` on every rung, the walkable gate. Output goes to the `stup` trace tag and to
 //! [`latest`], which the debug panel shows live, so a run shows the probe fired at the intended
-//! spot (`docs/METHOD.md`, loop step 5).
+//! spot (`docs/METHOD.md`, loop step 5). The extra collision work is opt-in via `WOW_STEP_PROBE=1`.
 
 use avian3d::prelude::*;
 use bevy::prelude::*;
@@ -28,6 +28,15 @@ const LADDER: [f32; 6] = [0.1, 0.2, CAPSULE_RADIUS, 0.5, 0.8, 1.2];
 
 /// How many candidate faces the geometry dump prints, nearest first.
 const FACE_DUMP: usize = 24;
+
+fn enabled_from(value: Option<&str>) -> bool {
+    value == Some("1")
+}
+
+fn enabled() -> bool {
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ENABLED.get_or_init(|| enabled_from(std::env::var("WOW_STEP_PROBE").ok().as_deref()))
+}
 
 /// The rate limiter and the last report, for the panel.
 struct Probe {
@@ -63,8 +72,8 @@ pub(super) fn watch(
     dt: f32,
     now: f32,
 ) {
-    // Dev builds only: the debug panel is the result's reader.
-    if !crate::run_mode::dev_affordances() {
+    // This diagnostic repeats collision queries; do not add them to ordinary dev play.
+    if !crate::run_mode::dev_affordances() || !enabled() {
         return;
     }
     let speed = horiz_vel.length();
@@ -198,5 +207,18 @@ pub(super) fn watch(
     if let Ok(mut probe) = PROBE.lock() {
         probe.report = lines;
         probe.at = now;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::enabled_from;
+
+    #[test]
+    fn step_probe_requires_its_explicit_opt_in() {
+        assert!(enabled_from(Some("1")));
+        assert!(!enabled_from(None));
+        assert!(!enabled_from(Some("0")));
+        assert!(!enabled_from(Some("true")));
     }
 }
