@@ -400,7 +400,7 @@ pub const SCREEN: crate::layout::Handle = 0;
 /// ScrollFrame's three scroll kinds are `+0x32c`/`+0x334`/`+0x33c` (script-name map `0x786c40`).
 /// The EditBox's vtable (`0x81c910`) replaces the key and char slots: an EditBox never fires
 /// `OnKeyDown`, and fires `OnChar` only from `Insert`, with the inserted text (`0x77c13c`).
-const SCRIPT_KINDS: [&str; 40] = [
+const SCRIPT_KINDS: [&str; 42] = [
     "OnLoad",
     "OnEvent",
     "OnUpdate",
@@ -411,6 +411,10 @@ const SCRIPT_KINDS: [&str; 40] = [
     "OnShow",
     "OnHide",
     "OnClick",
+    // Fired around `OnClick` by a Button's click (2.0+); `ActionButton` resets its checked state
+    // in `PostClick`.
+    "PreClick",
+    "PostClick",
     "OnEnter",
     "OnLeave",
     "OnMouseDown",

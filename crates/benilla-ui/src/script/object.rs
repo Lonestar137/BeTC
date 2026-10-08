@@ -62,7 +62,7 @@ pub(super) fn frame_handle_of(lua: &Lua, this: &Table) -> mlua::Result<FrameHand
 
 /// The wrapper table for a frame id, created and cached on first use and published to `_G` under
 /// the frame's name if that global is free. Call it with no model borrow alive.
-pub(super) fn frame_wrapper(lua: &Lua, id: u32) -> mlua::Result<Table> {
+pub(in crate::script) fn frame_wrapper(lua: &Lua, id: u32) -> mlua::Result<Table> {
     let wrappers: Table = lua.named_registry_value(REG_WRAPPERS)?;
     if let Value::Table(t) = wrappers.get::<Value>(id)? {
         return Ok(t);
@@ -278,6 +278,9 @@ fn frame_kind_from_str(s: &str) -> Option<FrameKind> {
         // `GetObjectType()` is "Frame" and `IsObjectType("TaxiRouteFrame")` false (`0x484800` is
         // not overridden). The flight lines are the FrameXML's own rotated textures.
         "TAXIROUTEFRAME" => FrameKind::Frame,
+        // 2.0's Cooldown frame, the clock sweep over an action button; no sweep is drawn yet, so
+        // it is a plain frame that takes `SetCooldown`.
+        "COOLDOWN" => FrameKind::Frame,
         "BUTTON" => FrameKind::Button,
         "CHECKBUTTON" => FrameKind::CheckButton,
         // Its own registered type (`0x4959a6`), not a Button: 1.12 has no Lua verb to take loot

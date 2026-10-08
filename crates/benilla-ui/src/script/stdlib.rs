@@ -367,6 +367,20 @@ function hooksecurefunc(a, b, c)
         return unpack(r)
     end
 end
+
+-- 2.x action-bar globals the offline client has no state for: answered as an idle player would.
+if InCombatLockdown == nil then function InCombatLockdown() return nil end end
+if IsPossessBarVisible == nil then function IsPossessBarVisible() return nil end end
+if GetPossessInfo == nil then function GetPossessInfo() return nil end end
+if UnitCanAssist == nil then function UnitCanAssist() return nil end end
+if IsEquippableItem == nil then function IsEquippableItem() return nil end end
+if IsEquippedItem == nil then function IsEquippedItem() return nil end end
+if EquipItemByName == nil then function EquipItemByName() end end
+if RunMacro == nil then function RunMacro() end end
+if RunMacroText == nil then function RunMacroText() end end
+if IsStackableAction == nil then
+    function IsStackableAction(action) return IsConsumableAction(action) end
+end
 function IsModifiedClick(name)
     local modifier = GetModifiedClick(name)
     if modifier == "SHIFT" then return IsShiftKeyDown() end

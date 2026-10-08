@@ -576,3 +576,37 @@ fn a_micro_button_pushes_while_its_panel_is_open_and_the_talent_button_pulses_on
     );
     assert!(s.errors().is_empty(), "script errors: {:?}", s.errors());
 }
+
+/// The extra bars read their page off the parent's `<Attributes>`, so they show their own slots
+/// and not a second copy of the main bar's; a click's `PostClick` resets a CheckButton's tick.
+#[test]
+fn the_extra_bars_have_their_own_pages_and_a_click_does_not_leave_a_tick() {
+    let _data = benilla_formats::wow_data_or_skip!();
+    let mut s = UiScript::new().unwrap();
+    s.set_screen_size(1024.0, 768.0);
+    super::test_ui::load_ui(&s, "Interface\\FrameXML\\GlobalStrings.lua");
+    let _ = super::load_default_ui(&s);
+    s.fire_event("PLAYER_ENTERING_WORLD", vec![]);
+    s.resolve();
+    let actions: Vec<i64> = s
+        .eval(
+            "return { ActionButton1.action, MultiBarBottomLeftButton1.action, \
+             MultiBarBottomRightButton1.action, MultiBarRightButton1.action, \
+             MultiBarLeftButton1.action }",
+        )
+        .unwrap();
+    assert_eq!(actions, [1, 61, 49, 25, 37]);
+
+    s.run("ActionButton1:Show() ActionButton1:SetChecked(0)")
+        .unwrap();
+    s.resolve();
+    let (x, y) = super::test_ui::centre_of(&mut s, "ActionButton1");
+    s.mouse_move(x, y);
+    s.mouse_button(x, y, "LeftButton", true);
+    s.mouse_button(x, y, "LeftButton", false);
+    assert!(
+        !s.eval::<bool>("return ActionButton1:GetChecked() == 1")
+            .unwrap(),
+        "PostClick put the tick back to the action's state"
+    );
+}

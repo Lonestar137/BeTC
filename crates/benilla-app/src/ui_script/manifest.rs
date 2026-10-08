@@ -277,7 +277,56 @@ pub(crate) fn offline_saved_default_bindings() -> Vec<benilla_ui::script::keybin
     bindings
 }
 
+/// The main bar's stock keys, `1`..`=` on `ACTIONBUTTON1..12`, the pet bar's `CTRL-1`..`CTRL-0`, and
+/// the common panel toggles: the player's install ships no `DefaultBindings.wtf` to carry them.
+/// A key or a command the set already binds is left alone.
+const OFFLINE_ACTION_BAR_KEYS: [(&str, &str); 33] = [
+    ("1", "ACTIONBUTTON1"),
+    ("2", "ACTIONBUTTON2"),
+    ("3", "ACTIONBUTTON3"),
+    ("4", "ACTIONBUTTON4"),
+    ("5", "ACTIONBUTTON5"),
+    ("6", "ACTIONBUTTON6"),
+    ("7", "ACTIONBUTTON7"),
+    ("8", "ACTIONBUTTON8"),
+    ("9", "ACTIONBUTTON9"),
+    ("0", "ACTIONBUTTON10"),
+    ("-", "ACTIONBUTTON11"),
+    ("=", "ACTIONBUTTON12"),
+    ("CTRL-1", "BONUSACTIONBUTTON1"),
+    ("CTRL-2", "BONUSACTIONBUTTON2"),
+    ("CTRL-3", "BONUSACTIONBUTTON3"),
+    ("CTRL-4", "BONUSACTIONBUTTON4"),
+    ("CTRL-5", "BONUSACTIONBUTTON5"),
+    ("CTRL-6", "BONUSACTIONBUTTON6"),
+    ("CTRL-7", "BONUSACTIONBUTTON7"),
+    ("CTRL-8", "BONUSACTIONBUTTON8"),
+    ("CTRL-9", "BONUSACTIONBUTTON9"),
+    ("CTRL-0", "BONUSACTIONBUTTON10"),
+    ("TAB", "TARGETNEARESTENEMY"),
+    ("SHIFT-TAB", "TARGETPREVIOUSENEMY"),
+    ("B", "OPENALLBAGS"),
+    ("C", "TOGGLECHARACTER0"),
+    ("P", "TOGGLESPELLBOOK"),
+    ("N", "TOGGLETALENTS"),
+    ("L", "TOGGLEQUESTLOG"),
+    ("M", "TOGGLEWORLDMAP"),
+    ("O", "TOGGLESOCIAL"),
+    ("X", "SITORSTAND"),
+    ("Z", "TOGGLESHEATH"),
+];
+
+fn ensure_offline_action_bar_bindings(bindings: &mut Vec<benilla_ui::script::keybind::KeyBinding>) {
+    for (key, command) in OFFLINE_ACTION_BAR_KEYS {
+        let taken = bindings.iter().any(|(k, c)| k == key || c == command);
+        if !taken {
+            bindings.push((key.into(), command.into()));
+        }
+    }
+}
+
 fn ensure_offline_menu_binding(bindings: &mut Vec<benilla_ui::script::keybind::KeyBinding>) {
+    ensure_offline_action_bar_bindings(bindings);
     let escape_bound = bindings.iter().any(|(key, _)| key == "ESCAPE");
     if !escape_bound {
         bindings.push(("ESCAPE".into(), "TOGGLEGAMEMENU".into()));
@@ -598,7 +647,16 @@ mod tests {
     fn offline_saved_binding_baseline_adds_escape_without_movement_defaults() {
         let _chain = fixture::lay(&[(reference_ui::DEFAULT_BINDINGS, None)]);
         let bindings = offline_saved_default_bindings();
-        assert_eq!(bindings.len(), 1, "only the menu default is added");
+        assert!(
+            bindings
+                .iter()
+                .any(|(key, action)| key == "1" && action == "ACTIONBUTTON1"),
+            "the main bar's keys are added"
+        );
+        assert!(
+            !bindings.iter().any(|(_, action)| action == "MOVEFORWARD"),
+            "no movement defaults"
+        );
         assert!(bindings
             .iter()
             .any(|(key, action)| key == "ESCAPE" && action == "TOGGLEGAMEMENU"));

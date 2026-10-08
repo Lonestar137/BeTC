@@ -6,7 +6,7 @@ use mlua::{Function, Lua, MultiValue, Table, Value};
 
 use crate::script::binding_abi::optional_string;
 use crate::script::region::region_wrapper;
-use crate::script::{Model, REG_SCRIPTS, RegionData, SCRIPT_KINDS};
+use crate::script::{Model, RegionData, REG_SCRIPTS, SCRIPT_KINDS};
 use crate::widget::RegionKind;
 
 use super::{decode_id, draw_layer_from_str, frame_handle_of, publish_global};
@@ -15,12 +15,45 @@ use super::{decode_id, draw_layer_from_str, frame_handle_of, publish_global};
 pub(super) fn install(lua: &Lua, m: &Table) -> mlua::Result<()> {
     m.set(
         "GetAttribute",
-        lua.create_function(|_, (this, name): (Table, String)| {
-            match this.get::<Value>("__benilla_attributes")? {
-                Value::Table(attributes) => attributes.get::<Value>(name),
-                _ => Ok(Value::Nil),
-            }
-        })?,
+        lua.create_function(
+            |_, (this, a, b, c): (Table, Value, Option<Value>, Option<Value>)| {
+                let Value::Table(attributes) = this.get::<Value>("__benilla_attributes")? else {
+                    return Ok(Value::Nil);
+                };
+                let text = |v: &Value| match v {
+                    Value::String(s) => s.to_string_lossy().to_string(),
+                    Value::Integer(i) => i.to_string(),
+                    Value::Number(n) => n.to_string(),
+                    _ => String::new(),
+                };
+                // `GetAttribute(name)`, or `GetAttribute(prefix, name, suffix)`, which tries
+                // `prefix..name..suffix`, `"*"..name..suffix`, `prefix..name.."*"`,
+                // `"*"..name.."*"` and the bare name, in that order (the secure templates' lookup).
+                let Some(b) = b else {
+                    return attributes.get::<Value>(text(&a));
+                };
+                let (prefix, name, suffix) =
+                    (text(&a), text(&b), c.as_ref().map(text).unwrap_or_default());
+                for key in [
+                    format!("{prefix}{name}{suffix}"),
+                    format!("*{name}{suffix}"),
+                    format!("{prefix}{name}*"),
+                    format!("*{name}*"),
+                    name.clone(),
+                ] {
+                    let v = attributes.get::<Value>(key)?;
+                    if !v.is_nil() {
+                        return Ok(v);
+                    }
+                }
+                Ok(Value::Nil)
+            },
+        )?,
+    )?;
+    // `Cooldown:SetCooldown(start, duration)`: accepted, nothing swept.
+    m.set(
+        "SetCooldown",
+        lua.create_function(|_, _: MultiValue| Ok(()))?,
     )?;
     m.set(
         "SetAttribute",

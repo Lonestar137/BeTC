@@ -29,6 +29,22 @@ pub(in crate::script) fn install(lua: &Lua) -> mlua::Result<()> {
     //
     // The anchor apply returns first for ANCHOR_PRESERVE (8, `0x52fead`), then clears all points
     // (`0x767ed0` at `0x52fec2`) for modes 0..7; modes 0..5 then set a point (`0x52ffbc`).
+    // GetOwner(): the frame `SetOwner` stored, nil once un-owned.
+    m.set(
+        "GetOwner",
+        lua.create_function(|lua, this: Table| {
+            let h = frame_handle_of(lua, &this)?;
+            let owner_id = {
+                let mut model = lua.app_data_mut::<Model>().expect("model app_data");
+                let owner = tip_mut(&mut model, h)?.owner;
+                owner.map(|o| model.frame_id(o))
+            };
+            match owner_id {
+                Some(id) => Ok(Value::Table(crate::script::object::frame_wrapper(lua, id)?)),
+                None => Ok(Value::Nil),
+            }
+        })?,
+    )?;
     m.set(
         "SetOwner",
         lua.create_function(
