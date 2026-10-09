@@ -444,27 +444,30 @@ fn spell_column(column: usize, tbc: bool) -> usize {
     if !tbc {
         return column;
     }
-    // Build 8606 inserts the EffectMiscValueB block before the trigger array; the later visual and
-    // icon columns therefore sit seven columns after the build-5875 indices.
+    // Build 8606 drops the build-5875 `School` column (moved to 215) and inserts
+    // `AttributesEx5`, `AttributesEx6`, `FacingCasterFlags`, `CasterAuraStateNot` and
+    // `TargetAuraStateNot`, so the early columns shift: everything through `AttributesEx4` is one
+    // earlier, `Stances`..`RequiresSpellFocus` are one later, `CasterAuraState`/`TargetAuraState`
+    // two later, and `CastingTimeIndex` onward four later.
     match column {
         0 => 0,
         COL_SCHOOL => 215,
         COL_CATEGORY => 1,
-        COL_CAST_UI => 0,
-        COL_DISPEL => 2,
-        COL_MECHANIC => 3,
-        COL_ATTRIBUTES => 4,
-        COL_ATTRIBUTES_EX => 5,
-        COL_ATTRIBUTES_EX2 => 6,
-        COL_ATTRIBUTES_EX3 => 7,
-        COL_ATTRIBUTES_EX4 => 8,
-        COL_STANCES => 9,
-        COL_STANCES_NOT => 10,
-        COL_TARGETS => 11,
-        COL_TARGET_CREATURE_TYPE => 12,
-        COL_REQUIRES_SPELL_FOCUS => 13,
-        COL_CASTER_AURA_STATE => 14,
-        COL_TARGET_AURA_STATE => 15,
+        COL_CAST_UI => 2,
+        COL_DISPEL => 3,
+        COL_MECHANIC => 4,
+        COL_ATTRIBUTES => 5,
+        COL_ATTRIBUTES_EX => 6,
+        COL_ATTRIBUTES_EX2 => 7,
+        COL_ATTRIBUTES_EX3 => 8,
+        COL_ATTRIBUTES_EX4 => 9,
+        COL_STANCES => 12,
+        COL_STANCES_NOT => 13,
+        COL_TARGETS => 14,
+        COL_TARGET_CREATURE_TYPE => 15,
+        COL_REQUIRES_SPELL_FOCUS => 16,
+        COL_CASTER_AURA_STATE => 18,
+        COL_TARGET_AURA_STATE => 19,
         18..=108 => column + 4,
         // Build 8606 inserts the EffectMiscValueB block (three columns) before the trigger array,
         // so everything from the trigger array onward shifts 4+3=7. Measured against the 8606
@@ -603,11 +606,9 @@ pub fn load_spell_catalog(chain: &mut Chain) -> Result<SpellCatalog> {
                 spell_family_flags: u64::from(get_u32(COL_SPELL_FAMILY_FLAGS_LOW).unwrap_or(0))
                     | u64::from(get_u32(COL_SPELL_FAMILY_FLAGS_LOW + 1).unwrap_or(0)) << 32,
                 passive: attributes & ATTR_PASSIVE != 0,
-                cast_ui: if tbc {
-                    0
-                } else {
-                    get_u32(COL_CAST_UI).unwrap_or(0)
-                },
+                // Build 8606 keeps `castUI` (column 2 of the 5875 map); a nonzero value still keeps
+                // the spell out of the book.
+                cast_ui: get_u32(COL_CAST_UI).unwrap_or(0),
                 effects: [0, 1, 2].map(|i| get_u32(COL_EFFECT_1 + i).unwrap_or(0)),
                 base_level: get_u32(COL_BASE_LEVEL).unwrap_or(0),
                 max_level: get_u32(COL_MAX_LEVEL).unwrap_or(0),

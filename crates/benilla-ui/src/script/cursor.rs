@@ -469,6 +469,38 @@ pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
             Ok(matches!(model.cursor, Some(CursorPayload::Spell(_))))
         })?,
     )?;
+    // `GetCursorInfo() -> cursorType, cursorID, cursorItem, cursorMoney, cursorUnknown`, the 2.4.3
+    // global the shipped `PaperDollFrame`/`ContainerFrame` click handlers test (1.12 exposed only
+    // `CursorHas*`). An empty cursor answers no values. For money the id is the copper amount, which
+    // is what `ContainerFrame.lua` reads as its second return.
+    g.set(
+        "GetCursorInfo",
+        lua.create_function(|lua, ()| {
+            let model = lua.app_data_ref::<Model>().expect("model app_data");
+            let (kind, id, money) = match &model.cursor {
+                None => return Ok(mlua::MultiValue::new()),
+                Some(CursorPayload::Item(c)) => ("item", Some(u64::from(c.item_id)), 0),
+                Some(CursorPayload::Spell(c)) => ("spell", Some(u64::from(c.spell_id)), 0),
+                Some(CursorPayload::Action(c)) => ("action", Some(u64::from(c.action)), 0),
+                Some(CursorPayload::Macro(c)) => ("macro", Some(u64::from(c.index)), 0),
+                Some(CursorPayload::PetAction(_)) => ("petaction", None, 0),
+                Some(CursorPayload::Merchant(c)) => ("merchant", Some(u64::from(c.item_id)), 0),
+                Some(CursorPayload::StablePet(_)) => ("pet", None, 0),
+                Some(CursorPayload::Money(c)) => ("money", Some(u64::from(c.copper)), c.copper),
+            };
+            let id = match id {
+                Some(id) => mlua::Value::Integer(id as i64),
+                None => mlua::Value::Nil,
+            };
+            Ok(mlua::MultiValue::from_vec(vec![
+                mlua::Value::String(lua.create_string(kind)?),
+                id,
+                mlua::Value::Nil,
+                mlua::Value::Integer(i64::from(money)),
+                mlua::Value::Nil,
+            ]))
+        })?,
+    )?;
     g.set(
         "ClearCursor",
         lua.create_function(|lua, ()| {

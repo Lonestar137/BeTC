@@ -19,6 +19,15 @@ const BEYOND_1_12: &[&str] = &[
     "AscendStop",
     "GetActionBarPage",
     "RegisterForSavePerCharacter",
+    // 2.4.3 renamed or added these; the shipped FrameXML calls them. `IsPassiveSpell` is 1.12's
+    // `IsSpellPassive` renamed (`SpellBookFrame.lua`); `GetCursorInfo` replaced the `CursorHas*`
+    // queries for the doll and container click handlers; `SetBagPortraitTexture` and
+    // `GetContainerNumFreeSlots` drive the bag frames (`ContainerFrame.lua`,
+    // `MainMenuBarBagButtons.lua`).
+    "IsPassiveSpell",
+    "GetCursorInfo",
+    "SetBagPortraitTexture",
+    "GetContainerNumFreeSlots",
     // TBC FrameXML reads and writes the modified-click mapping through this table and its APIs.
     "MODIFIER_CLICK",
     "GetModifiedClick",
@@ -113,10 +122,6 @@ fn the_era_globals_and_the_uncalled_hooks_are_absent() {
             "UnitBuff/UnitDebuff (0x519500, 0x5198f0), GetPlayerBuff (0x4e45d0)",
         ),
         ("CancelUnitBuff", "CancelPlayerBuff (0x4e49a0)"),
-        (
-            "GetCursorInfo",
-            "CursorHasItem/CursorHasSpell/CursorHasMoney (0x4895d0..0x489630)",
-        ),
         (
             "GetInventoryItemID",
             "the id inside GetInventoryItemLink (0x4c8c10)",

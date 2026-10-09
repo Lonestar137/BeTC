@@ -486,6 +486,19 @@ pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
         })?,
     )?;
 
+    // GetContainerNumFreeSlots(bagID) -> freeSlots, bagType (`0x4f9a90`). The bag type is the bag
+    // item's `BagFamily`; unmodelled, so 0 leaves the button in the default colour.
+    lua.globals().set(
+        "GetContainerNumFreeSlots",
+        lua.create_function(|lua, bag: i64| {
+            let model = lua.app_data_ref::<Model>().expect("model app_data");
+            let free = model.containers.get(&bag).map_or(0, |c| {
+                i64::from(c.num_slots).saturating_sub(c.slots.len() as i64)
+            });
+            Ok((free, 0i64))
+        })?,
+    )?;
+
     lua.globals().set(
         "GetBagName",
         lua.create_function(|lua, bag: i64| {

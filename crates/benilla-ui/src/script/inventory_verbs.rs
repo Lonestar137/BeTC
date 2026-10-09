@@ -101,6 +101,35 @@ pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
         })?,
     )?;
 
+    // SetBagPortraitTexture(texture, bagID): the bag frame's portrait (`ContainerFrame.lua:471`).
+    // The backpack and bank show a fixed bag icon; an equipped bag shows its own item icon. It
+    // never raises, so a bag frame always opens.
+    g.set(
+        "SetBagPortraitTexture",
+        lua.create_function(|lua, (texture, bag): (Value, i64)| {
+            let rh = this_texture(lua, &texture)?;
+            let path = {
+                let model = lua.app_data_ref::<Model>().expect("model app_data");
+                match bag {
+                    0 => Some("Interface\\ContainerFrame\\Backpack".to_string()),
+                    -1 => Some("Interface\\ContainerFrame\\Bank-Bag-Icon".to_string()),
+                    1..=4 => {
+                        // `ContainerIDToInventoryID`: bag 1..4 is inventory slot 20..23 (1-based).
+                        let inv = usize::try_from(bag + 19).unwrap_or(0);
+                        model.inv_slot("player", inv).and_then(|v| v.icon.clone())
+                    }
+                    _ => None,
+                }
+            };
+            let mut model = lua.app_data_mut::<Model>().expect("model app_data");
+            let data = model.region_data.entry(rh).or_default();
+            data.texture = path;
+            data.circular = true;
+            data.portrait_unit = None;
+            Ok(())
+        })?,
+    )?;
+
     // UpdateInventoryAlertStatus() (`0x4c9560`): the alert recompute (`0x4c7ee0`), which fires
     // UPDATE_INVENTORY_ALERTS unconditionally; zero returns. Stock calls it when the durability
     // figure's enchant timer runs out (`DurabilityFrame.lua:81`).
