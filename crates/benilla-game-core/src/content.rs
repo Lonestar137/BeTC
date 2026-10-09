@@ -119,9 +119,10 @@ impl StartingZoneContent {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
 
     #[test]
-    fn converted_content_has_provenance_and_starting_zone_creatures() {
+    fn converted_content_has_provenance_and_resolvable_stable_population() {
         let content = starting_zone_content();
         assert_eq!(content.source, "https://github.com/cmangos/tbc-db");
         assert_eq!(content.license, "GPL-3.0");
@@ -130,6 +131,81 @@ mod tests {
         assert!(content.spawn.len() >= 1_000);
         assert!(content.waypoint.len() >= 1_000);
         assert!(!content.addon.is_empty());
+
+        let template_entries: HashSet<_> = content.template.iter().map(|item| item.entry).collect();
+        assert_eq!(template_entries.len(), content.template.len());
+        assert!(content
+            .template
+            .windows(2)
+            .all(|pair| pair[0].entry < pair[1].entry));
+        let mut source_guids = HashSet::new();
+        let mut movement_types = HashSet::new();
+        assert!(content
+            .spawn
+            .windows(2)
+            .all(|pair| pair[0].source_guid < pair[1].source_guid));
+        for spawn in &content.spawn {
+            assert!(
+                source_guids.insert(spawn.source_guid),
+                "duplicate spawn GUID"
+            );
+            assert!(
+                spawn.source_guid <= 0x00ff_ffff,
+                "spawn GUID does not fit imported identity"
+            );
+            assert!(
+                spawn.entry <= 0x00ff_ffff,
+                "template entry does not fit imported identity"
+            );
+            assert!(
+                template_entries.contains(&spawn.entry),
+                "spawn template is missing"
+            );
+            assert!(matches!(spawn.movement_type, 0 | 1 | 2 | 4));
+            movement_types.insert(spawn.movement_type);
+            assert!([
+                spawn.x,
+                spawn.y,
+                spawn.z,
+                spawn.orientation,
+                spawn.wander_radius
+            ]
+            .into_iter()
+            .all(f32::is_finite));
+        }
+        assert!(
+            movement_types.contains(&4),
+            "source movement type 4 stays explicit"
+        );
+
+        let spawn_by_guid: std::collections::HashMap<_, _> = content
+            .spawn
+            .iter()
+            .map(|spawn| (spawn.source_guid, spawn.movement_type))
+            .collect();
+        assert!(content.waypoint.windows(2).all(|pair| {
+            pair[0].source_guid < pair[1].source_guid
+                || (pair[0].source_guid == pair[1].source_guid && pair[0].point < pair[1].point)
+        }));
+        for waypoint in &content.waypoint {
+            assert_eq!(spawn_by_guid.get(&waypoint.source_guid), Some(&2));
+            assert!([waypoint.x, waypoint.y, waypoint.z, waypoint.orientation]
+                .into_iter()
+                .all(f32::is_finite));
+        }
+        let mut addon_guids = HashSet::new();
+        assert!(content
+            .addon
+            .windows(2)
+            .all(|pair| pair[0].source_guid < pair[1].source_guid));
+        for addon in &content.addon {
+            assert!(spawn_by_guid.contains_key(&addon.source_guid));
+            assert!(
+                addon_guids.insert(addon.source_guid),
+                "duplicate creature addon"
+            );
+        }
+
         assert!(content
             .template
             .iter()
@@ -142,9 +218,5 @@ mod tests {
             .waypoint
             .iter()
             .any(|waypoint| waypoint.source_guid == 80127));
-        assert!(content.waypoint.windows(2).all(|pair| {
-            pair[0].source_guid < pair[1].source_guid
-                || (pair[0].source_guid == pair[1].source_guid && pair[0].point < pair[1].point)
-        }));
     }
 }

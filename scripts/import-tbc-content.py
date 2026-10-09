@@ -83,10 +83,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", type=pathlib.Path, help="CMaNGOS full SQL dump")
     parser.add_argument("output", type=pathlib.Path, help="generated TOML content pack")
-    parser.add_argument("--zone", choices=ZONES, action="append", default=list(ZONES))
+    parser.add_argument("--zone", choices=ZONES, action="append")
     args = parser.parse_args()
 
-    bounds = [ZONES[zone] for zone in args.zone]
+    bounds = [ZONES[zone] for zone in (args.zone or ZONES)]
     spawns = []
     entries = set()
     movement_types = {}
@@ -155,6 +155,7 @@ def main():
                 output.write(f"x = {x}\ny = {y}\nz = {z}\norientation = {orientation}\n")
                 output.write(f"wait_ms = {wait_ms}\n\n")
 
+        addons = []
         for row in rows(args.source, "creature_addon"):
             source_guid, _mount, stand_state, sheath_state, emote, _moveflags, _auras = row
             if source_guid not in spawn_ids:
@@ -162,6 +163,8 @@ def main():
             stand_state, sheath_state, emote = int(stand_state), int(sheath_state), int(emote)
             if not (stand_state or sheath_state or emote):
                 continue
+            addons.append((int(source_guid), stand_state, sheath_state, emote))
+        for source_guid, stand_state, sheath_state, emote in sorted(addons):
             output.write("[[addon]]\n")
             output.write(f"source_guid = {source_guid}\nstand_state = {stand_state}\n")
             output.write(f"sheath_state = {sheath_state}\nemote = {emote}\n\n")

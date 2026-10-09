@@ -38167,6 +38167,12 @@ sheath_state = 1
 emote = 0
 
 [[addon]]
+source_guid = 53941
+stand_state = 0
+sheath_state = 1
+emote = 0
+
+[[addon]]
 source_guid = 66963
 stand_state = 3
 sheath_state = 1
@@ -38216,12 +38222,6 @@ emote = 0
 
 [[addon]]
 source_guid = 80978
-stand_state = 0
-sheath_state = 1
-emote = 0
-
-[[addon]]
-source_guid = 53941
 stand_state = 0
 sheath_state = 1
 emote = 0
