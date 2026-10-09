@@ -2,10 +2,10 @@
 
 Schema version: 1.
 
-These are project-owned rules and original encounter content. Fireball's name, icon, range, cast
+These are project-owned rules and imported TBC creature behavior. Fireball's name, icon, range, cast
 time, and mana cost are read from the installed build's Spell.dbc; creature display models are
-resolved from the installed client tables. No server database or client spawn data is copied into
-this file.
+resolved from the installed client tables. Creature templates, spawn positions, waypoint paths and
+idle addon state come from the pinned source recorded in the local content pack.
 
 ## Starting Placement
 
@@ -14,11 +14,12 @@ placement uses the Northshire position already established in this repository's 
 probes. The other race positions are authored area anchors and should be visually checked against
 build 8606 before expanding their content. Saved character positions always take precedence.
 
-## Starter Encounter
+## Sunstrider First Encounter
 
-- World entry creates three level-1 hostiles around the new character's saved starting position.
-  This local pack is original practice content; it is not claimed to reproduce stock creature
-  spawns. The adapter selects matching installed display models where available.
+- Sunstrider Isle uses its converted source population at source spawn positions. The legacy Warden
+  Elari and Dawnpath Stalker combat harness is retained only outside map 530 until combat is
+  generalized to imported creature identities.
+- Imported visuals use display IDs resolved against the installed build-8606 creature catalog.
 - Each hostile has 60 health and respawns 30,000 simulation milliseconds after death.
 - Every character knows the common Attack action (client spell ID 6603), placed in action-bar slot
   1. Mage characters also know Fireball (client spell ID 133), placed in slot 2. Other classes do
@@ -28,14 +29,25 @@ build 8606 before expanding their content. Saved character positions always take
   toggled off, the target dies, or the target leaves range.
 - Fireball is limited to a living hostile within 35 yards, uses the client's 1,500 ms cast time and
   30-mana cost, and deals a fixed 30 damage. The new Mage has 100 mana and no regen yet; two
-  successful casts defeat one practice hostile. Mana is charged when the cast starts and is not
+  successful casts defeat one Dawnpath Stalker. Mana is charged when the cast starts and is not
   refunded on interruption.
 - Cooldown lockout is 1,500 simulation milliseconds, beginning when the cast starts. Combat uses
   injected elapsed time; no wall clock or random roll affects the outcome.
 
-The cast damage, hostile health, encounter placement, and respawn time are project decisions. This
-is the first combat slice, not a claim that the Phase 5 quest, AI, loot, XP, and save acceptance
-criteria are complete.
+## Imported Creature Movement
+
+- Waypoint movement type 2 follows the converted `creature_movement` points in ascending point
+  order, then loops back to the first point. The source `waittime` is honored after reaching each
+  point. These local spline legs currently use a project-owned walk speed of 2.5 yards per second.
+- Imported creature addon stand state, NPC emote state and sheath state are applied when the unit
+  enters the world.
+- Movement type 0 stays at its spawn position. Random-radius movement type 1, waypoint ScriptId
+  actions, addon auras/mounts, and combat AI are not implemented yet; they are not substituted with
+  invented behaviors.
+
+The cast damage, hostile health, encounter placement, and respawn time are project decisions. The
+quest contact establishes the next incremental slice; quest state, loot, XP, and rewards are not
+yet implemented.
 
 ## Class Progression
 

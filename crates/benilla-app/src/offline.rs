@@ -1,10 +1,11 @@
 //! Offline startup adapter: owns the game-core instance without introducing transport behavior.
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use benilla_game_core::{
-    decode_profile, decode_snapshot, Appearance, CharacterId, CombatUpdate, GameCore, HostileState,
-    SaveError, WorldPosition,
+    decode_profile, decode_snapshot, Appearance, CharacterId, CombatUpdate, FriendlyNpcState,
+    GameCore, HostileState, SaveError, WorldPosition,
 };
 use benilla_protocol::{CharAction, CharCreateReq, EntityKind, ObjectFields, SessionEvent};
 use bevy::prelude::*;
@@ -14,6 +15,20 @@ use crate::net::{CharActionResultMessage, CharListMessage, CharRequest, OfflineC
 
 mod persistence;
 use persistence::OfflinePersistence;
+
+const OFFLINE_CONTENT_RADIUS_YARDS: f32 = 180.0;
+const OFFLINE_CREATURE_WALK_SPEED_YARDS_PER_SEC: f32 = 2.5;
+
+#[derive(Resource, Default)]
+struct OfflinePatrols(BTreeMap<u64, ActivePatrol>);
+
+struct ActivePatrol {
+    waypoints: Vec<benilla_game_core::content::CreatureWaypoint>,
+    waypoint_index: usize,
+    position: [f32; 3],
+    remaining_ms: u32,
+    spline_id: u32,
+}
 
 #[derive(Resource, Default)]
 pub(crate) struct OfflineGameCore(pub(crate) GameCore);
@@ -32,6 +47,7 @@ impl Plugin for OfflineGamePlugin {
         };
         app.insert_resource(OfflineGameCore(core))
             .insert_resource(OfflinePersistence::new(writable))
+            .init_resource::<OfflinePatrols>()
             .add_systems(Startup, publish_local_roster)
             .add_systems(
                 Update,
@@ -44,6 +60,13 @@ impl Plugin for OfflineGamePlugin {
                 drive_offline_gameplay
                     .in_set(benilla_world::schedule::WorldStage::Net)
                     .after(drive_local_requests)
+                    .before(crate::net::apply_net_updates),
+            )
+            .add_systems(
+                Update,
+                advance_offline_patrols
+                    .in_set(benilla_world::schedule::WorldStage::Net)
+                    .after(drive_offline_gameplay)
                     .before(crate::net::apply_net_updates),
             )
             .add_systems(
@@ -205,6 +228,7 @@ fn drive_local_requests(
     creatures: Option<Res<crate::entities::Creatures>>,
     factions: Option<Res<crate::target::Factions>>,
     mut names: ResMut<crate::names::NameCache>,
+    mut patrols: ResMut<OfflinePatrols>,
     mut roster: MessageWriter<CharListMessage>,
     mut action_results: MessageWriter<CharActionResultMessage>,
 ) {
@@ -224,10 +248,12 @@ fn drive_local_requests(
                             &channels,
                             &snapshot,
                             core.0.hostiles(),
+                            core.0.friendly_npcs(),
                             catalog.as_deref(),
                             creatures.as_deref(),
                             factions.as_deref(),
                             &mut names,
+                            &mut patrols,
                         );
                         save_after_command(&core.0, &mut persistence);
                     }
@@ -362,11 +388,14 @@ fn emit_world_entry(
     channels: &OfflineChannels,
     snapshot: &benilla_game_core::CharacterSnapshot,
     hostiles: &[HostileState],
+    friendly_npcs: &[FriendlyNpcState],
     catalog: Option<&crate::entities::CharCreate>,
     creatures: Option<&crate::entities::Creatures>,
     factions: Option<&crate::target::Factions>,
     names: &mut crate::names::NameCache,
+    patrols: &mut OfflinePatrols,
 ) {
+    patrols.0.clear();
     let guid = snapshot.id.presentation_guid();
     let position = [
         snapshot.position.x,
@@ -443,64 +472,218 @@ fn emit_world_entry(
         cooldowns: Vec::new(),
     });
     events.push(SessionEvent::ActionButtons { buttons });
-    for hostile in hostiles {
-        let race = snapshot.appearance.race;
-        let entry = hostile_entry(race);
-        let guid = hostile_guid(race, hostile.spawn_id);
-        let model_path = match race {
-            10 => "Creature\\ManaWyrm\\ManaWyrm.m2",
-            11 => "Creature\\Owlkin\\Owlkin.m2",
-            _ => "Creature\\Wolf\\Wolf.m2",
-        };
-        let display_id = creatures.and_then(|catalog| catalog.display_for_model_path(model_path));
-        if display_id.is_none() {
-            warn!("offline practice hostile has no renderable build-8606 display for {model_path}");
+    if snapshot.position.map_id != 530 {
+        for hostile in hostiles {
+            let entry = hostile_entry();
+            let guid = hostile_guid(hostile.spawn_id);
+            // This installed model is covered by the build-8606 display-catalog test. The prior Mana
+            // Wyrm path had no display row, making the adapter emit a deliberate fallback cube.
+            let model_path = "Creature\\Wolf\\Wolf.m2";
+            let display_id =
+                creatures.and_then(|catalog| catalog.display_for_model_path(model_path));
+            if display_id.is_none() {
+                warn!(
+                "offline Sunstrider hostile has no renderable build-8606 display for {model_path}"
+            );
+            }
+            let scale = display_id
+                .and_then(|display_id| {
+                    creatures.and_then(|catalog| catalog.model_scale(display_id))
+                })
+                .unwrap_or(1.0);
+            let mut mob_fields = vec![
+                (2, 0x9), // OBJECT_FIELD_TYPE: object and unit
+                (3, entry),
+                (4, scale.to_bits()), // OBJECT_FIELD_SCALE_X: display/model scale folded by the adapter
+                (22, hostile.health),
+                (28, hostile.max_health),
+                (34, 1),
+                (35, 14), // Monster faction template
+                (130, 1.5f32.to_bits()),
+            ];
+            if let Some(display_id) = display_id {
+                mob_fields.extend([(131, display_id), (132, display_id)]);
+            }
+            names.insert_creature(
+                entry,
+                Some(crate::names::CreatureRecord {
+                    name: hostile_name().to_string(),
+                    subname: None,
+                    creature_type: 1,
+                    pet_family: 0,
+                    rank: 0,
+                    type_flags: 0,
+                    civilian: false,
+                    racial_leader: false,
+                    display_id: display_id.unwrap_or(0),
+                }),
+            );
+            events.push(SessionEvent::ObjectCreate {
+                guid,
+                kind: EntityKind::Unit,
+                display_id,
+                position: [hostile.position.x, hostile.position.y, hostile.position.z],
+                orientation: hostile.position.orientation,
+                scale,
+                speeds: None,
+                mover: None,
+                transport_progress: None,
+                transport: None,
+                spline: None,
+                fields: ObjectFields::from_pairs(&mob_fields)
+                    .into_created(benilla_protocol::messages::ObjectType::Unit),
+            });
         }
-        let scale = display_id
-            .and_then(|display_id| creatures.and_then(|catalog| catalog.model_scale(display_id)))
-            .unwrap_or(1.0);
-        let mut mob_fields = vec![
-            (2, 0x9), // OBJECT_FIELD_TYPE: object and unit
-            (3, entry),
-            (4, scale.to_bits()), // OBJECT_FIELD_SCALE_X: display/model scale folded by the adapter
-            (22, hostile.health),
-            (28, hostile.max_health),
-            (34, 1),
-            (35, 14), // Monster faction template
-            (130, 1.5f32.to_bits()),
-        ];
-        if let Some(display_id) = display_id {
-            mob_fields.extend([(131, display_id), (132, display_id)]);
+    }
+    if snapshot.position.map_id != 530 {
+        for npc in friendly_npcs {
+            let entry = friendly_npc_entry();
+            let guid = friendly_npc_guid(npc.spawn_id);
+            // The character-creation catalog provides a build-8606 Blood Elf display for the contact.
+            let display_id = catalog.and_then(|catalog| catalog.0.body_display(10, 0));
+            let scale = display_id
+                .and_then(|display_id| {
+                    creatures.and_then(|catalog| catalog.model_scale(display_id))
+                })
+                .unwrap_or(1.0);
+            if display_id.is_none() {
+                warn!("offline Sunstrider quest contact has no renderable Blood Elf display");
+            }
+            let mut fields = vec![
+                (2, 0x9),
+                (3, entry),
+                (4, scale.to_bits()),
+                (22, 100),
+                (28, 100),
+                (34, 1),
+                (35, 14),
+                (147, crate::target::cursor_mode::npc_flags::QUESTGIVER),
+                (130, 1.5f32.to_bits()),
+            ];
+            if let Some(display_id) = display_id {
+                fields.extend([(131, display_id), (132, display_id)]);
+            }
+            names.insert_creature(
+                entry,
+                Some(crate::names::CreatureRecord {
+                    name: "Warden Elari".to_string(),
+                    subname: Some("Sunstrider Watch".to_string()),
+                    creature_type: 7,
+                    pet_family: 0,
+                    rank: 0,
+                    type_flags: 0,
+                    civilian: true,
+                    racial_leader: false,
+                    display_id: display_id.unwrap_or(0),
+                }),
+            );
+            events.push(SessionEvent::ObjectCreate {
+                guid,
+                kind: EntityKind::Unit,
+                display_id,
+                position: [npc.position.x, npc.position.y, npc.position.z],
+                orientation: npc.position.orientation,
+                scale,
+                speeds: None,
+                mover: None,
+                transport_progress: None,
+                transport: None,
+                spline: None,
+                fields: ObjectFields::from_pairs(&fields)
+                    .into_created(benilla_protocol::messages::ObjectType::Unit),
+            });
         }
+    }
+    let content = benilla_game_core::content::starting_zone_content();
+    for spawn in content.spawns_near(
+        snapshot.position.map_id,
+        snapshot.position.x,
+        snapshot.position.y,
+        OFFLINE_CONTENT_RADIUS_YARDS,
+    ) {
+        let template = content
+            .template(spawn.entry)
+            .expect("converted spawn template was validated by the content loader");
+        let waypoint_path: Vec<_> = content.waypoints_for(spawn.source_guid).copied().collect();
+        let scale = creatures
+            .and_then(|catalog| catalog.model_scale(template.display_id))
+            .unwrap_or(1.0)
+            * template.scale;
         names.insert_creature(
-            entry,
+            template.entry,
             Some(crate::names::CreatureRecord {
-                name: hostile_name(race).to_string(),
-                subname: None,
-                creature_type: 1,
+                name: template.name.clone(),
+                subname: (!template.subname.is_empty()).then(|| template.subname.clone()),
+                creature_type: template.creature_type,
                 pet_family: 0,
                 rank: 0,
                 type_flags: 0,
                 civilian: false,
                 racial_leader: false,
-                display_id: display_id.unwrap_or(0),
+                display_id: template.display_id,
             }),
         );
+        let mut fields = vec![
+            (2, 0x9),
+            (3, template.entry),
+            (4, scale.to_bits()),
+            (22, 100),
+            (28, 100),
+            (34, u32::from(template.level)),
+            (35, template.faction),
+            (147, template.npc_flags),
+            (130, 1.5f32.to_bits()),
+            (131, template.display_id),
+            (132, template.display_id),
+        ];
+        if let Some(addon) = content.addon_for(spawn.source_guid) {
+            if addon.stand_state != 0 {
+                fields.push((138, u32::from(addon.stand_state)));
+            }
+            if addon.emote != 0 {
+                fields.push((148, addon.emote));
+            }
+            if addon.sheath_state != 0 {
+                fields.push((164, u32::from(addon.sheath_state)));
+            }
+        }
+        let fields = ObjectFields::from_pairs(&fields)
+            .into_created(benilla_protocol::messages::ObjectType::Unit);
+        let guid = imported_guid(template.entry, spawn.source_guid);
         events.push(SessionEvent::ObjectCreate {
             guid,
             kind: EntityKind::Unit,
-            display_id,
-            position: [hostile.position.x, hostile.position.y, hostile.position.z],
-            orientation: hostile.position.orientation,
+            display_id: Some(template.display_id),
+            position: [spawn.x, spawn.y, spawn.z],
+            orientation: spawn.orientation,
             scale,
             speeds: None,
             mover: None,
             transport_progress: None,
             transport: None,
             spline: None,
-            fields: ObjectFields::from_pairs(&mob_fields)
-                .into_created(benilla_protocol::messages::ObjectType::Unit),
+            fields,
         });
+        if spawn.movement_type == 2 {
+            if let Some(first) = waypoint_path.first().copied() {
+                let start = [spawn.x, spawn.y, spawn.z];
+                let target = [first.x, first.y, first.z];
+                let duration_ms = patrol_leg_duration_ms(start, target);
+                events.push(patrol_move(guid, start, target, 1, duration_ms));
+                if waypoint_path.len() > 1 {
+                    patrols.0.insert(
+                        guid,
+                        ActivePatrol {
+                            waypoints: waypoint_path,
+                            waypoint_index: 0,
+                            position: target,
+                            remaining_ms: duration_ms.saturating_add(first.wait_ms),
+                            spline_id: 1,
+                        },
+                    );
+                }
+            }
+        }
     }
     events.push(SessionEvent::TimeSpeed {
         hours: ((snapshot.game_time_minutes % 1440) / 60) as u8,
@@ -557,26 +740,111 @@ fn starting_position(race: u8) -> Option<WorldPosition> {
     })
 }
 
-fn hostile_entry(race: u8) -> u32 {
-    match race {
-        10 => 90_002,
-        11 => 90_003,
-        _ => 90_001,
-    }
+fn hostile_entry() -> u32 {
+    91_002
 }
 
-fn hostile_name(race: u8) -> &'static str {
-    match race {
-        10 => "Sunstrider Mana Wyrm",
-        11 => "Azuremyst Owlkin",
-        _ => "Training Wolf",
-    }
+fn hostile_name() -> &'static str {
+    "Dawnpath Stalker"
 }
 
-fn hostile_guid(race: u8, spawn_id: u32) -> u64 {
+fn hostile_guid(spawn_id: u32) -> u64 {
     (u64::from(benilla_protocol::guid::HIGH_UNIT) << 48)
-        | (u64::from(hostile_entry(race)) << 24)
+        | (u64::from(hostile_entry()) << 24)
         | u64::from(spawn_id)
+}
+
+fn friendly_npc_entry() -> u32 {
+    91_001
+}
+
+fn friendly_npc_guid(spawn_id: u32) -> u64 {
+    (u64::from(benilla_protocol::guid::HIGH_UNIT) << 48)
+        | (u64::from(friendly_npc_entry()) << 24)
+        | u64::from(spawn_id)
+}
+
+fn imported_guid(entry: u32, source_guid: u32) -> u64 {
+    (u64::from(benilla_protocol::guid::HIGH_UNIT) << 48)
+        | (u64::from(entry) << 24)
+        | u64::from(source_guid & 0x00ff_ffff)
+}
+
+fn patrol_leg_duration_ms(start: [f32; 3], target: [f32; 3]) -> u32 {
+    let distance = start
+        .into_iter()
+        .zip(target)
+        .map(|(from, to)| (to - from).powi(2))
+        .sum::<f32>()
+        .sqrt();
+    (distance / OFFLINE_CREATURE_WALK_SPEED_YARDS_PER_SEC * 1_000.0)
+        .round()
+        .clamp(1.0, u32::MAX as f32) as u32
+}
+
+fn patrol_move(
+    guid: u64,
+    start: [f32; 3],
+    target: [f32; 3],
+    spline_id: u32,
+    duration_ms: u32,
+) -> SessionEvent {
+    SessionEvent::MonsterMove {
+        guid,
+        transport: None,
+        start,
+        spline_id,
+        path: vec![start, target],
+        facing: benilla_protocol::MonsterMoveFacing::None,
+        stop: false,
+        duration_ms,
+        flying: false,
+        run_mode: false,
+    }
+}
+
+fn advance_offline_patrols(
+    channels: Res<OfflineChannels>,
+    core: Res<OfflineGameCore>,
+    time: Res<Time>,
+    mut patrols: ResMut<OfflinePatrols>,
+) {
+    if core.0.active().is_none() {
+        patrols.0.clear();
+        return;
+    }
+    let elapsed_ms = (time.delta_secs_f64() * 1_000.0).round() as u32;
+    if elapsed_ms == 0 {
+        return;
+    }
+    for (&guid, patrol) in &mut patrols.0 {
+        if elapsed_ms < patrol.remaining_ms {
+            patrol.remaining_ms -= elapsed_ms;
+            continue;
+        }
+        let next_index = (patrol.waypoint_index + 1) % patrol.waypoints.len();
+        let waypoint = patrol.waypoints[next_index];
+        let target = [waypoint.x, waypoint.y, waypoint.z];
+        let duration_ms = patrol_leg_duration_ms(patrol.position, target);
+        patrol.spline_id = patrol.spline_id.wrapping_add(1).max(1);
+        if channels
+            .events
+            .send(patrol_move(
+                guid,
+                patrol.position,
+                target,
+                patrol.spline_id,
+                duration_ms,
+            ))
+            .is_err()
+        {
+            error!("offline patrol adapter: event receiver was dropped");
+            break;
+        }
+        patrol.waypoint_index = next_index;
+        patrol.position = target;
+        patrol.remaining_ms = duration_ms.saturating_add(waypoint.wait_ms);
+    }
 }
 
 fn drive_offline_gameplay(
@@ -664,7 +932,7 @@ fn start_offline_cast(
     let Some(spawn_id) = core
         .hostiles()
         .iter()
-        .find(|hostile| target == Some(hostile_guid(snapshot.appearance.race, hostile.spawn_id)))
+        .find(|hostile| target == Some(hostile_guid(hostile.spawn_id)))
         .map(|hostile| hostile.spawn_id)
     else {
         return;
@@ -704,7 +972,7 @@ fn start_offline_auto_attack(core: &mut GameCore, channels: &OfflineChannels, ta
     let Some(spawn_id) = core
         .hostiles()
         .iter()
-        .find(|hostile| target == hostile_guid(snapshot.appearance.race, hostile.spawn_id))
+        .find(|hostile| target == hostile_guid(hostile.spawn_id))
         .map(|hostile| hostile.spawn_id)
     else {
         return;
@@ -733,7 +1001,7 @@ fn stop_offline_auto_attack(core: &mut GameCore, channels: &OfflineChannels) {
         channels,
         [SessionEvent::AttackStop {
             attacker: id.presentation_guid(),
-            victim: hostile_guid(snapshot.appearance.race, spawn_id),
+            victim: hostile_guid(spawn_id),
         }],
     );
 }
@@ -752,7 +1020,7 @@ fn advance_offline_combat(core: &mut GameCore, channels: &OfflineChannels, elaps
                 let Some(snapshot) = core.snapshot(id) else {
                     continue;
                 };
-                let guid = hostile_guid(snapshot.appearance.race, impact.spawn_id);
+                let guid = hostile_guid(impact.spawn_id);
                 let events = [
                     SessionEvent::SpellGo {
                         caster: id.presentation_guid(),
@@ -795,7 +1063,7 @@ fn advance_offline_combat(core: &mut GameCore, channels: &OfflineChannels, elaps
                 let Some(snapshot) = core.snapshot(id) else {
                     continue;
                 };
-                let victim = hostile_guid(snapshot.appearance.race, impact.spawn_id);
+                let victim = hostile_guid(impact.spawn_id);
                 send_gameplay_events(
                     channels,
                     [
@@ -830,7 +1098,7 @@ fn advance_offline_combat(core: &mut GameCore, channels: &OfflineChannels, elaps
                 };
                 if let Some(hostile) = core.hostile(spawn_id) {
                     let event = SessionEvent::ObjectValues {
-                        guid: hostile_guid(snapshot.appearance.race, spawn_id),
+                        guid: hostile_guid(spawn_id),
                         fields: ObjectFields::from_pairs(&[(22, hostile.health), (143, 0)]),
                     };
                     send_gameplay_events(channels, [event]);
@@ -1040,10 +1308,7 @@ fn drive_offline_smoke_cast(
     let Some(snapshot) = core.0.snapshot(id) else {
         return;
     };
-    let target = hostile_guid(
-        snapshot.appearance.race,
-        benilla_game_core::HOSTILE_SPAWN_ID,
-    );
+    let target = hostile_guid(benilla_game_core::HOSTILE_SPAWN_ID);
     if commands
         .0
         .send(crate::net::ClientCommand::CastSpell {
@@ -1126,6 +1391,32 @@ mod tests {
     }
 
     #[test]
+    fn waypoint_patrols_walk_between_source_points_at_the_local_walk_speed() {
+        assert_eq!(
+            patrol_leg_duration_ms([0.0, 0.0, 0.0], [5.0, 0.0, 0.0]),
+            2_000
+        );
+        assert_eq!(patrol_leg_duration_ms([0.0, 0.0, 0.0], [0.0, 0.0, 0.0]), 1);
+        let event = patrol_move(42, [1.0, 2.0, 3.0], [4.0, 5.0, 6.0], 7, 2_000);
+        let SessionEvent::MonsterMove {
+            guid,
+            start,
+            path,
+            duration_ms,
+            run_mode,
+            ..
+        } = event
+        else {
+            panic!("patrol leg must use the creature spline event");
+        };
+        assert_eq!(guid, 42);
+        assert_eq!(start, [1.0, 2.0, 3.0]);
+        assert_eq!(path, [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]);
+        assert_eq!(duration_ms, 2_000);
+        assert!(!run_mode);
+    }
+
+    #[test]
     fn new_characters_start_in_their_race_area_including_humans_in_northshire() {
         let human = starting_position(1).unwrap();
         assert_eq!(human.map_id, 0);
@@ -1201,16 +1492,31 @@ mod tests {
             commands,
         };
         let mut names = crate::names::NameCache::default();
+        let mut patrols = OfflinePatrols::default();
         emit_world_entry(
             &channels,
             core.snapshot(&id).unwrap(),
             core.hostiles(),
+            core.friendly_npcs(),
             None,
             None,
             None,
             &mut names,
+            &mut patrols,
         );
         let entry_events: Vec<_> = received.try_iter().collect();
+        let addon_unit = entry_events.iter().find_map(|event| match event {
+            SessionEvent::ObjectCreate { guid, fields, .. }
+                if *guid == imported_guid(26_007, 96_146) =>
+            {
+                Some(fields)
+            }
+            _ => None,
+        });
+        assert_eq!(
+            addon_unit.and_then(ObjectFields::unit_sheath_state),
+            Some(1)
+        );
         assert!(entry_events.iter().any(|event| matches!(
             event,
             SessionEvent::SpellBook { spell_ids, .. }
@@ -1246,7 +1552,7 @@ mod tests {
             0x8,
             "the offline player carries UNIT_FLAG_PLAYER_CONTROLLED for TBC attack rules"
         );
-        assert_eq!(
+        assert!(
             entry_events
                 .iter()
                 .filter(|event| matches!(
@@ -1256,10 +1562,11 @@ mod tests {
                         ..
                     }
                 ))
-                .count(),
-            3
+                .count()
+                >= 3,
+            "the compatibility combat harness remains alongside imported map-530 content"
         );
-        let hostile_guid = hostile_guid(appearance.race, benilla_game_core::HOSTILE_SPAWN_ID);
+        let hostile_guid = hostile_guid(benilla_game_core::HOSTILE_SPAWN_ID);
         let mob = entry_events.iter().find_map(|event| match event {
             SessionEvent::ObjectCreate {
                 guid,
@@ -1383,7 +1690,7 @@ mod tests {
         .insert_resource(OfflinePersistence::new(false))
         .insert_resource(Time::<()>::default());
 
-        let target = hostile_guid(appearance.race, benilla_game_core::HOSTILE_SPAWN_ID);
+        let target = hostile_guid(benilla_game_core::HOSTILE_SPAWN_ID);
         commands
             .send(crate::net::ClientCommand::AttackSwing { guid: target })
             .unwrap();
@@ -1477,7 +1784,7 @@ mod tests {
         .insert_resource(OfflinePersistence::new(false))
         .insert_resource(Time::<()>::default());
 
-        let target = hostile_guid(appearance.race, benilla_game_core::HOSTILE_SPAWN_ID);
+        let target = hostile_guid(benilla_game_core::HOSTILE_SPAWN_ID);
         commands
             .send(crate::net::ClientCommand::CastSpell {
                 spell_id: benilla_game_core::FIREBALL_SPELL_ID,
@@ -1734,6 +2041,7 @@ mod tests {
         let (events, received) = crossbeam_channel::unbounded();
         let (_command_tx, commands) = crossbeam_channel::unbounded();
         let mut names = crate::names::NameCache::default();
+        let mut patrols = OfflinePatrols::default();
         emit_world_entry(
             &OfflineChannels {
                 picks,
@@ -1742,12 +2050,21 @@ mod tests {
             },
             core.snapshot(&id).expect("active snapshot"),
             core.hostiles(),
+            core.friendly_npcs(),
             Some(&catalog),
             None,
             None,
             &mut names,
+            &mut patrols,
         );
         let events: Vec<_> = received.try_iter().collect();
+        let patrol_guid = imported_guid(15_274, 54_942);
+        assert!(events.iter().any(|event| matches!(
+            event,
+            SessionEvent::MonsterMove { guid, path, run_mode: false, .. }
+                if *guid == patrol_guid && path.len() == 2
+        )));
+        assert!(patrols.0.contains_key(&patrol_guid));
         assert!(
             matches!(events.first(), Some(SessionEvent::Connected { name, .. }) if name == "Alaera")
         );

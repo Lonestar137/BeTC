@@ -14,8 +14,9 @@ the install-safety check (see Testing) must tolerate nothing changing under it
 during a run, and a local unsynced copy is preferred for gate runs.
 
 The game must not open a world/auth socket, start a local server process, or
-require accounts, realms, or an external database. It still needs an in-process
-game authority: gameplay rules, simulation, and persistence do not disappear
+require accounts, realms, or an external database at runtime. Content-conversion tooling may use a
+pinned TBC server-content database to build the local data pack. It still needs an in-process game
+authority: gameplay rules, simulation, and persistence do not disappear
 when networking does.
 
 ## Non-Goals For The First Slice
@@ -182,7 +183,7 @@ the adapter, in `benilla-app`.
 - TBC client files provide visual assets, DBC data, FrameXML/GlueXML, and
   localized UI strings.
 - The client data does **not** contain server content. In 2.4.3 the following
-  come from the server and must be authored: creature and item templates
+  come from the server and must be converted from the selected content source: creature and item templates
   (names, stats, levels, factions), quest text and objectives, NPC gossip text,
   vendor/trainer lists, loot tables, spawn placements, player create info
   (start position, starting spells and action bar), per-level player stats,
@@ -190,9 +191,9 @@ the adapter, in `benilla-app`.
 - The client data does contain, and content references by ID: creature and
   item display info, spells and spell visuals, `CharStartOutfit`, factions,
   areas and maps.
-- Project-owned content is original. Server-emulator databases and scraped
-  quest text are not copied (licensing and provenance); every content file
-  states its provenance.
+- TBC server-content datasets may be converted into project content for this offline port. Every
+  imported content set pins its source, revision, license, extraction command, and conversion
+  version; every generated content file states that provenance.
 - Every content record has a stable identifier, and every content file a schema
   version, so saves can be migrated or rejected safely.
 
@@ -568,13 +569,15 @@ Primary risks:
 - **TBC format differences** in DBC schemas, M2 particles/ribbons and MPQ
   features that silently misparse. Mitigation: version checks that fail loudly
   and full-archive open counts.
-- **Content authoring cost.** All templates, text and rules are hand-written.
-  Mitigation: keep the slice to one quest and a handful of creatures.
+- **Content conversion cost.** The selected source database's schema and semantics must be
+  converted into the local content pack. Mitigation: start with one zone and validate each source
+  table used by the slice.
 - **Save-format churn.** Mitigation: minimal schema first, migrations per phase.
 - **Upstream drift.** Mitigation: keep engine crates close to upstream; merge
   graphics work regularly rather than in large batches.
-- **Provenance.** Copying server-emulator data or Blizzard install data into
-  the repository. Do not; author original content and record its provenance.
+- **Provenance.** Imported server content needs a pinned source revision, license, extraction
+  command, and conversion version. Client-install assets remain runtime-only and are never
+  committed.
 
 ## Definition Of Done For The Vertical Slice
 
@@ -586,5 +589,4 @@ The vertical slice is complete when a player with the supplied TBC install can:
 4. Complete the defined NPC -> combat -> loot -> quest reward loop with the
    stock UI.
 5. Quit, relaunch, and resume each character independently.
-6. Play without any socket, auth service, realm list, external database, or
-   install modification.
+6. Play without any socket, auth service, realm list, source database, or install modification.

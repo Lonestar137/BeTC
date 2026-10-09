@@ -18,15 +18,18 @@ associated gates remain frozen until the plan replaces them with build-8606 refe
 ## What gets in
 
 - TBC 2.4.3 data and presentation behavior established from the player's own build-8606 install.
-- Offline game simulation, persistence, and original content that meet a documented plan
-  decision and have deterministic tests.
+- Offline game simulation, persistence, and TBC content imported through a documented,
+  provenance-pinned conversion with deterministic tests.
 - Fixes with a reproducible before/after behavior or a failing/passing test.
 - Format support validated against actual build-8606 files without committing those files.
 
 ## What does not
 
-- Auth, sockets, realms, server processes, external databases, or TBC server compatibility.
-- Bundled Blizzard assets, client code, FrameXML/GlueXML, or copied server-emulator content.
+- Runtime auth, sockets, realms, server processes, external databases, or TBC server
+  compatibility. Conversion tooling may read a documented source database and produce the local
+  content pack; that source is never a runtime dependency.
+- Bundled Blizzard assets, client code, or FrameXML/GlueXML. Imported server content is allowed
+  only through the documented conversion path, with source revision and licensing recorded.
 - Unplanned features outside the vertical slice, such as flying, Outland gameplay, instances,
   multiplayer, PvP, or professions.
 - A test that silently depends on a developer's install, a host clock, or nondeterministic RNG.
@@ -53,6 +56,10 @@ Launcher crates that extend the app through `benilla_app::run_with` use
 
 ## Setting up
 
+- **Nix builds.** On a Nix system, always run builds, tests, clippy and repository check/gate
+  scripts inside this repository's `shell.nix`, for example
+  `nix-shell --run 'cargo test -p benilla-game-core -p benilla-app'`. The shell provides native
+  dependencies such as ALSA and udev; do not fall back to a host `cargo` invocation.
 - **Toolchain.** Use the stable Rust toolchain from `rust-toolchain.toml`, including rustfmt and
   clippy, plus the platform's C build dependencies for vendored native libraries. `python3` is
   used by repository scripts.

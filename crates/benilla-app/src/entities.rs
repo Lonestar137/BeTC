@@ -1485,7 +1485,7 @@ mod practice_display_tests {
     use super::*;
 
     #[test]
-    fn build_8606_contains_the_authored_start_encounter_models() {
+    fn build_8606_contains_the_sunstrider_creature_models() {
         let Some(data) = benilla_formats::wow_data() else {
             eprintln!("skipping: no client install");
             return;
@@ -1501,11 +1501,11 @@ mod practice_display_tests {
             models: HashMap::new(),
         };
         for (path, alias) in [
-            ("Creature\\Wolf\\Wolf.m2", "Creature/Wolf/Wolf.mdx"),
             (
-                "Creature\\ManaWyrm\\ManaWyrm.m2",
-                "Creature/ManaWyrm/ManaWyrm.mdl",
+                "Creature\\ManaWurm\\ManaWurm.m2",
+                "Creature/ManaWurm/ManaWurm.mdx",
             ),
+            ("Creature\\Cat\\Cat.m2", "Creature/Cat/Cat.mdx"),
         ] {
             let display = creatures.display_for_model_path(path).unwrap_or_else(|| {
                 panic!("the installed client has no renderable display for {path}")

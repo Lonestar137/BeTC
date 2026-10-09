@@ -2,7 +2,7 @@
 
 benilla-everwood is an offline, single-player game targeting World of Warcraft: The Burning
 Crusade 2.4.3, build 8606. The player's own install is the reference for client data formats,
-assets, UI, and presentation. The project owns its simulation rules and original world content;
+assets, UI, and presentation. The project owns its simulation rules and converted world content;
 there is no server and no network protocol on the game path.
 
 ## The rule for every change
@@ -43,6 +43,9 @@ identify the production and test files, and decide which command will verify the
 make the connected implementation and regression-test edits before compiling. Do not bundle
 unrelated behavior just to amortize a build.
 
+- On a Nix system, run every build, test, clippy, and check/gate command inside the repository's
+  `nix-shell` so native dependencies and runtime libraries come from `shell.nix`.
+
 - Prefer one test invocation naming all affected packages and the intended feature set. When
   packages share dependencies, this lets Cargo build their common graph once. Keep profiles and
   feature flags stable between runs so the artifacts are reusable.
@@ -60,16 +63,19 @@ unrelated behavior just to amortize a build.
 
 ## Hard rules
 
-- **Offline means no transport.** The shipped executable must not open auth or world sockets,
-  launch a server process, or require accounts, realms, or an external database. Compile network,
+- **Offline means no runtime transport or database.** The shipped executable must not open auth or
+  world sockets, launch a server process, or require accounts, realms, or an external database.
+  Offline conversion tooling may read a pinned TBC server-content database and emit the content
+  pack the game consumes. Compile network,
   auth, SRP, Login, and Realm Select out of the offline binary rather than relying on a runtime
   switch.
 - **The install is read-only runtime input.** Resolve the player's TBC install through `WOW_DATA`
   (or the documented dev-build link). Never write into it and never commit its assets, interface
   files, or data. Phase 0 adds a gate check that the install is unchanged across each run.
-- **No third-party server content.** Gameplay templates, text, quests, and rules are original and
-  project-authored. Do not copy emulator databases, scraped quest text, or Blizzard install data.
-  Record provenance on every project content file.
+- **Imported TBC world content is permitted.** Creature templates, spawn placements, quests, text,
+  and vendor data may be converted from a compatible TBC server-content dataset for this offline
+  port. Record the source, revision, license, extraction command, and conversion version with every
+  imported content set. Never write to or commit assets from the player's client install.
 - **Local state has one root.** Saves and settings live under `benilla-config/`; paths resolve
   through `crate::local_state`. Per-character saves use stable generated IDs, not display names.
 - **Simulation is deterministic.** `game-core` owns game time and seeded randomness. Tests inject
