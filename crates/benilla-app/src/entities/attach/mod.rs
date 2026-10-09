@@ -10,7 +10,7 @@ use bevy::prelude::*;
 use bevy::animation::transition::AnimationTransitions;
 
 use crate::creature_anim::AnimDriver;
-use crate::net::{NetEntity, ObjectStore};
+use crate::net::{Guid, NetEntity, ObjectStore};
 use crate::player::CameraPivot;
 use crate::target::SelectionRadius;
 use benilla_world::interact::WorldObject;
@@ -31,7 +31,7 @@ use char_skin::{
 };
 mod dress;
 mod merge;
-use dress::{spawn_group, PartDress};
+use dress::{BodyShapeConfig, PartDress, spawn_group};
 pub(super) use merge::MergedFormsCache;
 mod preview;
 pub(crate) use preview::equip_slot;
@@ -229,6 +229,7 @@ pub(super) fn attach_entity_visuals(
         (
             Entity,
             &NetEntity,
+            Option<&Guid>,
             Option<&super::Equipment>,
             Has<super::equipment::Reattached>,
             Option<&super::mount::MountChild>,
@@ -271,6 +272,7 @@ pub(super) fn attach_entity_visuals(
         ResMut<benilla_world::mat_anim_table::MatAnimTable>,
         // A forced composite's upload.
         ResMut<Assets<Image>>,
+        Option<Res<crate::body_shape::BodyProportionRoster>>,
     ),
     mut palettes: ResMut<benilla_world::rig_palette::RigPalettes>,
     mut collider_epoch: ResMut<benilla_world::collision::ColliderEpoch>,
@@ -287,11 +289,13 @@ pub(super) fn attach_entity_visuals(
         mut tint_reg,
         mut anim_table,
         mut images,
+        body_profiles,
     ) = skin_build;
     let now = time.elapsed_secs();
     for (
         entity,
         net,
+        guid,
         equipment,
         reattached,
         mount_child,
@@ -350,6 +354,28 @@ pub(super) fn attach_entity_visuals(
         // A character model carries every hair, facial and body geoset, and is shared by its
         // display, so the entity's own look picks which show.
         let look = model.and_then(|_| resolve_char_look(net, dm, entity, &stores));
+        let body_shape = match (net.kind, dm, guid, body_profiles.as_deref()) {
+            (EntityKind::Player, Some(dm), Some(guid), Some(profiles))
+                if dm.is_character_body && dm.body_bounds.is_some() =>
+            {
+                profiles.0.get(&guid.0).copied().and_then(|proportions| {
+                    (proportions.enabled && proportions.has_shape_changes()).then_some(
+                        BodyShapeConfig {
+                            proportions,
+                            race: look.as_ref().map_or(0, |l| l.race),
+                            gender: look.as_ref().map_or(0, |l| l.sex),
+                            bounds: dm.body_bounds.unwrap(),
+                        },
+                    )
+                })
+            }
+            _ => None,
+        };
+        if let Some(shape) = body_shape {
+            commands.entity(entity).insert(shape);
+        } else {
+            commands.entity(entity).remove::<BodyShapeConfig>();
+        }
         // A body whose composite is still running is not built: nothing of it draws, its mount
         // included, until it can draw dressed, as the reference's ShouldRender answers the
         // composite driver's 0 (`0x607e7c` → `0x481749`). Retried each frame, with the look of
@@ -668,6 +694,7 @@ pub(super) fn attach_entity_visuals(
                 kind,
                 char_mats: &char_mats,
                 object: &object,
+                body_shape,
                 inst_slot,
                 rigged: skin.is_some(),
                 anchors: card_anchors,

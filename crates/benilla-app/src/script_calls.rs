@@ -358,20 +358,26 @@ mod tests {
     /// selection stays where it was. Without the flag it goes to the selection.
     #[test]
     fn on_self_casts_at_the_player_and_leaves_the_selection() {
+        // Build-8606 provenance: the second/third argument is the resolved cast-target *unit*, not
+        // the 1.12 `onSelf` boolean — `ChatFrame.lua:692/819/833` pass `SecureCmdOptionParse`'s
+        // `[@unit]` result and `SecureTemplates.lua:276` passes the button's `unit` (both from
+        // `patch-enGB-2.MPQ`), and `SpellBookFrame.lua:275` calls `CastSpell(id, bookType)` with no
+        // third argument at all. `"player"` names the caster (case folds like the client's unit
+        // ids); nil and any other token resolve to the selection, and a number is not a unit.
         for (lua, target, selection) in [
-            (r#"CastSpellByName("Heal", 1)"#, ME, OLD),
-            (r#"CastSpellByName("Heal", "yes")"#, ME, OLD),
-            (r#"CastSpell(1, "spell", 1)"#, ME, OLD),
+            (r#"CastSpellByName("Heal", "player")"#, ME, OLD),
+            (r#"CastSpellByName("Heal", "PLAYER")"#, ME, OLD),
+            (r#"CastSpell(1, "spell", "player")"#, ME, OLD),
             (
-                r#"TargetUnit("party1") CastSpellByName("Heal", 1)"#,
+                r#"TargetUnit("party1") CastSpellByName("Heal", "player")"#,
                 ME,
                 NEW,
             ),
             (r#"CastSpellByName("Heal")"#, OLD, OLD),
-            (r#"CastSpellByName("Heal", 0.5)"#, OLD, OLD),
-            (r#"CastSpellByName("Heal", "false")"#, OLD, OLD),
+            (r#"CastSpellByName("Heal", 1)"#, OLD, OLD),
+            (r#"CastSpellByName("Heal", "yes")"#, OLD, OLD),
             (r#"CastSpell(1, "spell")"#, OLD, OLD),
-            (r#"CastSpell(1, "spell", "0")"#, OLD, OLD),
+            (r#"CastSpell(1, "spell", "target")"#, OLD, OLD),
         ] {
             let mut f = frame(true);
             run(&mut f, lua);
@@ -413,15 +419,18 @@ mod tests {
 
     /// The bind runs the ordinary relation chain over the player: with a unit we cannot assist
     /// selected and `autoSelfCast` off, the plain call binds nothing (the cursor comes up), while
-    /// `onSelf` binds us; with a friendly player selected the plain call binds that player.
+    /// the 8606 self-cast token `"player"` binds us; with a friendly player selected the plain call
+    /// binds that player. A numeric second argument is not a unit token in 8606, so it follows the
+    /// selection like any other non-self target.
     #[test]
     fn on_self_binds_the_player_where_the_selection_is_not_assistable() {
         for (selected_template, lua, target) in [
             (FOE, r#"CastSpellByName("Fortitude")"#, None),
-            (FOE, r#"CastSpellByName("Fortitude", 1)"#, Some(ME)),
-            (FOE, r#"CastSpell(1, "spell", 1)"#, Some(ME)),
+            (FOE, r#"CastSpellByName("Fortitude", 1)"#, None),
+            (FOE, r#"CastSpellByName("Fortitude", "player")"#, Some(ME)),
+            (FOE, r#"CastSpell(1, "spell", "player")"#, Some(ME)),
             (FRIEND, r#"CastSpellByName("Fortitude")"#, Some(OLD)),
-            (FRIEND, r#"CastSpellByName("Fortitude", 1)"#, Some(ME)),
+            (FRIEND, r#"CastSpellByName("Fortitude", "player")"#, Some(ME)),
         ] {
             let mut f = frame(true);
             // `CanAssist` passes a friendly player-controlled unit (`UNIT_FLAG_PLAYER_CONTROLLED`).
@@ -453,14 +462,16 @@ mod tests {
     }
 
     /// `0x4b3300`'s pet fork sends the guid it was handed as the order's target (`0x4b34ce`), so
-    /// `CastSpell(slot, "pet", 1)` aims the pet's spell at the player, not the selection.
+    /// `CastSpell(slot, "pet", "player")` — the 8606 self-cast unit token — aims the pet's spell at
+    /// the player, while nil and non-unit tokens fall back to the selection as in `CastPetAction`.
     #[test]
     fn a_pet_book_cast_on_self_aims_at_the_player() {
         for (lua, target) in [
-            (r#"CastSpell(1, "pet", 1)"#, ME),
-            (r#"CastSpell(1, "pet", "on")"#, ME),
+            (r#"CastSpell(1, "pet", "player")"#, ME),
+            (r#"CastSpell(1, "pet", "PLAYER")"#, ME),
             (r#"CastSpell(1, "pet")"#, OLD),
-            (r#"CastSpell(1, "pet", "0")"#, OLD),
+            (r#"CastSpell(1, "pet", 1)"#, OLD),
+            (r#"CastSpell(1, "pet", "target")"#, OLD),
         ] {
             let mut f = frame(true);
             f.app

@@ -133,7 +133,7 @@ mod tests {
         let data = crate::wow_data_or_skip!();
         let mut chain = crate::open_chain(&data).expect("open chain");
         let cat = load_sound_provider_catalog(&mut chain).expect("load providers");
-        assert_eq!(cat.len(), 38);
+        assert_eq!(cat.len(), 32, "all build 8606 SoundProviderPreferences rows");
 
         let generic = cat.get(67).expect("PRESET_GENERIC");
         assert_eq!(generic.name, "PRESET_GENERIC");

@@ -173,8 +173,8 @@ const ALLOWED_BEYOND: &[(&str, &str, &str)] = &[
     ),
     (
         "SetFormattedText",
-        "FontString",
-        "TBC FontString formatting",
+        "Button CheckButton FontString LootButton",
+        "TBC text formatting; stock TBC GossipFrame.lua titles its rows with Button:SetFormattedText",
     ),
 ];
 

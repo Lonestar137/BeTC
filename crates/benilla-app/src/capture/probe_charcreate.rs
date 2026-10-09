@@ -101,7 +101,10 @@ fn drive_charcreate_probe(
                     probe.req.hair_color,
                     probe.req.facial_hair,
                 );
-                let _ = pick.0.send(CharRequest::Create(probe.req.clone()));
+                let _ = pick.0.send(CharRequest::Create {
+                    request: probe.req.clone(),
+                    body_proportions: crate::body_shape::BodyProportions::default(),
+                });
                 probe.state = ProbeState::Creating;
             }
         }

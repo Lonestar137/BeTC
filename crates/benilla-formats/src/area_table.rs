@@ -113,7 +113,7 @@ impl AreaTableCatalog {
 
 fn schema() -> Schema {
     let mut s = Schema::new("AreaTable");
-    for i in 0..25 {
+    for i in 0..35 {
         match i {
             11 => s.add_field(SchemaField::new("AreaName", FieldType::String)),
             _ => s.add_field(SchemaField::new(format!("c{i}"), FieldType::UInt32)),
@@ -140,7 +140,7 @@ pub fn load_area_table_catalog(chain: &mut Chain) -> Result<AreaTableCatalog> {
         ) else {
             continue;
         };
-        let faction_group_mask = u32_at(r, 20).unwrap_or(0);
+        let faction_group_mask = u32_at(r, 28).unwrap_or(0);
         // Signed; an absent column reads as `-1`, no exploration gate.
         let exploration_level = u32_at(r, 10).map_or(-1, |v| v as i32);
         by_id.insert(
@@ -168,11 +168,7 @@ mod tests {
         let data = crate::wow_data_or_skip!();
         let mut chain = crate::open_chain(&data).expect("open chain");
         let cat = load_area_table_catalog(&mut chain).expect("load AreaTable");
-        assert!(
-            cat.len() > 1000,
-            "5875 ships ~1800 areas, got {}",
-            cat.len()
-        );
+        assert_eq!(cat.len(), 1643, "build 8606 AreaTable rows");
 
         let northshire = cat.get(9).expect("Northshire Valley (id 9)");
         assert_eq!(northshire.zone_id, 12, "Northshire's parent is Elwynn");

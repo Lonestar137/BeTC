@@ -96,11 +96,7 @@ fn gossip_menu(
     stores: &Query<&ObjectStore>,
 ) {
     let npc_gender = npc_gender(npc, index, stores);
-    debug!(
-        "net: gossip menu on {npc:#x} — {} options, {} quests",
-        options.len(),
-        quests.len()
-    );
+    debug!("net: gossip menu on {npc:#x} — options={options:?}, quests={quests:?}",);
     if gossip.open_menu(npc, text_id, options, quests, npc_gender) {
         let _ = net_commands
             .0

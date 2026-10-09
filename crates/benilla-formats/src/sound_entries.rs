@@ -2,7 +2,8 @@
 //! weighted variation files with volume, flags and distances. Kits play by id or by name:
 //! `PlaySoundByName` (`0x458030`), behind Lua's `PlaySound`, hashes the name into this table.
 //!
-//! 29 fields and 116-byte records in 5875. The wowdev wiki's 30-column layout, with separate
+//! 29 fields and 116-byte records in build 8606, the same layout as 5875 (fields and byte width
+//! unchanged across the expansion). The wowdev wiki's 30-column layout, with separate
 //! `maxDistance` and `soundEntriesAdvancedID` columns, does not fit this build.
 
 use std::collections::HashMap;
@@ -239,7 +240,7 @@ mod tests {
         let data = crate::wow_data_or_skip!();
         let mut chain = crate::open_chain(&data).expect("open chain");
         let cat = load_sound_kit_catalog(&mut chain).expect("load sound kits");
-        assert_eq!(cat.len(), 4623, "all 5875 SoundEntries rows load");
+        assert_eq!(cat.len(), 8019, "all build 8606 SoundEntries rows load");
 
         // Kit 3, decoded by hand from the file's bytes.
         let kit = cat.get(3).expect("kit 3 exists");
@@ -250,7 +251,7 @@ mod tests {
             kit.files[0],
             ("Sound\\Spells\\Dispel_Low_Base.wav".into(), 1)
         );
-        assert_eq!(kit.volume, 1.0);
+        assert!((kit.volume - 0.8).abs() < 1e-6);
         assert_eq!(kit.flags, 0);
         assert_eq!(kit.min_distance, 8.0);
         assert_eq!(kit.distance_cutoff, 45.0);
@@ -263,7 +264,11 @@ mod tests {
 
         let repair = cat.by_name("ITEM_REPAIR").expect("repair UI kit by name");
         assert_eq!(repair.id, 7994);
-        assert_eq!(repair.flags & sound_kit_flags::NO_DUPLICATES, 0x20);
+        assert_eq!(
+            repair.flags & sound_kit_flags::NO_DUPLICATES,
+            0,
+            "build 8606 authors no no-duplicate bit on repair"
+        );
 
         // The joined path of a UI kit resolves to real bytes on the chain.
         let (path, _) = &ui.files[0];
@@ -371,14 +376,14 @@ mod tests {
         }
         assert_eq!(
             (n[0], n[1], n[2]),
-            (2072, 2, 2549),
-            "the 5875 EAXDef census"
+            (5494, 4, 2521),
+            "the build 8606 EAXDef census"
         );
 
         // NPC voice lines (`SoundType` 17, which `NPCSounds.dbc` names) are all dry, so NPCs in a
         // reverberant interior carry no echo.
         let voices: Vec<_> = cat.kits.values().filter(|k| k.sound_type == 17).collect();
-        assert_eq!(voices.len(), 275, "the type-17 NPC voice rows");
+        assert_eq!(voices.len(), 364, "the type-17 NPC voice rows");
         assert!(
             voices.iter().all(|k| k.eax_def == 0),
             "every NPC voice kit is authored dry"
@@ -436,10 +441,10 @@ mod tests {
             }
         }
         dead.sort_unstable();
-        assert_eq!(total, 8961, "non-empty variation cells in the 5875 table");
+        assert_eq!(total, 15073, "non-empty variation cells in the build 8606 table");
         assert_eq!(
             total - dead.len(),
-            8934,
+            15036,
             "variations that resolve — the binary's own count; {dead:?}"
         );
 
@@ -451,10 +456,10 @@ mod tests {
             "the asset ships — it is the authored path that cannot reach it"
         );
 
-        // The other 17 are absent assets, in kits that mostly still play.
-        assert_eq!(dead.len() - ashbringer.len(), 17, "absent assets: {dead:?}");
+        // The other 27 are absent assets, in kits that mostly still play.
+        assert_eq!(dead.len() - ashbringer.len(), 27, "absent assets: {dead:?}");
 
-        // Only 8588, whose one variation is absent, and 8940 have nothing playable.
+        // Kits whose every variation is absent have nothing playable.
         let silent: Vec<u32> = cat
             .kits
             .values()
@@ -465,8 +470,8 @@ mod tests {
         silent.sort_unstable();
         assert_eq!(
             silent,
-            vec![8588, 8940],
-            "the only kits with no playable variation at all"
+            vec![8494, 8588, 8940, 9009, 9109, 11587],
+            "the build 8606 kits with no playable variation at all"
         );
     }
 }

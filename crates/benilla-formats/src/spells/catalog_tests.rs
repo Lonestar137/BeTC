@@ -11,6 +11,28 @@ fn real_learn_spell_hop_resolves_the_taught_ability() {
     let spells = load_spell_catalog(&mut chain).expect("load Spell/SpellIcon");
     let skills = crate::skill_lines::load_skill_line_catalog(&mut chain).expect("load skill lines");
 
+    if chain.client_build() == Some(8606) {
+        let learned: Vec<_> = spells
+            .iter()
+            .filter_map(|(wrapper, _)| {
+                spells
+                    .learned_spell(wrapper)
+                    .map(|ability| (wrapper, ability))
+            })
+            .collect();
+        assert!(
+            !learned.is_empty(),
+            "build 8606 exposes learn-spell effects in Spell.dbc"
+        );
+        assert!(
+            learned
+                .iter()
+                .any(|(_, ability)| spells.get(*ability).is_some()),
+            "build 8606 learn effects include a taught player spell in Spell.dbc"
+        );
+        return;
+    }
+
     for (wrapper, ability, line) in [(1605u32, 78u32, 26u32), (1738, 100, 26), (6674, 6673, 256)] {
         assert_eq!(
             spells.learned_spell(wrapper),
@@ -538,6 +560,33 @@ fn real_spell_catalog_reads_usable_walk_columns() {
 }
 
 #[test]
+fn build_8606_fireball_rank_one_damage_range_matches_spell_dbc() {
+    let data = crate::wow_data_or_skip!();
+    let mut chain = crate::open_chain(&data).expect("open chain");
+    assert_eq!(chain.client_build(), Some(8606));
+    let spells = load_spell_catalog(&mut chain).expect("load Spell.dbc");
+    let cast_times = load_spell_cast_times(&mut chain).expect("load SpellCastTimes.dbc");
+    let durations = load_spell_durations(&mut chain).expect("load SpellDuration.dbc");
+    let ranges = load_spell_ranges(&mut chain).expect("load SpellRange.dbc");
+    let fireball = spells.get(133).unwrap();
+    assert_eq!(fireball.base_effect_range(0), Some((14, 22)));
+    assert_eq!(fireball.base_effect_range(1), Some((1, 1)));
+    assert_eq!(fireball.mana_cost_at_level(1, 100), 30);
+    assert_eq!(
+        cast_times
+            .get(fireball.casting_time_index)
+            .unwrap()
+            .resolved_ms(1, fireball.base_level),
+        1_500
+    );
+    assert_eq!(ranges.get(fireball.range_index).unwrap().max, 35.0);
+    assert_eq!(
+        durations.get(fireball.duration_index).unwrap().base_ms,
+        4_000
+    );
+}
+
+#[test]
 fn real_spell_catalog_reads_tooltip_columns() {
     let data = crate::wow_data_or_skip!();
     let mut chain = crate::open_chain(&data).expect("open chain");
@@ -577,6 +626,8 @@ fn real_spell_catalog_reads_tooltip_columns() {
         (13, 9),
         "Fireball r1's direct-damage roll: 14-22"
     );
+    assert_eq!(fireball.base_effect_range(0), Some((14, 22)));
+    assert_eq!(fireball.base_effect_range(3), None);
     assert_eq!(
         (fireball.effect_apply_aura[1], fireball.effect_amplitude[1]),
         (3, 2000),
@@ -605,7 +656,8 @@ fn real_spell_catalog_reads_tooltip_columns() {
         "SPELL_AURA_MOD_RESISTANCE"
     );
     assert_eq!(
-        frost_armor.effect_trigger_spell[1], 6136,
+        frost_armor.effect_trigger_spell[1],
+        6136,
         "the chill proc the description text itself names"
     );
 

@@ -1,0 +1,5641 @@
+schema_version = 1
+source = "https://github.com/cmangos/tbc-db"
+revision = "866723612d93791e442fb1b18d642118fa682edd"
+license = "GPL-3.0"
+client_build = 8606
+extraction_command = "python3 scripts/import-tbc-starting-gear.py <TBC-DB full SQL dump> <CharStartOutfit.dbc> crates/benilla-game-core/content/tbc-starting-gear.toml"
+
+[[item_template]]
+entry = 25
+class = 2
+subclass = 7
+display_id = 1542
+quality = 1
+buy_price = 36
+sell_price = 7
+inventory_type = 21
+allowable_class = -1
+allowable_race = -1
+item_level = 2
+stackable = 1
+armor = 0
+bonding = 0
+material = 1
+max_durability = 20
+name = "Worn Shortsword"
+
+[[item_template]]
+entry = 35
+class = 2
+subclass = 10
+display_id = 472
+quality = 1
+buy_price = 48
+sell_price = 9
+inventory_type = 17
+allowable_class = -1
+allowable_race = -1
+item_level = 2
+stackable = 1
+armor = 0
+bonding = 0
+material = 2
+max_durability = 25
+name = "Bent Staff"
+
+[[item_template]]
+entry = 36
+class = 2
+subclass = 4
+display_id = 5194
+quality = 1
+buy_price = 38
+sell_price = 7
+inventory_type = 21
+allowable_class = -1
+allowable_race = -1
+item_level = 2
+stackable = 1
+armor = 0
+bonding = 0
+material = 2
+max_durability = 20
+name = "Worn Mace"
+
+[[item_template]]
+entry = 37
+class = 2
+subclass = 0
+display_id = 14029
+quality = 1
+buy_price = 39
+sell_price = 7
+inventory_type = 21
+allowable_class = -1
+allowable_race = -1
+item_level = 2
+stackable = 1
+armor = 0
+bonding = 0
+material = 1
+max_durability = 20
+name = "Worn Axe"
+
+[[item_template]]
+entry = 38
+class = 4
+subclass = 0
+display_id = 9891
+quality = 1
+buy_price = 1
+sell_price = 1
+inventory_type = 4
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 0
+bonding = 0
+material = 7
+max_durability = 0
+name = "Recruit's Shirt"
+
+[[item_template]]
+entry = 39
+class = 4
+subclass = 1
+display_id = 9892
+quality = 0
+buy_price = 5
+sell_price = 1
+inventory_type = 7
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 2
+bonding = 0
+material = 7
+max_durability = 25
+name = "Recruit's Pants"
+
+[[item_template]]
+entry = 40
+class = 4
+subclass = 0
+display_id = 10141
+quality = 1
+buy_price = 5
+sell_price = 1
+inventory_type = 8
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 0
+bonding = 0
+material = 7
+max_durability = 0
+name = "Recruit's Boots"
+
+[[item_template]]
+entry = 43
+class = 4
+subclass = 0
+display_id = 9938
+quality = 1
+buy_price = 5
+sell_price = 1
+inventory_type = 8
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 0
+bonding = 0
+material = 7
+max_durability = 0
+name = "Squire's Boots"
+
+[[item_template]]
+entry = 44
+class = 4
+subclass = 1
+display_id = 9937
+quality = 0
+buy_price = 4
+sell_price = 1
+inventory_type = 7
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 2
+bonding = 0
+material = 7
+max_durability = 25
+name = "Squire's Pants"
+
+[[item_template]]
+entry = 45
+class = 4
+subclass = 0
+display_id = 3265
+quality = 1
+buy_price = 1
+sell_price = 1
+inventory_type = 4
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 0
+bonding = 0
+material = 7
+max_durability = 0
+name = "Squire's Shirt"
+
+[[item_template]]
+entry = 47
+class = 4
+subclass = 0
+display_id = 9915
+quality = 1
+buy_price = 5
+sell_price = 1
+inventory_type = 8
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 0
+bonding = 0
+material = 7
+max_durability = 0
+name = "Footpad's Shoes"
+
+[[item_template]]
+entry = 48
+class = 4
+subclass = 1
+display_id = 9913
+quality = 0
+buy_price = 4
+sell_price = 1
+inventory_type = 7
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 2
+bonding = 0
+material = 7
+max_durability = 25
+name = "Footpad's Pants"
+
+[[item_template]]
+entry = 49
+class = 4
+subclass = 0
+display_id = 9906
+quality = 1
+buy_price = 1
+sell_price = 1
+inventory_type = 4
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 0
+bonding = 0
+material = 7
+max_durability = 0
+name = "Footpad's Shirt"
+
+[[item_template]]
+entry = 51
+class = 4
+subclass = 0
+display_id = 9946
+quality = 1
+buy_price = 5
+sell_price = 1
+inventory_type = 8
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 0
+bonding = 0
+material = 7
+max_durability = 0
+name = "Neophyte's Boots"
+
+[[item_template]]
+entry = 52
+class = 4
+subclass = 1
+display_id = 9945
+quality = 0
+buy_price = 5
+sell_price = 1
+inventory_type = 7
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 2
+bonding = 0
+material = 7
+max_durability = 25
+name = "Neophyte's Pants"
+
+[[item_template]]
+entry = 53
+class = 4
+subclass = 0
+display_id = 9944
+quality = 1
+buy_price = 1
+sell_price = 1
+inventory_type = 4
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 0
+bonding = 0
+material = 7
+max_durability = 0
+name = "Neophyte's Shirt"
+
+[[item_template]]
+entry = 55
+class = 4
+subclass = 0
+display_id = 9929
+quality = 1
+buy_price = 5
+sell_price = 1
+inventory_type = 8
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 0
+bonding = 0
+material = 7
+max_durability = 0
+name = "Apprentice's Boots"
+
+[[item_template]]
+entry = 56
+class = 4
+subclass = 1
+display_id = 12647
+quality = 0
+buy_price = 5
+sell_price = 1
+inventory_type = 20
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 3
+bonding = 0
+material = 7
+max_durability = 35
+name = "Apprentice's Robe"
+
+[[item_template]]
+entry = 57
+class = 4
+subclass = 1
+display_id = 12645
+quality = 0
+buy_price = 5
+sell_price = 1
+inventory_type = 20
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 3
+bonding = 0
+material = 7
+max_durability = 35
+name = "Acolyte's Robe"
+
+[[item_template]]
+entry = 59
+class = 4
+subclass = 0
+display_id = 3261
+quality = 1
+buy_price = 5
+sell_price = 1
+inventory_type = 8
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 0
+bonding = 0
+material = 7
+max_durability = 0
+name = "Acolyte's Shoes"
+
+[[item_template]]
+entry = 120
+class = 4
+subclass = 1
+display_id = 10006
+quality = 0
+buy_price = 4
+sell_price = 1
+inventory_type = 7
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 2
+bonding = 0
+material = 7
+max_durability = 25
+name = "Thug Pants"
+
+[[item_template]]
+entry = 121
+class = 4
+subclass = 0
+display_id = 10008
+quality = 1
+buy_price = 5
+sell_price = 1
+inventory_type = 8
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 0
+bonding = 0
+material = 7
+max_durability = 0
+name = "Thug Boots"
+
+[[item_template]]
+entry = 127
+class = 4
+subclass = 0
+display_id = 9996
+quality = 1
+buy_price = 1
+sell_price = 1
+inventory_type = 4
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 0
+bonding = 0
+material = 7
+max_durability = 0
+name = "Trapper's Shirt"
+
+[[item_template]]
+entry = 129
+class = 4
+subclass = 0
+display_id = 9977
+quality = 1
+buy_price = 5
+sell_price = 1
+inventory_type = 8
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 0
+bonding = 0
+material = 7
+max_durability = 0
+name = "Rugged Trapper's Boots"
+
+[[item_template]]
+entry = 139
+class = 4
+subclass = 1
+display_id = 9988
+quality = 0
+buy_price = 4
+sell_price = 1
+inventory_type = 7
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 2
+bonding = 0
+material = 7
+max_durability = 25
+name = "Brawler's Pants"
+
+[[item_template]]
+entry = 140
+class = 4
+subclass = 0
+display_id = 9992
+quality = 1
+buy_price = 5
+sell_price = 1
+inventory_type = 8
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 0
+bonding = 0
+material = 7
+max_durability = 0
+name = "Brawler's Boots"
+
+[[item_template]]
+entry = 147
+class = 4
+subclass = 1
+display_id = 9975
+quality = 0
+buy_price = 5
+sell_price = 1
+inventory_type = 7
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 2
+bonding = 0
+material = 7
+max_durability = 25
+name = "Rugged Trapper's Pants"
+
+[[item_template]]
+entry = 148
+class = 4
+subclass = 0
+display_id = 9976
+quality = 1
+buy_price = 1
+sell_price = 1
+inventory_type = 4
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 0
+bonding = 0
+material = 7
+max_durability = 0
+name = "Rugged Trapper's Shirt"
+
+[[item_template]]
+entry = 153
+class = 4
+subclass = 2
+display_id = 10050
+quality = 0
+buy_price = 5
+sell_price = 1
+inventory_type = 7
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 14
+bonding = 0
+material = 8
+max_durability = 30
+name = "Primitive Kilt"
+
+[[item_template]]
+entry = 154
+class = 4
+subclass = 0
+display_id = 10058
+quality = 1
+buy_price = 1
+sell_price = 1
+inventory_type = 4
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 0
+bonding = 0
+material = 7
+max_durability = 0
+name = "Primitive Mantle"
+
+[[item_template]]
+entry = 1395
+class = 4
+subclass = 1
+display_id = 9924
+quality = 0
+buy_price = 5
+sell_price = 1
+inventory_type = 7
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 2
+bonding = 0
+material = 7
+max_durability = 25
+name = "Apprentice's Pants"
+
+[[item_template]]
+entry = 1396
+class = 4
+subclass = 1
+display_id = 3260
+quality = 0
+buy_price = 4
+sell_price = 1
+inventory_type = 7
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 2
+bonding = 0
+material = 7
+max_durability = 25
+name = "Acolyte's Pants"
+
+[[item_template]]
+entry = 2092
+class = 2
+subclass = 15
+display_id = 6442
+quality = 1
+buy_price = 36
+sell_price = 7
+inventory_type = 13
+allowable_class = -1
+allowable_race = -1
+item_level = 2
+stackable = 1
+armor = 0
+bonding = 0
+material = 1
+max_durability = 16
+name = "Worn Dagger"
+
+[[item_template]]
+entry = 2105
+class = 4
+subclass = 0
+display_id = 10005
+quality = 1
+buy_price = 5
+sell_price = 1
+inventory_type = 4
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 0
+bonding = 0
+material = 7
+max_durability = 0
+name = "Thug Shirt"
+
+[[item_template]]
+entry = 2361
+class = 2
+subclass = 5
+display_id = 8690
+quality = 1
+buy_price = 46
+sell_price = 9
+inventory_type = 17
+allowable_class = -1
+allowable_race = -1
+item_level = 2
+stackable = 1
+armor = 0
+bonding = 0
+material = 2
+max_durability = 25
+name = "Battleworn Hammer"
+
+[[item_template]]
+entry = 2362
+class = 4
+subclass = 6
+display_id = 18730
+quality = 0
+buy_price = 7
+sell_price = 1
+inventory_type = 14
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 5
+bonding = 0
+material = 1
+max_durability = 20
+name = "Worn Wooden Shield"
+
+[[item_template]]
+entry = 2504
+class = 2
+subclass = 2
+display_id = 8106
+quality = 1
+buy_price = 29
+sell_price = 5
+inventory_type = 15
+allowable_class = -1
+allowable_race = -1
+item_level = 2
+stackable = 1
+armor = 0
+bonding = 0
+material = 2
+max_durability = 20
+name = "Worn Shortbow"
+
+[[item_template]]
+entry = 2508
+class = 2
+subclass = 3
+display_id = 6606
+quality = 1
+buy_price = 27
+sell_price = 5
+inventory_type = 26
+allowable_class = -1
+allowable_race = -1
+item_level = 2
+stackable = 1
+armor = 0
+bonding = 0
+material = 1
+max_durability = 20
+name = "Old Blunderbuss"
+
+[[item_template]]
+entry = 3661
+class = 2
+subclass = 10
+display_id = 18530
+quality = 1
+buy_price = 46
+sell_price = 9
+inventory_type = 17
+allowable_class = -1
+allowable_race = -1
+item_level = 2
+stackable = 1
+armor = 0
+bonding = 0
+material = 2
+max_durability = 25
+name = "Handcrafted Staff"
+
+[[item_template]]
+entry = 6096
+class = 4
+subclass = 0
+display_id = 2163
+quality = 1
+buy_price = 1
+sell_price = 1
+inventory_type = 4
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 0
+bonding = 0
+material = 7
+max_durability = 0
+name = "Apprentice's Shirt"
+
+[[item_template]]
+entry = 6097
+class = 4
+subclass = 0
+display_id = 2470
+quality = 1
+buy_price = 1
+sell_price = 1
+inventory_type = 4
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 0
+bonding = 0
+material = 7
+max_durability = 0
+name = "Acolyte's Shirt"
+
+[[item_template]]
+entry = 6098
+class = 4
+subclass = 1
+display_id = 12679
+quality = 0
+buy_price = 4
+sell_price = 1
+inventory_type = 20
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 3
+bonding = 0
+material = 7
+max_durability = 35
+name = "Neophyte's Robe"
+
+[[item_template]]
+entry = 6116
+class = 4
+subclass = 1
+display_id = 12648
+quality = 0
+buy_price = 4
+sell_price = 1
+inventory_type = 20
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 3
+bonding = 0
+material = 7
+max_durability = 35
+name = "Apprentice's Robe"
+
+[[item_template]]
+entry = 6117
+class = 4
+subclass = 0
+display_id = 9972
+quality = 1
+buy_price = 1
+sell_price = 1
+inventory_type = 4
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 0
+bonding = 0
+material = 7
+max_durability = 0
+name = "Squire's Shirt"
+
+[[item_template]]
+entry = 6118
+class = 4
+subclass = 1
+display_id = 9974
+quality = 0
+buy_price = 4
+sell_price = 1
+inventory_type = 7
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 2
+bonding = 0
+material = 7
+max_durability = 25
+name = "Squire's Pants"
+
+[[item_template]]
+entry = 6119
+class = 4
+subclass = 1
+display_id = 12681
+quality = 0
+buy_price = 4
+sell_price = 1
+inventory_type = 20
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 3
+bonding = 0
+material = 7
+max_durability = 35
+name = "Neophyte's Robe"
+
+[[item_template]]
+entry = 6120
+class = 4
+subclass = 0
+display_id = 9983
+quality = 1
+buy_price = 1
+sell_price = 1
+inventory_type = 4
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 0
+bonding = 0
+material = 7
+max_durability = 0
+name = "Recruit's Shirt"
+
+[[item_template]]
+entry = 6121
+class = 4
+subclass = 1
+display_id = 9984
+quality = 0
+buy_price = 4
+sell_price = 1
+inventory_type = 7
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 2
+bonding = 0
+material = 7
+max_durability = 25
+name = "Recruit's Pants"
+
+[[item_template]]
+entry = 6122
+class = 4
+subclass = 0
+display_id = 9985
+quality = 1
+buy_price = 5
+sell_price = 1
+inventory_type = 8
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 0
+bonding = 0
+material = 7
+max_durability = 0
+name = "Recruit's Boots"
+
+[[item_template]]
+entry = 6123
+class = 4
+subclass = 1
+display_id = 12683
+quality = 0
+buy_price = 4
+sell_price = 1
+inventory_type = 20
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 3
+bonding = 0
+material = 7
+max_durability = 35
+name = "Novice's Robe"
+
+[[item_template]]
+entry = 6124
+class = 4
+subclass = 1
+display_id = 9987
+quality = 0
+buy_price = 5
+sell_price = 1
+inventory_type = 7
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 2
+bonding = 0
+material = 7
+max_durability = 25
+name = "Novice's Pants"
+
+[[item_template]]
+entry = 6125
+class = 4
+subclass = 0
+display_id = 9995
+quality = 1
+buy_price = 1
+sell_price = 1
+inventory_type = 4
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 0
+bonding = 0
+material = 7
+max_durability = 0
+name = "Brawler's Harness"
+
+[[item_template]]
+entry = 6126
+class = 4
+subclass = 1
+display_id = 10002
+quality = 0
+buy_price = 5
+sell_price = 1
+inventory_type = 7
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 2
+bonding = 0
+material = 7
+max_durability = 25
+name = "Trapper's Pants"
+
+[[item_template]]
+entry = 6127
+class = 4
+subclass = 0
+display_id = 10003
+quality = 1
+buy_price = 5
+sell_price = 1
+inventory_type = 8
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 0
+bonding = 0
+material = 7
+max_durability = 0
+name = "Trapper's Boots"
+
+[[item_template]]
+entry = 6129
+class = 4
+subclass = 1
+display_id = 12646
+quality = 0
+buy_price = 5
+sell_price = 1
+inventory_type = 20
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 3
+bonding = 0
+material = 7
+max_durability = 35
+name = "Acolyte's Robe"
+
+[[item_template]]
+entry = 6134
+class = 4
+subclass = 0
+display_id = 10108
+quality = 1
+buy_price = 1
+sell_price = 1
+inventory_type = 4
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 0
+bonding = 0
+material = 7
+max_durability = 0
+name = "Primitive Mantle"
+
+[[item_template]]
+entry = 6135
+class = 4
+subclass = 2
+display_id = 10109
+quality = 0
+buy_price = 5
+sell_price = 1
+inventory_type = 7
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 14
+bonding = 0
+material = 8
+max_durability = 30
+name = "Primitive Kilt"
+
+[[item_template]]
+entry = 6136
+class = 4
+subclass = 0
+display_id = 10112
+quality = 1
+buy_price = 4
+sell_price = 1
+inventory_type = 4
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 0
+bonding = 0
+material = 7
+max_durability = 0
+name = "Thug Shirt"
+
+[[item_template]]
+entry = 6137
+class = 4
+subclass = 1
+display_id = 10114
+quality = 0
+buy_price = 4
+sell_price = 1
+inventory_type = 7
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 2
+bonding = 0
+material = 7
+max_durability = 25
+name = "Thug Pants"
+
+[[item_template]]
+entry = 6138
+class = 4
+subclass = 0
+display_id = 10115
+quality = 1
+buy_price = 5
+sell_price = 1
+inventory_type = 8
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 0
+bonding = 0
+material = 7
+max_durability = 0
+name = "Thug Boots"
+
+[[item_template]]
+entry = 6139
+class = 4
+subclass = 1
+display_id = 12684
+quality = 0
+buy_price = 4
+sell_price = 1
+inventory_type = 20
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 3
+bonding = 0
+material = 7
+max_durability = 35
+name = "Novice's Robe"
+
+[[item_template]]
+entry = 6140
+class = 4
+subclass = 1
+display_id = 12649
+quality = 0
+buy_price = 4
+sell_price = 1
+inventory_type = 20
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 3
+bonding = 0
+material = 7
+max_durability = 35
+name = "Apprentice's Robe"
+
+[[item_template]]
+entry = 6144
+class = 4
+subclass = 1
+display_id = 12680
+quality = 0
+buy_price = 5
+sell_price = 1
+inventory_type = 20
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 3
+bonding = 0
+material = 7
+max_durability = 35
+name = "Neophyte's Robe"
+
+[[item_template]]
+entry = 12282
+class = 2
+subclass = 1
+display_id = 22291
+quality = 1
+buy_price = 44
+sell_price = 8
+inventory_type = 17
+allowable_class = -1
+allowable_race = -1
+item_level = 2
+stackable = 1
+armor = 0
+bonding = 0
+material = 1
+max_durability = 25
+name = "Worn Battleaxe"
+
+[[item_template]]
+entry = 20891
+class = 4
+subclass = 1
+display_id = 33256
+quality = 0
+buy_price = 5
+sell_price = 1
+inventory_type = 20
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 3
+bonding = 0
+material = 7
+max_durability = 35
+name = "Neophyte's Robe"
+
+[[item_template]]
+entry = 20892
+class = 4
+subclass = 1
+display_id = 33257
+quality = 0
+buy_price = 5
+sell_price = 1
+inventory_type = 20
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 3
+bonding = 0
+material = 7
+max_durability = 35
+name = "Acolyte's Robe"
+
+[[item_template]]
+entry = 20893
+class = 4
+subclass = 1
+display_id = 33258
+quality = 0
+buy_price = 5
+sell_price = 1
+inventory_type = 20
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 3
+bonding = 0
+material = 7
+max_durability = 35
+name = "Apprentice's Robe"
+
+[[item_template]]
+entry = 20894
+class = 4
+subclass = 1
+display_id = 33259
+quality = 0
+buy_price = 5
+sell_price = 1
+inventory_type = 7
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 2
+bonding = 0
+material = 7
+max_durability = 25
+name = "Apprentice's Pants"
+
+[[item_template]]
+entry = 20895
+class = 4
+subclass = 0
+display_id = 33260
+quality = 1
+buy_price = 5
+sell_price = 1
+inventory_type = 8
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 0
+bonding = 0
+material = 7
+max_durability = 0
+name = "Apprentice's Boots"
+
+[[item_template]]
+entry = 20896
+class = 4
+subclass = 1
+display_id = 33342
+quality = 0
+buy_price = 4
+sell_price = 1
+inventory_type = 7
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 2
+bonding = 0
+material = 7
+max_durability = 25
+name = "Lookout's Pants"
+
+[[item_template]]
+entry = 20897
+class = 4
+subclass = 0
+display_id = 33353
+quality = 0
+buy_price = 4
+sell_price = 1
+inventory_type = 4
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 0
+bonding = 0
+material = 7
+max_durability = 0
+name = "Lookout's Tunic"
+
+[[item_template]]
+entry = 20898
+class = 4
+subclass = 1
+display_id = 36764
+quality = 0
+buy_price = 3
+sell_price = 1
+inventory_type = 8
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 2
+bonding = 0
+material = 7
+max_durability = 16
+name = "Lookout's Shoes"
+
+[[item_template]]
+entry = 20899
+class = 4
+subclass = 1
+display_id = 33351
+quality = 0
+buy_price = 4
+sell_price = 1
+inventory_type = 7
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 2
+bonding = 0
+material = 7
+max_durability = 25
+name = "Warder's Pants"
+
+[[item_template]]
+entry = 20900
+class = 4
+subclass = 1
+display_id = 33350
+quality = 0
+buy_price = 3
+sell_price = 1
+inventory_type = 8
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 2
+bonding = 0
+material = 7
+max_durability = 16
+name = "Warder's Boots"
+
+[[item_template]]
+entry = 20901
+class = 4
+subclass = 0
+display_id = 33352
+quality = 0
+buy_price = 4
+sell_price = 1
+inventory_type = 4
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 0
+bonding = 0
+material = 7
+max_durability = 0
+name = "Warder's Shirt"
+
+[[item_template]]
+entry = 20980
+class = 2
+subclass = 2
+display_id = 8106
+quality = 1
+buy_price = 27
+sell_price = 5
+inventory_type = 15
+allowable_class = -1
+allowable_race = -1
+item_level = 2
+stackable = 1
+armor = 0
+bonding = 0
+material = 2
+max_durability = 20
+name = "Warder's Shortbow"
+
+[[item_template]]
+entry = 20981
+class = 2
+subclass = 4
+display_id = 37294
+quality = 1
+buy_price = 37
+sell_price = 7
+inventory_type = 21
+allowable_class = -1
+allowable_race = -1
+item_level = 2
+stackable = 1
+armor = 0
+bonding = 0
+material = 2
+max_durability = 20
+name = "Neophyte's Mace"
+
+[[item_template]]
+entry = 20982
+class = 2
+subclass = 15
+display_id = 37170
+quality = 1
+buy_price = 37
+sell_price = 7
+inventory_type = 13
+allowable_class = -1
+allowable_race = -1
+item_level = 2
+stackable = 1
+armor = 0
+bonding = 0
+material = 1
+max_durability = 16
+name = "Sharp Dagger"
+
+[[item_template]]
+entry = 20983
+class = 2
+subclass = 15
+display_id = 37171
+quality = 1
+buy_price = 37
+sell_price = 7
+inventory_type = 13
+allowable_class = -1
+allowable_race = -1
+item_level = 2
+stackable = 1
+armor = 0
+bonding = 0
+material = 1
+max_durability = 16
+name = "Acolyte's Dagger"
+
+[[item_template]]
+entry = 23322
+class = 4
+subclass = 1
+display_id = 36138
+quality = 0
+buy_price = 4
+sell_price = 1
+inventory_type = 20
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 3
+bonding = 0
+material = 7
+max_durability = 35
+name = "Acolyte's Robe"
+
+[[item_template]]
+entry = 23344
+class = 4
+subclass = 1
+display_id = 36120
+quality = 0
+buy_price = 4
+sell_price = 1
+inventory_type = 7
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 2
+bonding = 0
+material = 7
+max_durability = 25
+name = "Scout's Pants"
+
+[[item_template]]
+entry = 23345
+class = 4
+subclass = 0
+display_id = 36118
+quality = 1
+buy_price = 4
+sell_price = 1
+inventory_type = 4
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 0
+bonding = 0
+material = 7
+max_durability = 0
+name = "Scout's Shirt"
+
+[[item_template]]
+entry = 23346
+class = 2
+subclass = 8
+display_id = 2380
+quality = 1
+buy_price = 45
+sell_price = 9
+inventory_type = 17
+allowable_class = -1
+allowable_race = -1
+item_level = 2
+stackable = 1
+armor = 0
+bonding = 0
+material = 1
+max_durability = 25
+name = "Battleworn Claymore"
+
+[[item_template]]
+entry = 23347
+class = 2
+subclass = 18
+display_id = 10671
+quality = 1
+buy_price = 27
+sell_price = 5
+inventory_type = 26
+allowable_class = -1
+allowable_race = -1
+item_level = 2
+stackable = 1
+armor = 0
+bonding = 0
+material = 2
+max_durability = 20
+name = "Weathered Crossbow"
+
+[[item_template]]
+entry = 23348
+class = 4
+subclass = 0
+display_id = 36122
+quality = 1
+buy_price = 5
+sell_price = 1
+inventory_type = 8
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 0
+bonding = 0
+material = 7
+max_durability = 0
+name = "Scout's Boots"
+
+[[item_template]]
+entry = 23473
+class = 4
+subclass = 0
+display_id = 36124
+quality = 1
+buy_price = 1
+sell_price = 1
+inventory_type = 4
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 0
+bonding = 0
+material = 7
+max_durability = 0
+name = "Recruit's Shirt"
+
+[[item_template]]
+entry = 23474
+class = 4
+subclass = 1
+display_id = 36125
+quality = 0
+buy_price = 5
+sell_price = 1
+inventory_type = 7
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 2
+bonding = 0
+material = 7
+max_durability = 25
+name = "Recruit's Pants"
+
+[[item_template]]
+entry = 23475
+class = 4
+subclass = 0
+display_id = 36126
+quality = 1
+buy_price = 5
+sell_price = 1
+inventory_type = 8
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 0
+bonding = 0
+material = 7
+max_durability = 0
+name = "Recruit's Boots"
+
+[[item_template]]
+entry = 23476
+class = 4
+subclass = 0
+display_id = 36133
+quality = 1
+buy_price = 7
+sell_price = 1
+inventory_type = 4
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 0
+bonding = 0
+material = 7
+max_durability = 0
+name = "Squire's Shirt"
+
+[[item_template]]
+entry = 23477
+class = 4
+subclass = 1
+display_id = 36134
+quality = 0
+buy_price = 4
+sell_price = 1
+inventory_type = 7
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 2
+bonding = 0
+material = 7
+max_durability = 25
+name = "Squire's Pants"
+
+[[item_template]]
+entry = 23478
+class = 4
+subclass = 1
+display_id = 36125
+quality = 0
+buy_price = 4
+sell_price = 1
+inventory_type = 7
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 2
+bonding = 0
+material = 7
+max_durability = 25
+name = "Recruit's Pants"
+
+[[item_template]]
+entry = 23479
+class = 4
+subclass = 1
+display_id = 36140
+quality = 0
+buy_price = 4
+sell_price = 1
+inventory_type = 20
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 3
+bonding = 0
+material = 7
+max_durability = 35
+name = "Recruit's Robe"
+
+[[item_template]]
+entry = 24143
+class = 4
+subclass = 0
+display_id = 36789
+quality = 0
+buy_price = 5
+sell_price = 1
+inventory_type = 4
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 0
+bonding = 0
+material = 7
+max_durability = 0
+name = "Initiate's Shirt"
+
+[[item_template]]
+entry = 24145
+class = 4
+subclass = 1
+display_id = 36790
+quality = 0
+buy_price = 5
+sell_price = 1
+inventory_type = 7
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 2
+bonding = 0
+material = 7
+max_durability = 25
+name = "Initiate's Pants"
+
+[[item_template]]
+entry = 24146
+class = 4
+subclass = 1
+display_id = 36793
+quality = 0
+buy_price = 3
+sell_price = 1
+inventory_type = 8
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 2
+bonding = 0
+material = 7
+max_durability = 16
+name = "Initiate's Boots"
+
+[[item_template]]
+entry = 25861
+class = 2
+subclass = 16
+display_id = 20777
+quality = 1
+buy_price = 15
+sell_price = 3
+inventory_type = 25
+allowable_class = -1
+allowable_race = -1
+item_level = 3
+stackable = 1
+armor = 0
+bonding = 0
+material = 1
+max_durability = 200
+name = "Crude Throwing Axe"
+
+[[item_template]]
+entry = 28979
+class = 2
+subclass = 16
+display_id = 40187
+quality = 1
+buy_price = 15
+sell_price = 3
+inventory_type = 25
+allowable_class = -1
+allowable_race = -1
+item_level = 3
+stackable = 1
+armor = 0
+bonding = 0
+material = 1
+max_durability = 200
+name = "Light Throwing Knife"
+
+[[starting_item]]
+race = 1
+class = 1
+gender = 0
+entry = 38
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 1
+gender = 0
+entry = 39
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 1
+gender = 0
+entry = 40
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 1
+gender = 0
+entry = 25
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 1
+gender = 0
+entry = 2362
+slot = 16
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 1
+gender = 1
+entry = 38
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 1
+gender = 1
+entry = 39
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 1
+gender = 1
+entry = 40
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 1
+gender = 1
+entry = 25
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 1
+gender = 1
+entry = 2362
+slot = 16
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 2
+gender = 0
+entry = 45
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 2
+gender = 0
+entry = 43
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 2
+gender = 0
+entry = 44
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 2
+gender = 0
+entry = 2361
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 2
+gender = 1
+entry = 45
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 2
+gender = 1
+entry = 43
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 2
+gender = 1
+entry = 44
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 2
+gender = 1
+entry = 2361
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 4
+gender = 0
+entry = 49
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 4
+gender = 0
+entry = 47
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 4
+gender = 0
+entry = 48
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 4
+gender = 0
+entry = 28979
+slot = 17
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 4
+gender = 0
+entry = 2092
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 4
+gender = 1
+entry = 49
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 4
+gender = 1
+entry = 47
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 4
+gender = 1
+entry = 48
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 4
+gender = 1
+entry = 28979
+slot = 17
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 4
+gender = 1
+entry = 2092
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 5
+gender = 0
+entry = 6098
+slot = 4
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 5
+gender = 0
+entry = 52
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 5
+gender = 0
+entry = 53
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 5
+gender = 0
+entry = 51
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 5
+gender = 0
+entry = 36
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 5
+gender = 1
+entry = 6098
+slot = 4
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 5
+gender = 1
+entry = 52
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 5
+gender = 1
+entry = 53
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 5
+gender = 1
+entry = 51
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 5
+gender = 1
+entry = 36
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 8
+gender = 0
+entry = 56
+slot = 4
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 8
+gender = 0
+entry = 1395
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 8
+gender = 0
+entry = 55
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 8
+gender = 0
+entry = 35
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 8
+gender = 0
+entry = 6096
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 8
+gender = 1
+entry = 56
+slot = 4
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 8
+gender = 1
+entry = 1395
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 8
+gender = 1
+entry = 55
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 8
+gender = 1
+entry = 35
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 8
+gender = 1
+entry = 6096
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 9
+gender = 0
+entry = 57
+slot = 4
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 9
+gender = 0
+entry = 6097
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 9
+gender = 0
+entry = 1396
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 9
+gender = 0
+entry = 2092
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 9
+gender = 0
+entry = 59
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 9
+gender = 1
+entry = 57
+slot = 4
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 9
+gender = 1
+entry = 6097
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 9
+gender = 1
+entry = 1396
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 9
+gender = 1
+entry = 2092
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 1
+class = 9
+gender = 1
+entry = 59
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 2
+class = 1
+gender = 0
+entry = 6125
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 2
+class = 1
+gender = 0
+entry = 139
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 2
+class = 1
+gender = 0
+entry = 140
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 2
+class = 1
+gender = 0
+entry = 12282
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 2
+class = 1
+gender = 1
+entry = 6125
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 2
+class = 1
+gender = 1
+entry = 139
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 2
+class = 1
+gender = 1
+entry = 140
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 2
+class = 1
+gender = 1
+entry = 12282
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 2
+class = 3
+gender = 0
+entry = 127
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 2
+class = 3
+gender = 0
+entry = 6126
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 2
+class = 3
+gender = 0
+entry = 6127
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 2
+class = 3
+gender = 0
+entry = 37
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 2
+class = 3
+gender = 0
+entry = 2504
+slot = 17
+amount = 1
+
+[[starting_item]]
+race = 2
+class = 3
+gender = 1
+entry = 127
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 2
+class = 3
+gender = 1
+entry = 6126
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 2
+class = 3
+gender = 1
+entry = 6127
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 2
+class = 3
+gender = 1
+entry = 37
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 2
+class = 3
+gender = 1
+entry = 2504
+slot = 17
+amount = 1
+
+[[starting_item]]
+race = 2
+class = 4
+gender = 0
+entry = 2105
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 2
+class = 4
+gender = 0
+entry = 120
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 2
+class = 4
+gender = 0
+entry = 121
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 2
+class = 4
+gender = 0
+entry = 25861
+slot = 17
+amount = 1
+
+[[starting_item]]
+race = 2
+class = 4
+gender = 0
+entry = 2092
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 2
+class = 4
+gender = 1
+entry = 2105
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 2
+class = 4
+gender = 1
+entry = 120
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 2
+class = 4
+gender = 1
+entry = 121
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 2
+class = 4
+gender = 1
+entry = 25861
+slot = 17
+amount = 1
+
+[[starting_item]]
+race = 2
+class = 4
+gender = 1
+entry = 2092
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 2
+class = 7
+gender = 0
+entry = 154
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 2
+class = 7
+gender = 0
+entry = 153
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 2
+class = 7
+gender = 0
+entry = 36
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 2
+class = 7
+gender = 1
+entry = 154
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 2
+class = 7
+gender = 1
+entry = 153
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 2
+class = 7
+gender = 1
+entry = 36
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 2
+class = 9
+gender = 0
+entry = 6129
+slot = 4
+amount = 1
+
+[[starting_item]]
+race = 2
+class = 9
+gender = 0
+entry = 1396
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 2
+class = 9
+gender = 0
+entry = 59
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 2
+class = 9
+gender = 0
+entry = 2092
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 2
+class = 9
+gender = 1
+entry = 6129
+slot = 4
+amount = 1
+
+[[starting_item]]
+race = 2
+class = 9
+gender = 1
+entry = 1396
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 2
+class = 9
+gender = 1
+entry = 59
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 2
+class = 9
+gender = 1
+entry = 2092
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 1
+gender = 0
+entry = 38
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 1
+gender = 0
+entry = 39
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 1
+gender = 0
+entry = 40
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 1
+gender = 0
+entry = 12282
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 1
+gender = 1
+entry = 38
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 1
+gender = 1
+entry = 39
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 1
+gender = 1
+entry = 40
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 1
+gender = 1
+entry = 12282
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 2
+gender = 0
+entry = 6117
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 2
+gender = 0
+entry = 6118
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 2
+gender = 0
+entry = 43
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 2
+gender = 0
+entry = 2361
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 2
+gender = 1
+entry = 6117
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 2
+gender = 1
+entry = 6118
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 2
+gender = 1
+entry = 43
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 2
+gender = 1
+entry = 2361
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 3
+gender = 0
+entry = 148
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 3
+gender = 0
+entry = 147
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 3
+gender = 0
+entry = 129
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 3
+gender = 0
+entry = 37
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 3
+gender = 0
+entry = 2508
+slot = 17
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 3
+gender = 1
+entry = 148
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 3
+gender = 1
+entry = 147
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 3
+gender = 1
+entry = 129
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 3
+gender = 1
+entry = 37
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 3
+gender = 1
+entry = 2508
+slot = 17
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 4
+gender = 0
+entry = 2092
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 4
+gender = 0
+entry = 49
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 4
+gender = 0
+entry = 48
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 4
+gender = 0
+entry = 47
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 4
+gender = 0
+entry = 25861
+slot = 17
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 4
+gender = 1
+entry = 2092
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 4
+gender = 1
+entry = 49
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 4
+gender = 1
+entry = 48
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 4
+gender = 1
+entry = 47
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 4
+gender = 1
+entry = 25861
+slot = 17
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 5
+gender = 0
+entry = 6098
+slot = 4
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 5
+gender = 0
+entry = 53
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 5
+gender = 0
+entry = 52
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 5
+gender = 0
+entry = 51
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 5
+gender = 0
+entry = 36
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 5
+gender = 1
+entry = 6098
+slot = 4
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 5
+gender = 1
+entry = 53
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 5
+gender = 1
+entry = 52
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 5
+gender = 1
+entry = 51
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 5
+gender = 1
+entry = 36
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 8
+gender = 0
+entry = 6116
+slot = 4
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 8
+gender = 0
+entry = 1395
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 8
+gender = 0
+entry = 6096
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 8
+gender = 0
+entry = 35
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 8
+gender = 0
+entry = 55
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 8
+gender = 1
+entry = 6116
+slot = 4
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 8
+gender = 1
+entry = 1395
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 8
+gender = 1
+entry = 6096
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 8
+gender = 1
+entry = 35
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 3
+class = 8
+gender = 1
+entry = 55
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 4
+class = 1
+gender = 0
+entry = 25
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 4
+class = 1
+gender = 0
+entry = 6120
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 4
+class = 1
+gender = 0
+entry = 6121
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 4
+class = 1
+gender = 0
+entry = 6122
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 4
+class = 1
+gender = 0
+entry = 2362
+slot = 16
+amount = 1
+
+[[starting_item]]
+race = 4
+class = 1
+gender = 1
+entry = 25
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 4
+class = 1
+gender = 1
+entry = 6120
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 4
+class = 1
+gender = 1
+entry = 6121
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 4
+class = 1
+gender = 1
+entry = 6122
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 4
+class = 1
+gender = 1
+entry = 2362
+slot = 16
+amount = 1
+
+[[starting_item]]
+race = 4
+class = 3
+gender = 0
+entry = 2092
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 4
+class = 3
+gender = 0
+entry = 148
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 4
+class = 3
+gender = 0
+entry = 147
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 4
+class = 3
+gender = 0
+entry = 129
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 4
+class = 3
+gender = 0
+entry = 2504
+slot = 17
+amount = 1
+
+[[starting_item]]
+race = 4
+class = 3
+gender = 1
+entry = 2092
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 4
+class = 3
+gender = 1
+entry = 148
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 4
+class = 3
+gender = 1
+entry = 147
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 4
+class = 3
+gender = 1
+entry = 129
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 4
+class = 3
+gender = 1
+entry = 2504
+slot = 17
+amount = 1
+
+[[starting_item]]
+race = 4
+class = 4
+gender = 0
+entry = 2092
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 4
+class = 4
+gender = 0
+entry = 49
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 4
+class = 4
+gender = 0
+entry = 48
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 4
+class = 4
+gender = 0
+entry = 47
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 4
+class = 4
+gender = 0
+entry = 28979
+slot = 17
+amount = 1
+
+[[starting_item]]
+race = 4
+class = 4
+gender = 1
+entry = 2092
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 4
+class = 4
+gender = 1
+entry = 49
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 4
+class = 4
+gender = 1
+entry = 48
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 4
+class = 4
+gender = 1
+entry = 47
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 4
+class = 4
+gender = 1
+entry = 28979
+slot = 17
+amount = 1
+
+[[starting_item]]
+race = 4
+class = 5
+gender = 0
+entry = 36
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 4
+class = 5
+gender = 0
+entry = 6119
+slot = 4
+amount = 1
+
+[[starting_item]]
+race = 4
+class = 5
+gender = 0
+entry = 52
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 4
+class = 5
+gender = 0
+entry = 51
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 4
+class = 5
+gender = 0
+entry = 53
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 4
+class = 5
+gender = 1
+entry = 36
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 4
+class = 5
+gender = 1
+entry = 6119
+slot = 4
+amount = 1
+
+[[starting_item]]
+race = 4
+class = 5
+gender = 1
+entry = 52
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 4
+class = 5
+gender = 1
+entry = 51
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 4
+class = 5
+gender = 1
+entry = 53
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 4
+class = 11
+gender = 0
+entry = 3661
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 4
+class = 11
+gender = 0
+entry = 6123
+slot = 4
+amount = 1
+
+[[starting_item]]
+race = 4
+class = 11
+gender = 0
+entry = 6124
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 4
+class = 11
+gender = 1
+entry = 3661
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 4
+class = 11
+gender = 1
+entry = 6123
+slot = 4
+amount = 1
+
+[[starting_item]]
+race = 4
+class = 11
+gender = 1
+entry = 6124
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 5
+class = 1
+gender = 0
+entry = 6125
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 5
+class = 1
+gender = 0
+entry = 139
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 5
+class = 1
+gender = 0
+entry = 140
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 5
+class = 1
+gender = 0
+entry = 25
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 5
+class = 1
+gender = 0
+entry = 2362
+slot = 16
+amount = 1
+
+[[starting_item]]
+race = 5
+class = 1
+gender = 1
+entry = 6125
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 5
+class = 1
+gender = 1
+entry = 139
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 5
+class = 1
+gender = 1
+entry = 140
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 5
+class = 1
+gender = 1
+entry = 25
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 5
+class = 1
+gender = 1
+entry = 2362
+slot = 16
+amount = 1
+
+[[starting_item]]
+race = 5
+class = 4
+gender = 0
+entry = 2092
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 5
+class = 4
+gender = 0
+entry = 2105
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 5
+class = 4
+gender = 0
+entry = 120
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 5
+class = 4
+gender = 0
+entry = 121
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 5
+class = 4
+gender = 0
+entry = 25861
+slot = 17
+amount = 1
+
+[[starting_item]]
+race = 5
+class = 4
+gender = 1
+entry = 2092
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 5
+class = 4
+gender = 1
+entry = 2105
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 5
+class = 4
+gender = 1
+entry = 120
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 5
+class = 4
+gender = 1
+entry = 121
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 5
+class = 4
+gender = 1
+entry = 25861
+slot = 17
+amount = 1
+
+[[starting_item]]
+race = 5
+class = 5
+gender = 0
+entry = 6144
+slot = 4
+amount = 1
+
+[[starting_item]]
+race = 5
+class = 5
+gender = 0
+entry = 53
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 5
+class = 5
+gender = 0
+entry = 52
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 5
+class = 5
+gender = 0
+entry = 36
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 5
+class = 5
+gender = 0
+entry = 51
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 5
+class = 5
+gender = 1
+entry = 6144
+slot = 4
+amount = 1
+
+[[starting_item]]
+race = 5
+class = 5
+gender = 1
+entry = 53
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 5
+class = 5
+gender = 1
+entry = 52
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 5
+class = 5
+gender = 1
+entry = 36
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 5
+class = 5
+gender = 1
+entry = 51
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 5
+class = 8
+gender = 0
+entry = 6140
+slot = 4
+amount = 1
+
+[[starting_item]]
+race = 5
+class = 8
+gender = 0
+entry = 1395
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 5
+class = 8
+gender = 0
+entry = 6096
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 5
+class = 8
+gender = 0
+entry = 35
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 5
+class = 8
+gender = 0
+entry = 55
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 5
+class = 8
+gender = 1
+entry = 6140
+slot = 4
+amount = 1
+
+[[starting_item]]
+race = 5
+class = 8
+gender = 1
+entry = 1395
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 5
+class = 8
+gender = 1
+entry = 6096
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 5
+class = 8
+gender = 1
+entry = 35
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 5
+class = 8
+gender = 1
+entry = 55
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 5
+class = 9
+gender = 0
+entry = 6129
+slot = 4
+amount = 1
+
+[[starting_item]]
+race = 5
+class = 9
+gender = 0
+entry = 1396
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 5
+class = 9
+gender = 0
+entry = 59
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 5
+class = 9
+gender = 0
+entry = 2092
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 5
+class = 9
+gender = 1
+entry = 6129
+slot = 4
+amount = 1
+
+[[starting_item]]
+race = 5
+class = 9
+gender = 1
+entry = 1396
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 5
+class = 9
+gender = 1
+entry = 59
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 5
+class = 9
+gender = 1
+entry = 2092
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 6
+class = 1
+gender = 0
+entry = 6125
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 6
+class = 1
+gender = 0
+entry = 139
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 6
+class = 1
+gender = 0
+entry = 2361
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 6
+class = 1
+gender = 1
+entry = 6125
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 6
+class = 1
+gender = 1
+entry = 139
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 6
+class = 1
+gender = 1
+entry = 2361
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 6
+class = 3
+gender = 0
+entry = 127
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 6
+class = 3
+gender = 0
+entry = 6126
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 6
+class = 3
+gender = 0
+entry = 37
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 6
+class = 3
+gender = 0
+entry = 2508
+slot = 17
+amount = 1
+
+[[starting_item]]
+race = 6
+class = 3
+gender = 1
+entry = 127
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 6
+class = 3
+gender = 1
+entry = 6126
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 6
+class = 3
+gender = 1
+entry = 37
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 6
+class = 3
+gender = 1
+entry = 2508
+slot = 17
+amount = 1
+
+[[starting_item]]
+race = 6
+class = 7
+gender = 0
+entry = 154
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 6
+class = 7
+gender = 0
+entry = 153
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 6
+class = 7
+gender = 0
+entry = 36
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 6
+class = 7
+gender = 1
+entry = 154
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 6
+class = 7
+gender = 1
+entry = 153
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 6
+class = 7
+gender = 1
+entry = 36
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 6
+class = 11
+gender = 0
+entry = 35
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 6
+class = 11
+gender = 0
+entry = 6139
+slot = 4
+amount = 1
+
+[[starting_item]]
+race = 6
+class = 11
+gender = 0
+entry = 6124
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 6
+class = 11
+gender = 1
+entry = 35
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 6
+class = 11
+gender = 1
+entry = 6139
+slot = 4
+amount = 1
+
+[[starting_item]]
+race = 6
+class = 11
+gender = 1
+entry = 6124
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 7
+class = 1
+gender = 0
+entry = 38
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 7
+class = 1
+gender = 0
+entry = 39
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 7
+class = 1
+gender = 0
+entry = 40
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 7
+class = 1
+gender = 0
+entry = 25
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 7
+class = 1
+gender = 0
+entry = 2362
+slot = 16
+amount = 1
+
+[[starting_item]]
+race = 7
+class = 1
+gender = 1
+entry = 38
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 7
+class = 1
+gender = 1
+entry = 39
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 7
+class = 1
+gender = 1
+entry = 40
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 7
+class = 1
+gender = 1
+entry = 25
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 7
+class = 1
+gender = 1
+entry = 2362
+slot = 16
+amount = 1
+
+[[starting_item]]
+race = 7
+class = 4
+gender = 0
+entry = 49
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 7
+class = 4
+gender = 0
+entry = 48
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 7
+class = 4
+gender = 0
+entry = 47
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 7
+class = 4
+gender = 0
+entry = 2092
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 7
+class = 4
+gender = 0
+entry = 28979
+slot = 17
+amount = 1
+
+[[starting_item]]
+race = 7
+class = 4
+gender = 1
+entry = 49
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 7
+class = 4
+gender = 1
+entry = 48
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 7
+class = 4
+gender = 1
+entry = 47
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 7
+class = 4
+gender = 1
+entry = 2092
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 7
+class = 4
+gender = 1
+entry = 28979
+slot = 17
+amount = 1
+
+[[starting_item]]
+race = 7
+class = 8
+gender = 0
+entry = 56
+slot = 4
+amount = 1
+
+[[starting_item]]
+race = 7
+class = 8
+gender = 0
+entry = 1395
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 7
+class = 8
+gender = 0
+entry = 6096
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 7
+class = 8
+gender = 0
+entry = 55
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 7
+class = 8
+gender = 0
+entry = 35
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 7
+class = 8
+gender = 1
+entry = 56
+slot = 4
+amount = 1
+
+[[starting_item]]
+race = 7
+class = 8
+gender = 1
+entry = 1395
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 7
+class = 8
+gender = 1
+entry = 6096
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 7
+class = 8
+gender = 1
+entry = 55
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 7
+class = 8
+gender = 1
+entry = 35
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 7
+class = 9
+gender = 0
+entry = 57
+slot = 4
+amount = 1
+
+[[starting_item]]
+race = 7
+class = 9
+gender = 0
+entry = 6097
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 7
+class = 9
+gender = 0
+entry = 1396
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 7
+class = 9
+gender = 0
+entry = 59
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 7
+class = 9
+gender = 0
+entry = 2092
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 7
+class = 9
+gender = 1
+entry = 57
+slot = 4
+amount = 1
+
+[[starting_item]]
+race = 7
+class = 9
+gender = 1
+entry = 6097
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 7
+class = 9
+gender = 1
+entry = 1396
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 7
+class = 9
+gender = 1
+entry = 59
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 7
+class = 9
+gender = 1
+entry = 2092
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 1
+gender = 0
+entry = 37
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 1
+gender = 0
+entry = 6125
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 1
+gender = 0
+entry = 139
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 1
+gender = 0
+entry = 2362
+slot = 16
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 1
+gender = 0
+entry = 25861
+slot = 17
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 1
+gender = 1
+entry = 37
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 1
+gender = 1
+entry = 6125
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 1
+gender = 1
+entry = 139
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 1
+gender = 1
+entry = 2362
+slot = 16
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 1
+gender = 1
+entry = 25861
+slot = 17
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 3
+gender = 0
+entry = 37
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 3
+gender = 0
+entry = 2504
+slot = 17
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 3
+gender = 0
+entry = 6126
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 3
+gender = 0
+entry = 127
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 3
+gender = 1
+entry = 37
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 3
+gender = 1
+entry = 2504
+slot = 17
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 3
+gender = 1
+entry = 6126
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 3
+gender = 1
+entry = 127
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 4
+gender = 0
+entry = 2092
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 4
+gender = 0
+entry = 6136
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 4
+gender = 0
+entry = 6137
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 4
+gender = 0
+entry = 6138
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 4
+gender = 0
+entry = 25861
+slot = 17
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 4
+gender = 1
+entry = 2092
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 4
+gender = 1
+entry = 6136
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 4
+gender = 1
+entry = 6137
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 4
+gender = 1
+entry = 6138
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 4
+gender = 1
+entry = 25861
+slot = 17
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 5
+gender = 0
+entry = 36
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 5
+gender = 0
+entry = 6144
+slot = 4
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 5
+gender = 0
+entry = 53
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 5
+gender = 0
+entry = 52
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 5
+gender = 1
+entry = 36
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 5
+gender = 1
+entry = 6144
+slot = 4
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 5
+gender = 1
+entry = 53
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 5
+gender = 1
+entry = 52
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 7
+gender = 0
+entry = 36
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 7
+gender = 0
+entry = 6134
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 7
+gender = 0
+entry = 6135
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 7
+gender = 1
+entry = 36
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 7
+gender = 1
+entry = 6134
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 7
+gender = 1
+entry = 6135
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 8
+gender = 0
+entry = 6140
+slot = 4
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 8
+gender = 0
+entry = 1395
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 8
+gender = 0
+entry = 6096
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 8
+gender = 0
+entry = 55
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 8
+gender = 0
+entry = 35
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 8
+gender = 1
+entry = 6140
+slot = 4
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 8
+gender = 1
+entry = 1395
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 8
+gender = 1
+entry = 6096
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 8
+gender = 1
+entry = 55
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 8
+class = 8
+gender = 1
+entry = 35
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 2
+gender = 0
+entry = 24143
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 2
+gender = 0
+entry = 24145
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 2
+gender = 0
+entry = 24146
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 2
+gender = 0
+entry = 23346
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 2
+gender = 1
+entry = 24143
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 2
+gender = 1
+entry = 24145
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 2
+gender = 1
+entry = 24146
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 2
+gender = 1
+entry = 23346
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 3
+gender = 0
+entry = 20901
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 3
+gender = 0
+entry = 20899
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 3
+gender = 0
+entry = 20900
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 3
+gender = 0
+entry = 20982
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 3
+gender = 0
+entry = 20980
+slot = 17
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 3
+gender = 1
+entry = 20901
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 3
+gender = 1
+entry = 20899
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 3
+gender = 1
+entry = 20900
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 3
+gender = 1
+entry = 20982
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 3
+gender = 1
+entry = 20980
+slot = 17
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 4
+gender = 0
+entry = 20982
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 4
+gender = 0
+entry = 20897
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 4
+gender = 0
+entry = 20896
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 4
+gender = 0
+entry = 20898
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 4
+gender = 0
+entry = 25861
+slot = 17
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 4
+gender = 1
+entry = 20982
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 4
+gender = 1
+entry = 20897
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 4
+gender = 1
+entry = 20896
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 4
+gender = 1
+entry = 20898
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 4
+gender = 1
+entry = 25861
+slot = 17
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 5
+gender = 0
+entry = 20891
+slot = 4
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 5
+gender = 0
+entry = 53
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 5
+gender = 0
+entry = 52
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 5
+gender = 0
+entry = 20981
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 5
+gender = 0
+entry = 51
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 5
+gender = 1
+entry = 20891
+slot = 4
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 5
+gender = 1
+entry = 53
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 5
+gender = 1
+entry = 52
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 5
+gender = 1
+entry = 20981
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 5
+gender = 1
+entry = 51
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 8
+gender = 0
+entry = 20893
+slot = 4
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 8
+gender = 0
+entry = 20894
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 8
+gender = 0
+entry = 6096
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 8
+gender = 0
+entry = 35
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 8
+gender = 0
+entry = 20895
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 8
+gender = 1
+entry = 20893
+slot = 4
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 8
+gender = 1
+entry = 20894
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 8
+gender = 1
+entry = 6096
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 8
+gender = 1
+entry = 35
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 8
+gender = 1
+entry = 20895
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 9
+gender = 0
+entry = 20892
+slot = 4
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 9
+gender = 0
+entry = 1396
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 9
+gender = 0
+entry = 59
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 9
+gender = 0
+entry = 20983
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 9
+gender = 0
+entry = 6097
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 9
+gender = 1
+entry = 20892
+slot = 4
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 9
+gender = 1
+entry = 1396
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 9
+gender = 1
+entry = 59
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 9
+gender = 1
+entry = 20983
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 10
+class = 9
+gender = 1
+entry = 6097
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 11
+class = 1
+gender = 0
+entry = 23473
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 11
+class = 1
+gender = 0
+entry = 23474
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 11
+class = 1
+gender = 0
+entry = 23475
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 11
+class = 1
+gender = 0
+entry = 23346
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 11
+class = 1
+gender = 1
+entry = 23473
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 11
+class = 1
+gender = 1
+entry = 23474
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 11
+class = 1
+gender = 1
+entry = 23475
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 11
+class = 1
+gender = 1
+entry = 23346
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 11
+class = 2
+gender = 0
+entry = 23476
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 11
+class = 2
+gender = 0
+entry = 23477
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 11
+class = 2
+gender = 0
+entry = 2361
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 11
+class = 2
+gender = 1
+entry = 23476
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 11
+class = 2
+gender = 1
+entry = 23477
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 11
+class = 2
+gender = 1
+entry = 2361
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 11
+class = 3
+gender = 0
+entry = 23345
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 11
+class = 3
+gender = 0
+entry = 23344
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 11
+class = 3
+gender = 0
+entry = 25
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 11
+class = 3
+gender = 0
+entry = 23348
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 11
+class = 3
+gender = 0
+entry = 23347
+slot = 17
+amount = 1
+
+[[starting_item]]
+race = 11
+class = 3
+gender = 1
+entry = 23345
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 11
+class = 3
+gender = 1
+entry = 23344
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 11
+class = 3
+gender = 1
+entry = 25
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 11
+class = 3
+gender = 1
+entry = 23348
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 11
+class = 3
+gender = 1
+entry = 23347
+slot = 17
+amount = 1
+
+[[starting_item]]
+race = 11
+class = 5
+gender = 0
+entry = 1396
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 11
+class = 5
+gender = 0
+entry = 6097
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 11
+class = 5
+gender = 0
+entry = 36
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 11
+class = 5
+gender = 0
+entry = 23322
+slot = 4
+amount = 1
+
+[[starting_item]]
+race = 11
+class = 5
+gender = 1
+entry = 1396
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 11
+class = 5
+gender = 1
+entry = 6097
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 11
+class = 5
+gender = 1
+entry = 36
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 11
+class = 5
+gender = 1
+entry = 23322
+slot = 4
+amount = 1
+
+[[starting_item]]
+race = 11
+class = 7
+gender = 0
+entry = 23345
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 11
+class = 7
+gender = 0
+entry = 23344
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 11
+class = 7
+gender = 0
+entry = 23348
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 11
+class = 7
+gender = 0
+entry = 36
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 11
+class = 7
+gender = 1
+entry = 23345
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 11
+class = 7
+gender = 1
+entry = 23344
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 11
+class = 7
+gender = 1
+entry = 23348
+slot = 7
+amount = 1
+
+[[starting_item]]
+race = 11
+class = 7
+gender = 1
+entry = 36
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 11
+class = 8
+gender = 0
+entry = 23478
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 11
+class = 8
+gender = 0
+entry = 23479
+slot = 4
+amount = 1
+
+[[starting_item]]
+race = 11
+class = 8
+gender = 0
+entry = 35
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 11
+class = 8
+gender = 0
+entry = 23473
+slot = 3
+amount = 1
+
+[[starting_item]]
+race = 11
+class = 8
+gender = 1
+entry = 23478
+slot = 6
+amount = 1
+
+[[starting_item]]
+race = 11
+class = 8
+gender = 1
+entry = 23479
+slot = 4
+amount = 1
+
+[[starting_item]]
+race = 11
+class = 8
+gender = 1
+entry = 35
+slot = 15
+amount = 1
+
+[[starting_item]]
+race = 11
+class = 8
+gender = 1
+entry = 23473
+slot = 3
+amount = 1

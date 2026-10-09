@@ -250,7 +250,8 @@ pub use update_object::field;
 pub use update_object::{
     power_display_scale, quest_slot_state, CorpseLook, CreateSpline, MovementBlock, MoverState,
     Object, ObjectFields, ObjectType, OwnerFallback, PlayerSkillSlot, QuestLogSlot, UnitAuraSlot,
-    AURA_FLAG_CANCELABLE, AURA_FLAG_EFF_INDEX_MASK, FIELD_PLAYER_SKILL_INFO_1_1,
+    AURA_FLAG_CANCELABLE, AURA_FLAG_EFF_INDEX_MASK, FIELD_PLAYER_SKILL_INFO_1_1, FIELD_UNIT_AURA,
+    FIELD_UNIT_AURAAPPLICATIONS, FIELD_UNIT_AURAFLAGS, FIELD_UNIT_AURALEVELS,
     PLAYER_EXPLORED_ZONES_SLOTS, PLAYER_QUEST_LOG_SLOTS, PLAYER_SKILL_SLOTS,
     UNIT_AURA_POSITIVE_SLOTS, UNIT_AURA_SLOTS,
 };

@@ -715,6 +715,81 @@ mod tests {
     }
 
     #[test]
+    fn build_8606_sunstrider_spawn_factions_match_the_combat_hostile_set() {
+        use std::collections::{BTreeMap, BTreeSet};
+
+        const CREATURE_PACK: &str =
+            include_str!("../../benilla-game-core/content/tbc-starting-zones.toml");
+
+        // Read only template/spawn key fields; keep the catalog crate free of a content-parser
+        // dependency.
+        let mut template_factions = BTreeMap::new();
+        let mut map_530_entries = BTreeSet::new();
+        let section_separator: String = [']', ']'].into_iter().collect();
+        let numeric_field = |body: &str, field: &str| {
+            let prefix = format!("{field} = ");
+            body.lines().find_map(|line| {
+                line.trim()
+                    .strip_prefix(&prefix)
+                    .and_then(|value| value.parse::<u32>().ok())
+            })
+        };
+        for section in CREATURE_PACK.split("[[").skip(1) {
+            let (table, body) = section
+                .split_once(section_separator.as_str())
+                .expect("content pack array-of-table header");
+            match table.trim() {
+                "template" => {
+                    let entry = numeric_field(body, "entry").expect("template entry");
+                    let faction = numeric_field(body, "faction").expect("template faction");
+                    assert!(template_factions.insert(entry, faction).is_none());
+                }
+                "spawn" if numeric_field(body, "map_id") == Some(530) => {
+                    map_530_entries.insert(numeric_field(body, "entry").expect("spawn entry"));
+                }
+                _ => {}
+            }
+        }
+        let map_530_factions: BTreeSet<_> = map_530_entries
+            .iter()
+            .map(|entry| {
+                *template_factions
+                    .get(entry)
+                    .unwrap_or_else(|| panic!("map-530 spawn references missing template {entry}"))
+            })
+            .collect();
+        assert!(!map_530_factions.is_empty());
+
+        let data = crate::wow_data_or_skip!();
+        let mut chain = crate::open_chain(&data).expect("open chain");
+        let catalog = load_faction_catalog(&mut chain).expect("load build-8606 factions");
+        let blood_elf = catalog
+            .template(1610)
+            .expect("Blood Elf player faction template");
+        let reaction = |id: u32| {
+            catalog
+                .template(id)
+                .unwrap_or_else(|| panic!("FactionTemplate.dbc is missing faction {id}"))
+                .reaction_toward(blood_elf)
+        };
+        let hostile_factions: BTreeSet<_> = map_530_factions
+            .iter()
+            .copied()
+            .filter(|&id| reaction(id) == Reaction::Hostile)
+            .collect();
+        let attackable_factions: BTreeSet<_> = map_530_factions
+            .into_iter()
+            .filter(|&id| reaction(id) != Reaction::Friendly)
+            .collect();
+        let expected_hostile_factions = BTreeSet::from([12, 14, 16, 38, 91, 114]);
+        assert_eq!(hostile_factions, expected_hostile_factions);
+        assert_eq!(
+            attackable_factions,
+            BTreeSet::from([7, 12, 14, 15, 16, 38, 91, 114, 188, 189, 1703])
+        );
+    }
+
+    #[test]
     fn real_faction_group_names_by_mask() {
         let data = crate::wow_data_or_skip!();
         let mut chain = crate::open_chain(&data).expect("open chain");

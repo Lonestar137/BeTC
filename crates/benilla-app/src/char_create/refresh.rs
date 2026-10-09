@@ -9,13 +9,14 @@ use crate::entities::CharCreate;
 use crate::glue_strings::GlueStrings;
 
 use super::parts::{
-    CharCreateUi, DialRow, DynIcon, DynText, DynTint, InfoKind, InfoScroll, ScrollArrow,
-    ScrollHides, ScrollThumb,
+    BodyOptionsPanel, BodyShapeField, BodyShapeRow, BodySliderKnob, BodySliderValue, CharCreateUi,
+    DialRow, DynIcon, DynText, DynTint, InfoKind, InfoPanel, InfoScroll, ScrollArrow, ScrollHides,
+    ScrollThumb,
 };
-use super::{CreateAction, CreateSelection, class_file, is_alliance_race, race_classes};
+use super::{class_file, is_alliance_race, race_classes, CreateAction, CreateSelection};
 use crate::glue::art::{
-    ALLIANCE_FILL, BACKDROP_ALLIANCE, BACKDROP_HORDE, BTN_BG, BTN_HOVER, FALLBACK_ALPHA, GlueArt,
-    HORDE_FILL, class_tc, race_tc, tc_rect,
+    class_tc, race_tc, tc_rect, GlueArt, ALLIANCE_FILL, BACKDROP_ALLIANCE, BACKDROP_HORDE, BTN_BG,
+    BTN_HOVER, FALLBACK_ALPHA, HORDE_FILL,
 };
 use crate::glue::widgets::{FallbackFace, GlueDisabled, Hilight, HoverLabel, LockHighlight};
 
@@ -38,8 +39,17 @@ pub(super) fn refresh_dynamic(
         ),
         Without<DynIcon>,
     >,
-    mut dial_rows: Query<(&DialRow, &mut Node), Without<Button>>,
-    mut slots: Query<(&CreateAction, &mut Node), With<Button>>,
+    // The `&mut Node` queries are not statically disjoint (a body slider row also carries a dial
+    // or button marker), so they share one `ParamSet` and run one at a time below.
+    mut nodes: ParamSet<(
+        Query<(&DialRow, &mut Node), Without<Button>>,
+        Query<(&CreateAction, &mut Node), With<Button>>,
+        Query<&mut Node, (With<InfoPanel>, Without<BodyOptionsPanel>)>,
+        Query<&mut Node, With<BodyOptionsPanel>>,
+        Query<(&BodyShapeRow, &mut Node)>,
+        Query<(&BodySliderKnob, &mut Node), Without<BodySliderValue>>,
+    )>,
+    mut body_values: Query<(&BodySliderValue, &mut Text), Without<DynText>>,
 ) {
     let force = root.iter().any(|r| r.is_added());
     if !force && !sel.is_changed() {
@@ -150,6 +160,13 @@ pub(super) fn refresh_dynamic(
                 }
                 lines.join("\n")
             }
+            DynText::BodyShapeStatus => {
+                if sel.body_proportions.enabled {
+                    "Custom proportions are on".to_string()
+                } else {
+                    "Custom proportions are off".to_string()
+                }
+            }
             DynText::InfoBody(InfoKind::Class) => strings
                 .text(&format!("CLASS_{}", class_file(sel.class)), "")
                 .to_string(),
@@ -187,7 +204,7 @@ pub(super) fn refresh_dynamic(
     }
 
     // The facial dial hides when the race's token is `NONE`, as in the reference (no 1.12 row is).
-    for (row, mut node) in &mut dial_rows {
+    for (row, mut node) in &mut nodes.p0() {
         if row.0 == 4 {
             node.display = if facial_tok == "NONE" {
                 Display::None
@@ -198,7 +215,7 @@ pub(super) fn refresh_dynamic(
     }
 
     // The reference fills the valid classes into the first buttons and hides the rest.
-    for (action, mut node) in &mut slots {
+    for (action, mut node) in &mut nodes.p1() {
         if let CreateAction::ClassSlot(i) = action {
             node.display = if (*i as usize) < classes.len() {
                 Display::Flex
@@ -206,6 +223,38 @@ pub(super) fn refresh_dynamic(
                 Display::None
             };
         }
+    }
+
+    for mut node in &mut nodes.p2() {
+        node.display = if sel.body_options_open {
+            Display::None
+        } else {
+            Display::Flex
+        };
+    }
+    for mut node in &mut nodes.p3() {
+        node.display = if sel.body_options_open {
+            Display::Flex
+        } else {
+            Display::None
+        };
+    }
+    for (row, mut node) in &mut nodes.p4() {
+        node.display = if row.0 == BodyShapeField::Bust && sel.sex != 1 {
+            Display::None
+        } else {
+            Display::Flex
+        };
+    }
+    for (value, mut text) in &mut body_values {
+        let value = value.0.get(sel.body_proportions);
+        text.0 = format!("{value:+}%");
+    }
+    for (knob, mut node) in &mut nodes.p5() {
+        let (min, max) = knob.0.range();
+        let value = knob.0.get(sel.body_proportions);
+        let fraction = (f32::from(value - min) / f32::from(max - min)).clamp(0.0, 1.0);
+        node.left = Val::Percent(fraction * 100.0);
     }
 }
 

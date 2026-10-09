@@ -64,7 +64,7 @@ pub const FIELD_UNIT_AURA: u16 = 47;
 /// Nibble-packed, 8 slots per `u32` (`SpellAuraHolder::SetAuraFlag`, `SpellAuras.cpp:7456-7462`).
 pub const FIELD_UNIT_AURAFLAGS: u16 = 95;
 /// Byte-packed, 4 slots per `u32`: the caster's level (`SetAuraLevel`, `SpellAuras.cpp:7484`).
-const FIELD_UNIT_AURALEVELS: u16 = 101;
+pub const FIELD_UNIT_AURALEVELS: u16 = 101;
 /// Byte-packed, 4 slots per `u32`, holding `stack - 1` (`SpellAuras.cpp:7500-7507`).
 pub const FIELD_UNIT_AURAAPPLICATIONS: u16 = 113;
 /// Aura-state bits, tested as `1 << (state - 1)` by the usable check (client `[unit+0x110]+0x1dc`).

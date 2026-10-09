@@ -25,7 +25,7 @@ use super::char_skin::{
     build_char_skin_materials, equip_geosets, forced_body_atlas, resolve_char_look,
     resolve_worn_equip, skin_key, CharSkinMaterials,
 };
-use super::dress::{part_materials, spawn_group, DressedPart, PartDress};
+use super::dress::{part_materials, spawn_group, BodyShapeConfig, DressedPart, PartDress};
 use super::merge::{self, DressedGroup, MergedFormsCache};
 
 /// What a re-dress writes on a part: its material and its interior, fade and portrait records;
@@ -46,6 +46,7 @@ pub(in crate::entities) fn redress_player_looks(
         (
             Entity,
             &NetEntity,
+            Option<&BodyShapeConfig>,
             &Equipment,
             &mut AppliedEquipment,
             &Children,
@@ -99,8 +100,19 @@ pub(in crate::entities) fn redress_player_looks(
     let (sections, mut skin_composites, asset_server, mut mats, mut meshes, mut merged, mut images) =
         skin_build;
     let now = time.elapsed_secs();
-    for (entity, net, live, mut applied, children, rig, bones, mut pose, bake_center, unit_fade) in
-        &mut players
+    for (
+        entity,
+        net,
+        body_shape,
+        live,
+        mut applied,
+        children,
+        rig,
+        bones,
+        mut pose,
+        bake_center,
+        unit_fade,
+    ) in &mut players
     {
         // Wait until every visible item has resolved, or a half-dressed atlas composites first.
         if net.kind != EntityKind::Player || !live.settled || *live == applied.0 {
@@ -240,6 +252,7 @@ pub(in crate::entities) fn redress_player_looks(
                 id: net.display_id.unwrap_or(0),
                 detail: format!("emitters: {}", dm.emitters.len()),
             },
+            body_shape: body_shape.copied(),
             inst_slot: rig.map_or(0, |r| r.slot),
             rigged: bones.is_some(),
             anchors: card_anchors,

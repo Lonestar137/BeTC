@@ -11,8 +11,8 @@ use std::collections::HashMap;
 use anyhow::{Context, Result};
 use benilla_dbc::{FieldType, Schema, SchemaField};
 
-use crate::Chain;
 use crate::dbc::{parse, str_at, u32_at};
+use crate::Chain;
 
 const TALENT: &str = "DBFilesClient\\Talent.dbc";
 const TALENT_TAB: &str = "DBFilesClient\\TalentTab.dbc";
@@ -28,6 +28,7 @@ const COL_T_FLAGS: usize = 19;
 const COL_T_REQUIRED_SPELL: usize = 20;
 
 const TALENT_TAB_FIELDS: usize = 15;
+const TBC_TALENT_TAB_FIELDS: usize = 23;
 const COL_TT_NAME_ENUS: usize = 1;
 const COL_TT_RACE_MASK: usize = 11;
 const COL_TT_CLASS_MASK: usize = 12;
@@ -128,12 +129,18 @@ fn talent_schema() -> Schema {
     s
 }
 
-fn talent_tab_schema() -> Schema {
+fn talent_tab_schema(tbc: bool) -> Schema {
     let mut s = Schema::new("TalentTab");
-    for i in 0..TALENT_TAB_FIELDS {
+    let fields = if tbc {
+        TBC_TALENT_TAB_FIELDS
+    } else {
+        TALENT_TAB_FIELDS
+    };
+    let locale_shift = if tbc { 8 } else { 0 };
+    for i in 0..fields {
         if i == COL_TT_NAME_ENUS {
             s.add_field(SchemaField::new("NameEnUs", FieldType::String));
-        } else if i == COL_TT_BACKGROUND {
+        } else if i == COL_TT_BACKGROUND + locale_shift {
             s.add_field(SchemaField::new("BackgroundFile", FieldType::String));
         } else {
             s.add_field(SchemaField::new(format!("F{i}"), FieldType::UInt32));
@@ -144,19 +151,21 @@ fn talent_tab_schema() -> Schema {
 
 /// Load both tables off the patch chain.
 pub fn load_talent_catalog(chain: &mut Chain) -> Result<TalentCatalog> {
+    let tbc = chain.client_build() == Some(8606);
+    let locale_shift = if tbc { 8 } else { 0 };
     let tab_bytes = chain
         .read_file(TALENT_TAB)
         .context("reading TalentTab.dbc")?;
-    let tab_set = parse(&tab_bytes, talent_tab_schema(), "TalentTab.dbc")?;
+    let tab_set = parse(&tab_bytes, talent_tab_schema(tbc), "TalentTab.dbc")?;
     let mut tabs = Vec::new();
     for r in tab_set.records() {
         let Some(id) = u32_at(r, 0) else { continue };
         tabs.push(TalentTabInfo {
             id,
             name: str_at(&tab_set, r, COL_TT_NAME_ENUS).unwrap_or_default(),
-            race_mask: u32_at(r, COL_TT_RACE_MASK).unwrap_or(0),
-            class_mask: u32_at(r, COL_TT_CLASS_MASK).unwrap_or(0),
-            background: str_at(&tab_set, r, COL_TT_BACKGROUND).unwrap_or_default(),
+            race_mask: u32_at(r, COL_TT_RACE_MASK + locale_shift).unwrap_or(0),
+            class_mask: u32_at(r, COL_TT_CLASS_MASK + locale_shift).unwrap_or(0),
+            background: str_at(&tab_set, r, COL_TT_BACKGROUND + locale_shift).unwrap_or_default(),
         });
     }
 
@@ -192,19 +201,37 @@ mod tests {
     use super::*;
 
     #[test]
+    fn talent_tab_schema_accounts_for_tbc_localized_name_columns() {
+        let vanilla = talent_tab_schema(false);
+        assert_eq!(vanilla.fields.len(), TALENT_TAB_FIELDS);
+        assert_eq!(vanilla.fields[COL_TT_RACE_MASK].name, "F11");
+        assert_eq!(vanilla.fields[COL_TT_CLASS_MASK].name, "F12");
+        assert_eq!(vanilla.fields[COL_TT_BACKGROUND].name, "BackgroundFile");
+
+        let tbc = talent_tab_schema(true);
+        assert_eq!(tbc.fields.len(), TBC_TALENT_TAB_FIELDS);
+        assert_eq!(tbc.fields[COL_TT_RACE_MASK + 8].name, "F19");
+        assert_eq!(tbc.fields[COL_TT_CLASS_MASK + 8].name, "F20");
+        assert_eq!(tbc.fields[COL_TT_BACKGROUND + 8].name, "BackgroundFile");
+    }
+
+    #[test]
     fn real_talent_tables_hold_the_grid_and_prereq_invariants() {
         let data = crate::wow_data_or_skip!();
         let mut chain = crate::open_chain(&data).expect("open chain");
+        let tbc = chain.client_build() == Some(8606);
         let cat = load_talent_catalog(&mut chain).expect("load Talent/TalentTab");
         assert!(
             cat.len() > 300,
-            "the 1.12 talent table has hundreds of rows, got {}",
+            "the talent table has hundreds of rows, got {}",
             cat.len()
         );
 
         const HUMAN: u8 = 1;
+        const BLOOD_ELF: u8 = 10;
         const MAGE: u8 = 8;
-        let tabs = cat.tabs_for_class(HUMAN, MAGE);
+        let race = if tbc { BLOOD_ELF } else { HUMAN };
+        let tabs = cat.tabs_for_class(race, MAGE);
         assert_eq!(
             tabs.iter().map(|t| t.name.as_str()).collect::<Vec<_>>(),
             vec!["Arcane", "Fire", "Frost"]
@@ -215,18 +242,35 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["MageArcane", "MageFire", "MageFrost"]
         );
-        // Every shipped tab's raceMask is 511, so race 10 admits nothing.
-        assert!(
-            cat.tabs_for_class(10, MAGE).is_empty(),
-            "race bit 10 is outside 511"
-        );
-        // Every class has pages; vanilla's classes are 1-5, 7-9 and 11 (druid).
-        for class in [1u8, 2, 3, 4, 5, 7, 8, 9, 11] {
-            let n = cat.tabs_for_class(HUMAN, class).len();
+        if tbc {
+            assert!(
+                cat.tabs_for_class(BLOOD_ELF, MAGE).len() == 3,
+                "Blood Elf Mage has three TBC talent pages"
+            );
+        } else {
+            // Vanilla's shipped race mask covers only the first nine races.
+            assert!(
+                cat.tabs_for_class(BLOOD_ELF, MAGE).is_empty(),
+                "race bit 10 is outside the Vanilla mask"
+            );
+        }
+        let (race, classes): (u8, &[u8]) = if tbc {
+            (BLOOD_ELF, &[1, 2, 3, 4, 5, 8, 9])
+        } else {
+            (HUMAN, &[1, 2, 3, 4, 5, 7, 8, 9, 11])
+        };
+        for &class in classes {
+            let n = cat.tabs_for_class(race, class).len();
             assert_eq!(n, 3, "class {class} has three talent pages, got {n}");
         }
+        if tbc {
+            assert!(
+                cat.by_tab.values().flatten().any(|talent| talent.row == 8),
+                "build 8606 carries the ninth talent tier"
+            );
+        }
 
-        for tabs in cat.tabs_for_class(HUMAN, MAGE) {
+        for tabs in cat.tabs_for_class(race, MAGE) {
             let talents = cat.talents_in_tab(tabs.id);
             assert!(!talents.is_empty());
             let seats: Vec<(u32, u32)> = talents.iter().map(|t| (t.row, t.col)).collect();
@@ -248,7 +292,13 @@ mod tests {
                 t.id,
                 t.col
             );
-            assert!(t.row < 8, "talent {} row {} inside 8 tiers", t.id, t.row);
+            let tier_count = if tbc { 9 } else { 8 };
+            assert!(
+                t.row < tier_count,
+                "talent {} row {} inside {tier_count} tiers",
+                t.id,
+                t.row
+            );
             let n = t.max_rank() as usize;
             assert!(n >= 1, "talent {} has at least one rank", t.id);
             assert!(

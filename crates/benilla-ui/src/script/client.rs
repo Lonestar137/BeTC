@@ -183,6 +183,14 @@ pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
         })?,
     )?;
 
+    // `GetSummonFriendCooldown()`: the Friends frame's Summon button asks for a start, duration and
+    // enable triple (`FriendsFrame.lua:47`); the offline game is solo, so it reports no cooldown and
+    // no enabled summon rather than leaving the global nil.
+    g.set(
+        "GetSummonFriendCooldown",
+        lua.create_function(|_, ()| Ok((0u32, 0u32, 0u32)))?,
+    )?;
+
     Ok(())
 }
 

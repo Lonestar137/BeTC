@@ -26,6 +26,14 @@ pub(in crate::entities) struct DressedPart {
     pub(in crate::entities) card: Option<Entity>,
 }
 
+#[derive(Component, Clone, Copy)]
+pub(in crate::entities) struct BodyShapeConfig {
+    pub(super) proportions: crate::body_shape::BodyProportions,
+    pub(super) race: u8,
+    pub(super) gender: u8,
+    pub(super) bounds: benilla_formats::M2Bounds,
+}
+
 /// The material variants one part draws through, after the character swap.
 pub(super) struct PartMaterials<'a> {
     pub(super) steady: &'a Handle<WowModelMaterial>,
@@ -44,12 +52,10 @@ pub(super) fn part_materials<'a>(
     char_mats: &'a CharSkinMaterials,
 ) -> PartMaterials<'a> {
     let slot_mats = match part.char_slot {
-        Some(CharSkinSlot::Body) => {
-            char_mats
-                .0
-                .as_ref()
-                .map(|(single, two)| if part.two_sided { two } else { single })
-        }
+        Some(CharSkinSlot::Body) => char_mats
+            .0
+            .as_ref()
+            .map(|(single, two)| if part.two_sided { two } else { single }),
         Some(CharSkinSlot::Hair) => char_mats.1.as_ref(),
         Some(CharSkinSlot::Object) => char_mats.2.as_ref(),
         Some(CharSkinSlot::SkinExtra) => {
@@ -121,7 +127,14 @@ fn own_per_sequence_materials(
 ) -> Option<OwnedMaterials> {
     let loops = part.uv_loops();
     let (uv_seq, tint_seq) = (loops.seqs.is_some(), part.rgb_seq.is_some());
-    if dress.kind != ModelKind::GameObject || !(uv_seq || tint_seq) {
+    let shape = dress.body_shape.filter(|_| {
+        !matches!(
+            part.char_slot,
+            Some(CharSkinSlot::Hair | CharSkinSlot::Object)
+        )
+    });
+    let per_sequence = dress.kind == ModelKind::GameObject && (uv_seq || tint_seq);
+    if !per_sequence && shape.is_none() {
         return None;
     }
     let src = part_materials(part, dress.char_mats);
@@ -129,8 +142,19 @@ fn own_per_sequence_materials(
     let mut clone = |h: &Handle<WowModelMaterial>| -> Option<Handle<WowModelMaterial>> {
         benilla_world::model_render::lazy::realize(own.store, h.id());
         let mut mat = own.store.get(h.id()).cloned()?;
-        // A clone leaves the shared table: a carried slot would add the shared delta to its rows.
-        mat.extension.anim_slots = Vec4::ZERO;
+        if per_sequence {
+            // A clone leaves the shared table: a carried slot would add the shared delta to its rows.
+            mat.extension.anim_slots = Vec4::ZERO;
+        }
+        if let Some(shape) = shape {
+            crate::body_shape::apply_profile(
+                &mut mat,
+                shape.proportions,
+                shape.race,
+                shape.gender,
+                shape.bounds,
+            );
+        }
         Some(own.store.add(mat))
     };
     let owned = OwnedMaterials {
@@ -139,8 +163,12 @@ fn own_per_sequence_materials(
         fade_blend: src.fade_blend.and_then(&mut clone),
         bake: src.bake.and_then(&mut clone),
         bake_blend: src.bake_blend.and_then(&mut clone),
-        // Neither cloned nor registered, as on the doodad lane: it draws only while feathering.
-        zfill: src.zfill.cloned(),
+        // A shape-deformed depth twin must match the visible mesh; otherwise keep the shared one.
+        zfill: if shape.is_some() {
+            src.zfill.and_then(&mut clone)
+        } else {
+            src.zfill.cloned()
+        },
     };
     // Every variant the part can swap to takes a row, or it stops mid-scroll indoors or fading.
     for id in [
@@ -229,6 +257,8 @@ pub(super) struct PartDress<'a> {
     pub(super) char_mats: &'a CharSkinMaterials,
     /// Identity for the mouseover inspector, cloned onto every part and card.
     pub(super) object: &'a WorldObject,
+    /// Per-player shape values, never shared with other instances of the display model.
+    pub(super) body_shape: Option<BodyShapeConfig>,
     /// `0`: no palette slot, so parts draw the static bind-pose mesh.
     pub(super) inst_slot: u16,
     /// Whether the unit built a rig: its skinned parts leave the view cull to the root.
@@ -594,6 +624,7 @@ mod tests {
             kind: ModelKind::Creature,
             char_mats: &empty,
             object: &object,
+            body_shape: None,
             inst_slot: 0,
             rigged: false,
             anchors,
@@ -654,6 +685,7 @@ mod tests {
             kind: ModelKind::Creature,
             char_mats: &empty,
             object: &object,
+            body_shape: None,
             inst_slot: 0,
             rigged: false,
             anchors,
@@ -731,6 +763,7 @@ mod tests {
                 kind,
                 char_mats: &empty,
                 object: &object,
+                body_shape: None,
                 inst_slot: 0,
                 rigged: false,
                 anchors: std::collections::HashMap::new(),

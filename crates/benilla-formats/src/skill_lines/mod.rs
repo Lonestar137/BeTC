@@ -26,9 +26,15 @@ const SKILL_LINE_ABILITY: &str = "DBFilesClient\\SkillLineAbility.dbc";
 const SKILL_RACE_CLASS_INFO: &str = "DBFilesClient\\SkillRaceClassInfo.dbc";
 
 const SKILL_LINE_FIELDS: usize = 22;
+/// Build 8606 `SkillLine.dbc` widens the two locstrings from 8 to 16 locales: 38 fields.
+const TBC_SKILL_LINE_FIELDS: usize = 38;
 const COL_SL_NAME_ENUS: usize = 3;
 const COL_SL_DESC_ENUS: usize = 12;
+/// enUS `description_lang` on 8606: past the 16-locale name block and its flag word.
+const TBC_COL_SL_DESC_ENUS: usize = 20;
 const COL_SL_SPELL_ICON: usize = 21;
+/// `spellIcon`, the last field on 8606, after the 16-locale description block and its flag.
+const TBC_COL_SL_SPELL_ICON: usize = 37;
 
 const SKILL_LINE_ABILITY_FIELDS: usize = 15;
 const COL_SLA_SKILL_ID: usize = 1;
@@ -43,8 +49,12 @@ const MAX_RANK_CHAIN: usize = 16;
 
 const SKILL_LINE_CATEGORY: &str = "DBFilesClient\\SkillLineCategory.dbc";
 const SKILL_LINE_CATEGORY_FIELDS: usize = 11;
+/// Build 8606 widens the name locstring to 16 locales: 19 fields.
+const TBC_SKILL_LINE_CATEGORY_FIELDS: usize = 19;
 const COL_SLC_NAME_ENUS: usize = 1;
 const COL_SLC_ORDER: usize = 10;
+/// `Order`, the last field on 8606, after the 16-locale name block and its flag.
+const TBC_COL_SLC_ORDER: usize = 18;
 
 const SKILL_RACE_CLASS_INFO_FIELDS: usize = 8;
 const COL_SRCI_SKILL_ID: usize = 1;
@@ -82,9 +92,11 @@ pub struct SkillLineInfo {
     pub name: String,
     /// `categoryId`, column 1: the skills-pane group ([`SkillLineCatalog::category`]).
     pub category_id: u32,
-    /// The tab icon's extensionless path (`Interface\Icons\…`), from `spellIcon`, column 21.
+    /// The tab icon's extensionless path (`Interface\Icons\…`), from `spellIcon`: column 21 on
+    /// 5875, the trailing column 37 on 8606.
     pub icon: Option<String>,
-    /// enUS `description_lang`, column 12: `GetSkillLineInfo`'s 13th return.
+    /// enUS `description_lang`: column 12 on 5875, column 20 on 8606; `GetSkillLineInfo`'s 13th
+    /// return.
     pub description: String,
 }
 
@@ -361,12 +373,17 @@ impl SkillLineCatalog {
     }
 }
 
-fn skill_line_schema() -> Schema {
+fn skill_line_schema(tbc: bool) -> Schema {
+    let (fields, desc_col) = if tbc {
+        (TBC_SKILL_LINE_FIELDS, TBC_COL_SL_DESC_ENUS)
+    } else {
+        (SKILL_LINE_FIELDS, COL_SL_DESC_ENUS)
+    };
     let mut s = Schema::new("SkillLine");
-    for i in 0..SKILL_LINE_FIELDS {
+    for i in 0..fields {
         if i == COL_SL_NAME_ENUS {
             s.add_field(SchemaField::new("NameEnUs", FieldType::String));
-        } else if i == COL_SL_DESC_ENUS {
+        } else if i == desc_col {
             s.add_field(SchemaField::new("DescEnUs", FieldType::String));
         } else {
             s.add_field(SchemaField::new(format!("F{i}"), FieldType::UInt32));
@@ -383,9 +400,14 @@ fn skill_line_ability_schema() -> Schema {
     s
 }
 
-fn skill_line_category_schema() -> Schema {
+fn skill_line_category_schema(tbc: bool) -> Schema {
+    let fields = if tbc {
+        TBC_SKILL_LINE_CATEGORY_FIELDS
+    } else {
+        SKILL_LINE_CATEGORY_FIELDS
+    };
     let mut s = Schema::new("SkillLineCategory");
-    for i in 0..SKILL_LINE_CATEGORY_FIELDS {
+    for i in 0..fields {
         let ty = if i == COL_SLC_NAME_ENUS {
             FieldType::String
         } else {
@@ -397,22 +419,23 @@ fn skill_line_category_schema() -> Schema {
 }
 
 /// `SkillLineCategory.dbc`; an unreadable file gives an empty map and the pane one flat group.
-fn load_categories(chain: &mut Chain) -> HashMap<u32, (String, u32)> {
+fn load_categories(chain: &mut Chain, tbc: bool) -> HashMap<u32, (String, u32)> {
     let mut map = HashMap::new();
     let Ok(bytes) = chain.read_file(SKILL_LINE_CATEGORY) else {
         return map;
     };
     let Ok(set) = parse(
         &bytes,
-        skill_line_category_schema(),
+        skill_line_category_schema(tbc),
         "SkillLineCategory.dbc",
     ) else {
         return map;
     };
+    let order_col = if tbc { TBC_COL_SLC_ORDER } else { COL_SLC_ORDER };
     for r in set.records() {
         let Some(id) = u32_at(r, 0) else { continue };
         if let Some(name) = str_at(&set, r, COL_SLC_NAME_ENUS) {
-            map.insert(id, (name, u32_at(r, COL_SLC_ORDER).unwrap_or(0)));
+            map.insert(id, (name, u32_at(r, order_col).unwrap_or(0)));
         }
     }
     map
@@ -460,21 +483,32 @@ fn load_race_class_info(chain: &mut Chain) -> HashMap<u32, Vec<SrciRow>> {
 
 /// Load the joined skill-line catalog off the patch chain.
 pub fn load_skill_line_catalog(chain: &mut Chain) -> Result<SkillLineCatalog> {
+    let tbc = chain.client_build() == Some(8606);
     let icons = crate::dbc::load_spell_icon_map(chain)?;
 
     let sl_bytes = chain
         .read_file(SKILL_LINE)
         .context("reading SkillLine.dbc")?;
-    let sl_set = parse(&sl_bytes, skill_line_schema(), "SkillLine.dbc")?;
+    let sl_set = parse(&sl_bytes, skill_line_schema(tbc), "SkillLine.dbc")?;
+    let desc_col = if tbc {
+        TBC_COL_SL_DESC_ENUS
+    } else {
+        COL_SL_DESC_ENUS
+    };
+    let icon_col = if tbc {
+        TBC_COL_SL_SPELL_ICON
+    } else {
+        COL_SL_SPELL_ICON
+    };
     let mut lines: HashMap<u32, SkillLineInfo> = HashMap::new();
     for r in sl_set.records() {
         let Some(id) = u32_at(r, 0) else { continue };
         let name = str_at(&sl_set, r, COL_SL_NAME_ENUS).unwrap_or_default();
-        let icon = u32_at(r, COL_SL_SPELL_ICON)
+        let icon = u32_at(r, icon_col)
             .filter(|&i| i != 0)
             .and_then(|i| icons.get(&i).cloned());
         let category_id = u32_at(r, 1).unwrap_or(0);
-        let description = str_at(&sl_set, r, COL_SL_DESC_ENUS).unwrap_or_default();
+        let description = str_at(&sl_set, r, desc_col).unwrap_or_default();
         lines.insert(
             id,
             SkillLineInfo {
@@ -521,7 +555,7 @@ pub fn load_skill_line_catalog(chain: &mut Chain) -> Result<SkillLineCatalog> {
         .collect();
 
     let race_class = load_race_class_info(chain);
-    let categories = load_categories(chain);
+    let categories = load_categories(chain, tbc);
 
     Ok(SkillLineCatalog {
         lines,

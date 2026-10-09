@@ -2,9 +2,10 @@
 //! `SelectGossipOption` and `CloseGossip` queue intents it drains.
 //!
 //! `GetGossipOptions()` returns flat `(text, type)` pairs, `type` the lowercase icon name the app
-//! maps from the wire `GOSSIP_ICON`. A coded option is not built: the app drops its select, where
-//! the reference fires `GOSSIP_ENTER_CODE` and the stock popup (`StaticPopup.lua:1383`) calls
-//! `SelectGossipOption(index, code)`.
+//! maps from the wire `GOSSIP_ICON`. TBC quest-list verbs return flat `(title, level, trivial)`
+//! triples and have separate count functions, as `GossipFrame.lua` expects. A coded option is not
+//! built: the app drops its select, where the reference fires `GOSSIP_ENTER_CODE` and the stock
+//! popup (`StaticPopup.lua:1383`) calls `SelectGossipOption(index, code)`.
 //!
 //! A menu is pushed only once its greeting (`SMSG_NPC_TEXT_UPDATE`) has arrived; until then the
 //! VM keeps its last menu, as the reference's frame keeps its last paint: its handler returns on a
@@ -26,14 +27,16 @@ pub struct GossipOptionView {
 }
 
 /// One quest row of `SMSG_GOSSIP_MESSAGE`; a click sends `CMSG_QUESTGIVER_QUERY_QUEST`. `active`,
-/// from the wire icon, puts it under current quests rather than available ones.
+/// from the wire icon, puts it under current quests rather than available ones. `trivial` is the
+/// TBC `GossipFrame.lua` gray-row flag.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct GossipQuestRow {
     pub title: String,
-    /// The row's third wire field. 1.12 never shows it, but the verbs return `(title, level)` pairs
-    /// and `GossipFrame.lua:66` strides by 2 over them.
+    /// The row's level, returned as the second field of a TBC quest-list triple.
     pub level: u32,
     pub active: bool,
+    /// Whether the stock GossipFrame should gray this quest row.
+    pub trivial: bool,
 }
 
 /// One open gossip menu, pushed whole by the app.
@@ -107,6 +110,13 @@ pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
             Ok(MultiValue::from_vec(out))
         })?,
     )?;
+    g.set(
+        "GetNumGossipOptions",
+        lua.create_function(|lua, ()| {
+            let model = lua.app_data_ref::<Model>().expect("model app_data");
+            Ok(model.gossip.as_ref().map_or(0, |menu| menu.options.len()) as u32)
+        })?,
+    )?;
 
     // SelectGossipOption(i [, ...]): queue the 1-based position. Further arguments, a code among
     // them, are ignored: coded options are not built, so no code is ever sent.
@@ -130,25 +140,46 @@ pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
 
     // ══ The two quest lists ══
     // The reference splits the quest rows by wire icon, 3 and 4 active and the rest available,
-    // behind two vararg verbs (`0x4e2430`, `0x4e2580`); the app splits them at parse time.
+    // behind count and vararg verbs. TBC 2.4.3's GossipFrame.lua strides by three and uses the
+    // third field to gray trivial rows.
     fn quest_rows(lua: &Lua, active: bool) -> mlua::Result<MultiValue> {
-        let rows: Vec<(String, u32)> = {
+        let rows: Vec<(String, u32, bool)> = {
             let model = lua.app_data_ref::<Model>().expect("model app_data");
             model.gossip.as_ref().map_or_else(Vec::new, |m| {
                 m.quests
                     .iter()
                     .filter(|q| q.active == active)
-                    .map(|q| (q.title.clone(), q.level))
+                    .map(|q| (q.title.clone(), q.level, q.trivial))
                     .collect()
             })
         };
-        let mut out = Vec::with_capacity(rows.len() * 2);
-        for (title, level) in rows {
+        let mut out = Vec::with_capacity(rows.len() * 3);
+        for (title, level, trivial) in rows {
             out.push(Value::String(lua.create_string(&title)?));
             out.push(Value::Integer(i64::from(level)));
+            out.push(Value::Boolean(trivial));
         }
         Ok(MultiValue::from_vec(out))
     }
+
+    g.set(
+        "GetNumGossipAvailableQuests",
+        lua.create_function(|lua, ()| {
+            let model = lua.app_data_ref::<Model>().expect("model app_data");
+            Ok(model.gossip.as_ref().map_or(0, |menu| {
+                menu.quests.iter().filter(|quest| !quest.active).count()
+            }) as u32)
+        })?,
+    )?;
+    g.set(
+        "GetNumGossipActiveQuests",
+        lua.create_function(|lua, ()| {
+            let model = lua.app_data_ref::<Model>().expect("model app_data");
+            Ok(model.gossip.as_ref().map_or(0, |menu| {
+                menu.quests.iter().filter(|quest| quest.active).count()
+            }) as u32)
+        })?,
+    )?;
 
     g.set(
         "GetGossipAvailableQuests",
@@ -264,6 +295,16 @@ mod tests {
         // No menu: `arg.n == 0`, not a nil.
         assert_eq!(s.arity("GetGossipAvailableQuests()").unwrap(), 0);
         assert_eq!(s.arity("GetGossipActiveQuests()").unwrap(), 0);
+        assert_eq!(
+            s.eval::<u32>("return GetNumGossipAvailableQuests()")
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            s.eval::<u32>("return GetNumGossipActiveQuests()").unwrap(),
+            0
+        );
+        assert_eq!(s.eval::<u32>("return GetNumGossipOptions()").unwrap(), 0);
 
         let mut m = menu();
         m.quests = vec![
@@ -271,35 +312,50 @@ mod tests {
                 title: "Report to Goldshire".into(),
                 level: 5,
                 active: true,
+                trivial: true,
             },
             GossipQuestRow {
                 title: "A Threat Within".into(),
                 level: 7,
                 active: false,
+                trivial: true,
             },
             GossipQuestRow {
                 title: "Kobold Camp Cleanup".into(),
                 level: 9,
                 active: false,
+                trivial: false,
             },
         ];
         s.set_gossip(Some(m));
 
         assert_eq!(
-            s.eval::<(String, i64, String, i64)>("return GetGossipAvailableQuests()")
+            s.eval::<u32>("return GetNumGossipAvailableQuests()")
+                .unwrap(),
+            2
+        );
+        assert_eq!(
+            s.eval::<u32>("return GetNumGossipActiveQuests()").unwrap(),
+            1
+        );
+        assert_eq!(s.eval::<u32>("return GetNumGossipOptions()").unwrap(), 2);
+        assert_eq!(
+            s.eval::<(String, i64, bool, String, i64, bool)>("return GetGossipAvailableQuests()")
                 .unwrap(),
             (
                 "A Threat Within".to_string(),
                 7,
+                true,
                 "Kobold Camp Cleanup".to_string(),
-                9
+                9,
+                false,
             )
         );
         // The active row comes first in the menu but splits by icon, not position.
         assert_eq!(
-            s.eval::<(String, i64)>("return GetGossipActiveQuests()")
+            s.eval::<(String, i64, bool)>("return GetGossipActiveQuests()")
                 .unwrap(),
-            ("Report to Goldshire".to_string(), 5)
+            ("Report to Goldshire".to_string(), 5, true)
         );
 
         // Available #2 is the menu's third row.

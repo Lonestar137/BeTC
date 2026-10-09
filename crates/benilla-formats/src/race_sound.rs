@@ -35,13 +35,11 @@ pub fn load_exploration_sound_catalog(chain: &mut Chain) -> Result<ExplorationSo
     let bytes = chain
         .read_file(CHR_RACES)
         .with_context(|| format!("reading {CHR_RACES}"))?;
+    // Build 8606's ChrRaces has 69 columns; only the id and the column-3 exploration kit are read,
+    // so the others need no type.
     let mut schema = Schema::new("ChrRaces");
-    for i in 0..29 {
-        let ty = match i {
-            15 | 26 | 27 | 28 => FieldType::String,
-            _ => FieldType::UInt32,
-        };
-        schema.add_field(SchemaField::new(format!("f{i}"), ty));
+    for i in 0..69 {
+        schema.add_field(SchemaField::new(format!("f{i}"), FieldType::UInt32));
     }
     let rs = parse(&bytes, schema, "ChrRaces")?;
     let mut by_race = HashMap::new();

@@ -210,6 +210,14 @@ pub(crate) fn flag(b: bool) -> Value {
     }
 }
 
+/// A TBC cast-target unit token. The secure action button passes the resolved target in place of
+/// the 1.12 `onSelf` boolean: `"player"` (the self-cast modifier's arm) names the caster, while
+/// nil casts at the selection and any other token ("target", "mouseover", a party/raid id) is not a
+/// self-cast. Compared case-insensitively, as the client folds unit ids.
+pub(crate) fn unit_is_self(v: Option<&Value>) -> bool {
+    matches!(v, Some(Value::String(s)) if s.as_bytes().eq_ignore_ascii_case(b"player"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

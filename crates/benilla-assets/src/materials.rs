@@ -15,7 +15,7 @@ use bevy::render::render_resource::{
     AsBindGroup, BlendComponent, BlendFactor, BlendOperation, BlendState, Buffer, ColorWrites,
     CompareFunction, RenderPipelineDescriptor, SpecializedMeshPipelineError,
 };
-use bevy::shader::{load_shader_library, ShaderRef};
+use bevy::shader::{ShaderRef, load_shader_library};
 
 /// Compile the WGSL files into the binary and register them under
 /// `embedded://benilla_assets/shaders/…`. Call **after** Bevy's `AssetPlugin` (it fills the
@@ -142,6 +142,18 @@ pub struct WowModelExt {
     /// `matanim` rows of its translation and affine, read on UV set B. `0` on every other batch.
     #[uniform(100)]
     pub stage1: Vec4,
+    /// Opt-in player-body deformation: shoulders, arms, waist, hips as signed scale deltas.
+    #[uniform(100)]
+    pub body_shape: Vec4,
+    /// Bust, seat, female-model flag, enabled flag.
+    #[uniform(100)]
+    pub body_shape2: Vec4,
+    /// Model-space vertical bounds and horizontal half-extents, all in Bevy model axes.
+    #[uniform(100)]
+    pub body_shape_bounds: Vec4,
+    /// Race-specific normalized vertical offsets: hips, bust, seat, reserved.
+    #[uniform(100)]
+    pub body_shape_regions: Vec4,
     /// MONKEY (skybox): stage 1's texture; `None` (the fallback image) unless `stage1.x > 0`.
     #[texture(94)]
     #[sampler(95)]
@@ -159,7 +171,12 @@ pub struct WowModelExt {
     /// `Depth`, which `Depth32Float` is). The image is created ONCE at app startup regardless of
     /// the cvars — an absent image would stall every model material's bind group on
     /// `RetryNextUpdate` and blank every model. Fragment-only, like static_gx's group 3.
-    #[texture(91, dimension = "2d_array", sample_type = "depth", visibility(fragment))]
+    #[texture(
+        91,
+        dimension = "2d_array",
+        sample_type = "depth",
+        visibility(fragment)
+    )]
     #[sampler(92, sampler_type = "comparison", visibility(fragment))]
     pub torch_depth: Handle<Image>,
     /// MONKEY (static torch cache): the ≤16-fixture torch TABLE — the same 6416-byte
@@ -520,7 +537,12 @@ pub struct TerrainExtension {
     ///
     /// Fragment-only, like the splat/alpha/shadow arrays above (Bevy 0.18 narrows textures and
     /// samplers but not uniforms) - the vertex stage only picks WHICH lights, it never samples.
-    #[texture(91, dimension = "2d_array", sample_type = "depth", visibility(fragment))]
+    #[texture(
+        91,
+        dimension = "2d_array",
+        sample_type = "depth",
+        visibility(fragment)
+    )]
     #[sampler(92, sampler_type = "comparison", visibility(fragment))]
     pub torch_depth: Handle<Image>,
     /// The 6416-byte `TorchTableUniform` bytes (count / positions[16] / view_projs[96]) as the same

@@ -182,7 +182,7 @@ mod tests {
         let data = crate::wow_data_or_skip!();
         let mut chain = crate::open_chain(&data).expect("open chain");
         let cat = load_footstep_catalog(&mut chain).expect("load footstep catalog");
-        assert_eq!(cat.len(), 179, "all lookup rows load");
+        assert_eq!(cat.len(), 199, "all build 8606 lookup rows load");
 
         // An effect over Metallic (`TerrainType` 1, sound 2).
         let metallic = cat

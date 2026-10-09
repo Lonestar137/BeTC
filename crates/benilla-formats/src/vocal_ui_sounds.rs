@@ -115,7 +115,7 @@ mod tests {
         let mut chain = crate::open_chain(&data).expect("open chain");
         let cat = load_vocal_ui_sounds(&mut chain).expect("load VocalUISounds");
         let kits = crate::load_sound_kit_catalog(&mut chain).expect("load SoundEntries");
-        assert_eq!(cat.len(), 533, "every shipped row is under the 0x44 bound");
+        assert_eq!(cat.len(), 641, "every shipped row is under the 0x44 bound");
 
         let lines: std::collections::BTreeSet<u32> = cat.rows().iter().map(|r| r.line).collect();
         assert_eq!(lines.iter().copied().max(), Some(67));
@@ -188,6 +188,6 @@ mod tests {
             .flatten()
             .filter(|k| kits.get(*k).is_some())
             .count();
-        assert_eq!(normal_live, 785);
+        assert_eq!(normal_live, 989);
     }
 }

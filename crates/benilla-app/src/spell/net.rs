@@ -747,6 +747,13 @@ fn spell_start(
     let ranged_slot = spells
         .and_then(|s| s.catalog.get(spell_id))
         .is_some_and(|d| d.ranged_slot());
+    info!(
+        "spell-start diag: {spell_id} caster={caster:#x} self={:?} match={} cast_time={cast_time_ms}ms ranged={} indexed={}",
+        self_guid.0,
+        self_guid.0 == Some(caster),
+        ranged_slot,
+        index.0.get(&caster).is_some(),
+    );
     if *crate::net::CAST_TRACE && self_guid.0 == Some(caster) {
         info!(
             "cast-trace: RECV SPELL_START — spell {spell_id} cast_time={cast_time_ms}ms \

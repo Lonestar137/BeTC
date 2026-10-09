@@ -98,6 +98,19 @@ class ValidateTbcContentTests(unittest.TestCase):
                 ),
                 "revision",
             ),
+            (
+                VALID_PACK.replace(
+                    "0123456789abcdef0123456789abcdef01234567",
+                    "0123456789ABCDEF0123456789ABCDEF01234567",
+                ),
+                "40-character lowercase hexadecimal",
+            ),
+            (
+                VALID_PACK.replace(
+                    "0123456789abcdef0123456789abcdef01234567", "deadbeef"
+                ),
+                "40-character lowercase hexadecimal",
+            ),
             (VALID_PACK.replace('license = "GPL-3.0"', 'license = "  "'), "license"),
         )
         for pack, message in cases:
@@ -105,6 +118,20 @@ class ValidateTbcContentTests(unittest.TestCase):
                 result = self.run_validator(pack)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn(message, result.stderr)
+
+    def test_rejects_unknown_root_field(self):
+        pack = VALID_PACK.replace(
+            'license = "GPL-3.0"\n', 'license = "GPL-3.0"\nextra = true\n'
+        )
+        result = self.run_validator(pack)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("extra: unknown root field", result.stderr)
+
+    def test_rejects_required_table_that_is_not_an_array(self):
+        pack = VALID_PACK.replace("[[template]]", "template = {}")
+        result = self.run_validator(pack)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("template: expected an array of tables", result.stderr)
 
     def test_rejects_duplicate_template_entries_and_spawn_guids(self):
         duplicate_template = VALID_PACK + '''\

@@ -8,7 +8,8 @@ use benilla_assets::{
     M2Model, ModelAnimations, ModelEmitter, ModelSkeleton, ModelSubmesh, WmoModel,
 };
 use benilla_formats::{
-    CharSkinSlot, CollisionMesh, CreatureCatalog, GameObjectCatalog, ModelBlend, NpcAppearance,
+    CharSkinSlot, CollisionMesh, CreatureCatalog, GameObjectCatalog, M2Bounds, ModelBlend,
+    NpcAppearance,
 };
 use bevy::mesh::skinning::SkinnedMeshInverseBindposes;
 use bevy::prelude::*;
@@ -129,6 +130,8 @@ pub(crate) struct DisplayModel {
     /// The model's M2 lights, the dynamic light an entity carries: a held torch
     /// (`Club_1H_Torch_A_01.m2`, one `type == 1` point light) lights the ground around its bearer.
     pub(super) lights: Vec<benilla_assets::ModelLight>,
+    /// Authored M2 bounds in WoW model axes, used to localize optional character shape edits.
+    pub(super) body_bounds: Option<M2Bounds>,
     /// The model-local collider from the collision hull, GameObjects only; a hull-less model does
     /// not collide, so a herb is walk-through while a chest, vein or door is solid.
     pub(super) collider: Option<Collider>,
@@ -252,6 +255,7 @@ pub(crate) fn empty_shell() -> DisplayModel {
         emitters: Vec::new(),
         ribbons: Vec::new(),
         lights: Vec::new(),
+        body_bounds: None,
         collider: None,
         skeleton: ModelSkeleton::default(),
         attachments: Vec::new(),
@@ -303,6 +307,7 @@ pub(super) fn build_parts(
     let mut emitters = Vec::new();
     let mut ribbons = Vec::new();
     let mut lights = Vec::new();
+    let mut body_bounds = None;
     let mut collider = None;
     let mut terrain_tilt = 0u8;
     let mut skeleton = ModelSkeleton::default();
@@ -334,6 +339,7 @@ pub(super) fn build_parts(
             emitters = model.emitters.clone();
             ribbons = model.ribbons.clone();
             lights = model.lights.clone();
+            body_bounds = model.bounds;
             terrain_tilt = (model.global_flags & 3) as u8;
             // Not the render sphere (`0xCC`), which sizes the corpse decal (`0x5d6fe0`).
             ground_radius_local = model.bounds.map_or(0.0, |b| b.ring_footprint);
@@ -481,6 +487,7 @@ pub(super) fn build_parts(
     dm.emitters = emitters;
     dm.ribbons = ribbons;
     dm.lights = lights;
+    dm.body_bounds = body_bounds;
     dm.collider = collider;
     dm.skeleton = skeleton;
     dm.attachments = attachments;

@@ -10,9 +10,9 @@ use bevy::image::Image;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Buffer, Face};
 
-use crate::materials::{TorchBinds, WowModelExt, WowModelMaterial, VANILLA_ALPHA_KEY_REF};
 use crate::SpatialCache;
-use benilla_formats::{blp_to_rgba, read_texture_native_chain, tga_to_rgba, Chain, ModelBlend};
+use crate::materials::{TorchBinds, VANILLA_ALPHA_KEY_REF, WowModelExt, WowModelMaterial};
+use benilla_formats::{Chain, ModelBlend, blp_to_rgba, read_texture_native_chain, tga_to_rgba};
 
 /// BLP and RGBA to `Image` helpers, re-exported.
 mod images;
@@ -579,6 +579,10 @@ impl WorldAssets {
                 anim_slots: Vec4::ZERO,
                 // MONKEY (skybox): no second stage.
                 stage1: Vec4::ZERO,
+                body_shape: Vec4::ZERO,
+                body_shape2: Vec4::ZERO,
+                body_shape_bounds: Vec4::ZERO,
+                body_shape_regions: Vec4::ZERO,
                 stage1_texture: None,
                 light_buf: self.shared_light.clone(),
                 // MONKEY (torch shadows Phase 3A): the shared torch receiver bindings.

@@ -300,6 +300,37 @@ impl Default for SpellDisplay {
 }
 
 impl SpellDisplay {
+    /// The unscaled inclusive value range for one of the three effect slots. Spell server rolls
+    /// run from `basePoints + baseDice` through `basePoints + dieSides * baseDice`; level scaling
+    /// and spell modifiers are intentionally applied by the caller.
+    pub fn base_effect_range(&self, slot: usize) -> Option<(i32, i32)> {
+        if slot >= 3 {
+            return None;
+        }
+        let base = self.effect_base_points[slot];
+        let dice = self.effect_base_dice[slot];
+        let sides = self.effect_die_sides[slot];
+        if base < 0 || dice < 0 || sides < 0 {
+            return None;
+        }
+        let low = base.checked_add(dice)?;
+        let high = base.checked_add(sides.checked_mul(dice)?)?;
+        Some((low.min(high), low.max(high)))
+    }
+
+    /// Flat, per-level, and percentage mana cost for a caster level and project-supplied base pool.
+    /// Non-mana power types are normalized by the caller, which owns their class-specific units.
+    pub fn mana_cost_at_level(&self, caster_level: u32, base_mana: u32) -> u32 {
+        let level_delta = self
+            .skill_level(caster_level.saturating_mul(5))
+            .saturating_sub(self.base_level);
+        let per_level = self.mana_cost_per_level.saturating_mul(level_delta);
+        let percentage = base_mana.saturating_mul(self.mana_cost_pct) / 100;
+        self.mana_cost
+            .saturating_add(per_level)
+            .saturating_add(percentage)
+    }
+
     /// The level the effect values, cast time, cost and duration scale by for a caster whose
     /// skill in this spell's line is `skill_value` (`0x6e3130`): the skill capped at
     /// `maxLevel × 5` unless `maxLevel` is 0 (`0x5ea6dc`-`0x5ea6ea`), over 5 (`0x6e3195`).
@@ -698,6 +729,19 @@ mod tests {
         assert!(d.is_harmful(), "the enemy cone in the third effect");
         d.targets = 0x100;
         assert!(!d.is_harmful(), "the ally flag short-circuits the walk");
+    }
+
+    #[test]
+    fn mana_cost_uses_spell_level_scaling_and_base_mana_percent() {
+        let mut d = SpellDisplay::default();
+        d.base_level = 5;
+        d.max_level = 8;
+        d.mana_cost = 20;
+        d.mana_cost_per_level = 3;
+        d.mana_cost_pct = 10;
+        assert_eq!(d.mana_cost_at_level(4, 100), 30);
+        assert_eq!(d.mana_cost_at_level(7, 100), 36);
+        assert_eq!(d.mana_cost_at_level(20, 100), 39, "maxLevel caps scaling");
     }
 
     #[test]

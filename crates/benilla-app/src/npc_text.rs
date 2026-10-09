@@ -172,11 +172,33 @@ pub(crate) fn player_identity(
     commands: &NetCommands,
 ) -> Option<Subject> {
     let (store, guid) = self_q.iter().next()?;
+    player_identity_for_guid(guid.0, Some(store), names, commands)
+}
+
+/// The player identity from a known player guid, useful during the frame between `Connected` and
+/// the `SelfPlayer` tag becoming queryable. Offline character guids are `HIGHGUID_PLAYER` values.
+pub(crate) fn player_identity_for_guid(
+    guid: u64,
+    store: Option<&ObjectStore>,
+    names: &NameCache,
+    commands: &NetCommands,
+) -> Option<Subject> {
+    let name = names.resolve(guid, commands)?.to_string();
+    let (race, class, gender) = store.map_or_else(
+        || names.player_traits(guid).unwrap_or((0, 0, 0)),
+        |store| {
+            (
+                store.0.unit_race().unwrap_or(0),
+                store.0.unit_class().unwrap_or(0),
+                store.0.unit_gender().unwrap_or(0),
+            )
+        },
+    );
     Some(Subject {
-        name: names.resolve(guid.0, commands)?.to_string(),
-        race: store.0.unit_race().unwrap_or(0),
-        class: store.0.unit_class().unwrap_or(0),
-        gender: store.0.unit_gender().unwrap_or(0),
+        name,
+        race,
+        class,
+        gender,
     })
 }
 
@@ -215,7 +237,7 @@ pub(crate) fn subject_for_guid(
 
 #[cfg(test)]
 mod tests {
-    use super::{substitute, substitute_checked, MacroContext, Subject};
+    use super::{player_identity_for_guid, substitute, substitute_checked, MacroContext, Subject};
     use crate::world_state::WorldStates;
 
     /// Race 4, class 5: both real rows.
@@ -365,5 +387,26 @@ mod tests {
         assert_eq!(expand("Greetings $N", None), "Greetings $N");
         assert_eq!(expand("$Glad:lass; $C", None), "$Glad:lass; $C");
         assert_eq!(expand("Hail,$Bfriend $w", None), "Hail,\nfriend 0");
+    }
+
+    #[test]
+    fn self_guid_identity_expands_name_and_class_without_the_self_player_tag() {
+        let guid = 0x0000_1234_5678_9abcu64;
+        let mut names = crate::names::NameCache::default();
+        names.insert_player(guid, "Test".into(), None);
+        let (tx, _rx) = crossbeam_channel::unbounded();
+        let store = crate::net::ObjectStore(benilla_protocol::ObjectFields::from_pairs(&[
+            (2, 0x19),
+            (36, 10 | (8 << 8)),
+        ]));
+        let player =
+            player_identity_for_guid(guid, Some(&store), &names, &crate::net::NetCommands(tx))
+                .expect("connected offline player identity");
+
+        assert_eq!(player.name, "Test");
+        assert_eq!(
+            expand("$N! You are $c.", Some(&player)),
+            "Test! You are mage."
+        );
     }
 }

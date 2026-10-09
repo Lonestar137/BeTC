@@ -9,19 +9,19 @@ use bevy::window::PrimaryWindow;
 use crate::char_select::{race_name, wow_font};
 use crate::entities::CharCreate;
 use crate::glue_strings::GlueStrings;
-use crate::portrait::{GLUE_SLOT, GlueLook, GluePreview, PortraitImages, PortraitSource};
+use crate::portrait::{GlueLook, GluePreview, PortraitImages, PortraitSource, GLUE_SLOT};
 use benilla_assets::WorldAssets;
 
 use super::parts::{CharCreateUi, DialRow, DynIcon, DynText, DynTint, StatusLine};
 use super::{
-    ALLIANCE, CreateAction, CreateSelection, HORDE, INITIAL_FACING, TBC_ALLIANCE, TBC_HORDE,
+    CreateAction, CreateSelection, ALLIANCE, HORDE, INITIAL_FACING, TBC_ALLIANCE, TBC_HORDE,
 };
 use crate::glue::art::{
-    ALLIANCE_BORDER, ALLIANCE_FILL, BACKDROP, BTN_BG, DIM, GOLD, GlueArt, INFO_TEXT, tc_rect,
+    tc_rect, GlueArt, ALLIANCE_BORDER, ALLIANCE_FILL, BACKDROP, BTN_BG, DIM, GOLD, INFO_TEXT,
 };
 use crate::glue::widgets::{
-    ArtSwap, FallbackFace, GlueBtnKind, GlueText, Hilight, abs, dial_arrow, glue_button,
-    icon_button, icon_button_sized, outlined_text,
+    abs, dial_arrow, glue_button, icon_button, icon_button_sized, outlined_text, ArtSwap,
+    FallbackFace, GlueBtnKind, GlueText, Hilight,
 };
 
 const SCREEN_Z: i32 = 1100;
@@ -40,6 +40,7 @@ pub(super) fn enter_create(
     mut images: ResMut<Assets<Image>>,
     mut add_mats: ResMut<Assets<crate::glue::add_material::AddUiMaterial>>,
     strings: Option<Res<GlueStrings>>,
+    offline: Option<Res<crate::net::NetOffline>>,
     window: Query<&Window, With<PrimaryWindow>>,
 ) {
     sel.reset(catalog.as_deref());
@@ -56,6 +57,7 @@ pub(super) fn enter_create(
         &art,
         strings.as_deref(),
         &window,
+        offline.is_some(),
         catalog
             .as_deref()
             .is_some_and(|catalog| catalog.0.race_file(10).is_some()),
@@ -72,6 +74,7 @@ pub(super) fn rescale_screen(
     portraits: Res<PortraitImages>,
     art: Res<GlueArt>,
     strings: Option<Res<GlueStrings>>,
+    offline: Option<Res<crate::net::NetOffline>>,
     window: Query<&Window, With<PrimaryWindow>>,
 ) {
     let s = crate::glue::screen_scale(window.single().ok());
@@ -85,6 +88,7 @@ pub(super) fn rescale_screen(
                 &art,
                 strings.as_deref(),
                 &window,
+                offline.is_some(),
                 catalog
                     .as_deref()
                     .is_some_and(|catalog| catalog.0.race_file(10).is_some()),
@@ -100,6 +104,7 @@ fn spawn_screen(
     art: &GlueArt,
     strings: Option<&GlueStrings>,
     window: &Query<&Window, With<PrimaryWindow>>,
+    body_customization: bool,
     tbc: bool,
 ) {
     let font = wow_font(assets);
@@ -159,7 +164,7 @@ fn spawn_screen(
             ui.spawn((ImageNode::new(logo.clone()), abs(s, 3.0, 7.0, 256.0, 128.0)));
         }
 
-        super::panels::right_stack(ui, art, &font, s);
+        super::panels::right_stack(ui, art, &font, s, body_customization);
         name_cluster(ui, art, &font, &edit_font, s, strings);
         rotate_cluster(ui, art, &font, s);
 

@@ -4,8 +4,8 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use benilla_game_core::{
-    decode_profile, decode_snapshot, Appearance, CharacterId, CombatUpdate, FriendlyNpcState,
-    GameCore, HostileState, SaveError, WorldPosition,
+    decode_profile, decode_snapshot, Appearance, CharacterAura, CharacterId, CombatUpdate,
+    CreatureAiUpdate, GameCore, HostileState, SaveError, WorldPosition,
 };
 use benilla_protocol::{CharAction, CharCreateReq, EntityKind, ObjectFields, SessionEvent};
 use bevy::prelude::*;
@@ -18,6 +18,10 @@ use persistence::OfflinePersistence;
 
 const OFFLINE_CONTENT_RADIUS_YARDS: f32 = benilla_game_core::SUNSTRIDER_CONTENT_RADIUS_YARDS;
 const OFFLINE_CREATURE_WALK_SPEED_YARDS_PER_SEC: f32 = 2.5;
+const OFFLINE_CREATURE_AI_STEP_MS: u32 = 200;
+/// NPC interaction range in yards: matches the client's 5.5556 yd service range
+/// (`crate::target::cursor_mode::SERVICE_RANGE_SQ` = 30.864).
+const OFFLINE_INTERACTION_RANGE_YARDS: f32 = 5.5556;
 
 #[derive(Resource, Default)]
 struct OfflinePatrols(BTreeMap<u64, ActivePatrol>);
@@ -25,7 +29,11 @@ struct OfflinePatrols(BTreeMap<u64, ActivePatrol>);
 struct ActivePatrol {
     waypoints: Vec<benilla_game_core::content::CreatureWaypoint>,
     waypoint_index: usize,
+    leg_start: [f32; 3],
     position: [f32; 3],
+    current_position: [f32; 3],
+    leg_duration_ms: u32,
+    wait_ms: u32,
     remaining_ms: u32,
     spline_id: u32,
 }
@@ -47,12 +55,21 @@ impl Plugin for OfflineGamePlugin {
         };
         app.insert_resource(OfflineGameCore(core))
             .insert_resource(OfflinePersistence::new(writable))
+            .init_resource::<crate::body_shape::BodyProportionRoster>()
             .init_resource::<OfflinePatrols>()
             .add_systems(Startup, publish_local_roster)
+            .add_systems(Startup, publish_body_proportions)
             .add_systems(
                 Update,
                 drive_local_requests
                     .in_set(benilla_world::schedule::WorldStage::Net)
+                    .before(crate::net::apply_net_updates),
+            )
+            .add_systems(
+                Update,
+                publish_body_proportions
+                    .in_set(benilla_world::schedule::WorldStage::Net)
+                    .after(drive_local_requests)
                     .before(crate::net::apply_net_updates),
             )
             .add_systems(
@@ -67,6 +84,13 @@ impl Plugin for OfflineGamePlugin {
                 advance_offline_patrols
                     .in_set(benilla_world::schedule::WorldStage::Net)
                     .after(drive_offline_gameplay)
+                    .before(crate::net::apply_net_updates),
+            )
+            .add_systems(
+                Update,
+                tick_offline_creature_ai
+                    .in_set(benilla_world::schedule::WorldStage::Net)
+                    .after(advance_offline_patrols)
                     .before(crate::net::apply_net_updates),
             )
             .add_systems(
@@ -93,6 +117,24 @@ impl Plugin for OfflineGamePlugin {
             )
             .add_systems(Update, exit_after_world_smoke);
         }
+    }
+}
+
+fn publish_body_proportions(
+    core: Res<OfflineGameCore>,
+    mut profiles: ResMut<crate::body_shape::BodyProportionRoster>,
+) {
+    let next: BTreeMap<_, _> = core
+        .0
+        .character_ids()
+        .filter_map(|id| {
+            core.0
+                .snapshot(id)
+                .map(|snapshot| (id.presentation_guid(), snapshot.body_proportions.into()))
+        })
+        .collect();
+    if profiles.0 != next {
+        profiles.0 = next;
     }
 }
 
@@ -227,6 +269,7 @@ fn drive_local_requests(
     catalog: Option<Res<crate::entities::CharCreate>>,
     creatures: Option<Res<crate::entities::Creatures>>,
     factions: Option<Res<crate::target::Factions>>,
+    talents: Option<Res<crate::ui_talent::Talents>>,
     mut names: ResMut<crate::names::NameCache>,
     mut patrols: ResMut<OfflinePatrols>,
     mut roster: MessageWriter<CharListMessage>,
@@ -244,14 +287,14 @@ fn drive_local_requests(
                 }
                 match core.0.enter_world() {
                     Ok(snapshot) => {
-                        emit_world_entry(
+                        emit_world_entry_with_talents(
                             &channels,
                             &snapshot,
                             core.0.hostiles(),
-                            core.0.friendly_npcs(),
                             catalog.as_deref(),
                             creatures.as_deref(),
                             factions.as_deref(),
+                            talents.as_deref(),
                             &mut names,
                             &mut patrols,
                         );
@@ -279,8 +322,16 @@ fn drive_local_requests(
                     code,
                 });
             }
-            CharRequest::Create(request) => {
-                let code = match create_local_character(&mut core.0, catalog.as_deref(), request) {
+            CharRequest::Create {
+                request,
+                body_proportions,
+            } => {
+                let code = match create_local_character(
+                    &mut core.0,
+                    catalog.as_deref(),
+                    request,
+                    body_proportions,
+                ) {
                     Ok(()) => {
                         save_after_command(&core.0, &mut persistence);
                         send_roster(&core.0, catalog.as_deref(), &mut roster);
@@ -309,6 +360,7 @@ fn create_local_character(
     core: &mut GameCore,
     catalog: Option<&crate::entities::CharCreate>,
     request: CharCreateReq,
+    body_proportions: crate::body_shape::BodyProportions,
 ) -> Result<(), u8> {
     let invalid = benilla_protocol::messages::CHAR_CREATE_ERROR;
     let Some(catalog) = catalog else {
@@ -348,7 +400,11 @@ fn create_local_character(
         rand::random::<u64>()
     ))
     .expect("random 128-bit character ID is lowercase hexadecimal");
-    core.create_character(id, &request.name, appearance, start)
+    if !body_proportions.is_valid() {
+        return Err(invalid);
+    }
+    core.create_character(id.clone(), &request.name, appearance, start)
+        .and_then(|_| core.set_body_proportions(&id, body_proportions.into()))
         .map(|_| ())
         .map_err(|error| match error {
             benilla_game_core::CoreError::DuplicateName => {
@@ -384,14 +440,38 @@ fn inventory_type_to_roster_slot(inventory_type: u8) -> Option<usize> {
     })
 }
 
+/// CMaNGOS `[DND]` (Do Not Disturb) templates are test/dummy creatures — the TAR pedestals and
+/// event bunnies — that the source database never intends to spawn for players. The converter
+/// carries them through, so the offline adapter drops them rather than litter the starting zone
+/// with innkeeper/auctioneer pedestals.
+fn is_dnd_test_creature(template: &benilla_game_core::content::CreatureTemplate) -> bool {
+    template.name.starts_with("[DND]")
+}
+
+#[cfg(test)]
 fn emit_world_entry(
     channels: &OfflineChannels,
     snapshot: &benilla_game_core::CharacterSnapshot,
     hostiles: &[HostileState],
-    friendly_npcs: &[FriendlyNpcState],
     catalog: Option<&crate::entities::CharCreate>,
     creatures: Option<&crate::entities::Creatures>,
     factions: Option<&crate::target::Factions>,
+    names: &mut crate::names::NameCache,
+    patrols: &mut OfflinePatrols,
+) {
+    emit_world_entry_with_talents(
+        channels, snapshot, hostiles, catalog, creatures, factions, None, names, patrols,
+    );
+}
+
+fn emit_world_entry_with_talents(
+    channels: &OfflineChannels,
+    snapshot: &benilla_game_core::CharacterSnapshot,
+    hostiles: &[HostileState],
+    catalog: Option<&crate::entities::CharCreate>,
+    creatures: Option<&crate::entities::Creatures>,
+    factions: Option<&crate::target::Factions>,
+    talents: Option<&crate::ui_talent::Talents>,
     names: &mut crate::names::NameCache,
     patrols: &mut OfflinePatrols,
 ) {
@@ -413,22 +493,32 @@ fn emit_world_entry(
     let display_id =
         catalog.and_then(|catalog| catalog.0.body_display(appearance.race, appearance.gender));
     let mut pairs = vec![
-        (2, 0x19),                                // OBJECT_FIELD_TYPE: object, unit, player
-        (22, 100),                                // UNIT_FIELD_HEALTH
-        (28, 100),                                // UNIT_FIELD_MAXHEALTH
-        (34, u32::from(snapshot.level)),          // UNIT_FIELD_LEVEL
-        (46, 0x8),                                // UNIT_FLAG_PLAYER_CONTROLLED
-        (36, race_class_gender),                  // UNIT_FIELD_BYTES_0
-        (193, player_bytes),                      // PLAYER_BYTES
-        (194, u32::from(appearance.facial_hair)), // PLAYER_BYTES_2
+        (2, 0x19),                                        // OBJECT_FIELD_TYPE: object, unit, player
+        (22, snapshot.health),                            // UNIT_FIELD_HEALTH
+        (28, benilla_game_core::PLAYER_MAX_HEALTH),       // UNIT_FIELD_MAXHEALTH
+        (34, u32::from(snapshot.level)),                  // UNIT_FIELD_LEVEL
+        (1176, snapshot.money_copper),                    // PLAYER_FIELD_COINAGE
+        (716, snapshot.experience),                       // PLAYER_XP
+        (
+            717,
+            benilla_game_core::progression::xp_to_next_level(snapshot.level).unwrap_or(0),
+        ), // PLAYER_NEXT_LEVEL_XP
+        (1102, free_talent_points(snapshot, talents)),     // PLAYER_CHARACTER_POINTS1
+        (46, 0x8),                                        // UNIT_FLAG_PLAYER_CONTROLLED
+        (36, race_class_gender),                          // UNIT_FIELD_BYTES_0
+        (193, player_bytes),                              // PLAYER_BYTES
+        (194, u32::from(appearance.facial_hair)),         // PLAYER_BYTES_2
     ];
+    pairs.extend(character_aura_field_pairs(&snapshot.auras));
+    pairs.extend(quest_log_field_pairs(snapshot));
+    pairs.extend(player_item_field_pairs(snapshot));
     if let Some(faction) = factions.and_then(|factions| factions.race_template(appearance.race)) {
         pairs.push((35, faction));
     }
-    if appearance.class == 8 {
+    if matches!(appearance.class, 2 | 3 | 5 | 7 | 8 | 9 | 11) {
         pairs.extend([
-            (23, benilla_game_core::STARTER_MANA),
-            (29, benilla_game_core::STARTER_MANA),
+            (23, snapshot.mana),
+            (29, benilla_game_core::PLAYER_MAX_MANA),
         ]);
     }
     if let Some(display_id) = display_id {
@@ -457,7 +547,7 @@ fn emit_world_entry(
             display_id,
             position,
             orientation: snapshot.position.orientation,
-            scale: 1.0,
+            scale: crate::body_shape::height_scale(snapshot.body_proportions.into()),
             speeds: None,
             mover: None,
             transport_progress: None,
@@ -466,12 +556,29 @@ fn emit_world_entry(
             fields,
         },
     ];
-    let (spell_ids, buttons) = starter_loadout(appearance.class);
+    for item in snapshot.inventory.iter().chain(snapshot.equipment.iter()) {
+        events.push(item_create_event(guid, snapshot, item));
+        if let Some(info) = item_info(item.entry) {
+            events.push(SessionEvent::ItemTemplate {
+                entry: item.entry,
+                info: Some(Box::new(info)),
+            });
+        }
+    }
     events.push(SessionEvent::SpellBook {
-        spell_ids,
+        spell_ids: snapshot.known_spell_ids.clone(),
         cooldowns: Vec::new(),
     });
-    events.push(SessionEvent::ActionButtons { buttons });
+    events.push(SessionEvent::ActionButtons {
+        buttons: starter_action_buttons(appearance.race, appearance.class),
+    });
+    events.extend(snapshot.auras.iter().filter_map(|aura| {
+        aura.remaining_ms
+            .map(|remaining_ms| SessionEvent::AuraDuration {
+                slot: aura.slot,
+                remaining_ms,
+            })
+    }));
     if snapshot.position.map_id != 530 {
         for hostile in hostiles {
             let entry = hostile_entry();
@@ -535,65 +642,6 @@ fn emit_world_entry(
             });
         }
     }
-    if snapshot.position.map_id != 530 {
-        for npc in friendly_npcs {
-            let entry = friendly_npc_entry();
-            let guid = friendly_npc_guid(npc.spawn_id);
-            // The character-creation catalog provides a build-8606 Blood Elf display for the contact.
-            let display_id = catalog.and_then(|catalog| catalog.0.body_display(10, 0));
-            let scale = display_id
-                .and_then(|display_id| {
-                    creatures.and_then(|catalog| catalog.model_scale(display_id))
-                })
-                .unwrap_or(1.0);
-            if display_id.is_none() {
-                warn!("offline Sunstrider quest contact has no renderable Blood Elf display");
-            }
-            let mut fields = vec![
-                (2, 0x9),
-                (3, entry),
-                (4, scale.to_bits()),
-                (22, 100),
-                (28, 100),
-                (34, 1),
-                (35, 14),
-                (147, crate::target::cursor_mode::npc_flags::QUESTGIVER),
-                (130, 1.5f32.to_bits()),
-            ];
-            if let Some(display_id) = display_id {
-                fields.extend([(131, display_id), (132, display_id)]);
-            }
-            names.insert_creature(
-                entry,
-                Some(crate::names::CreatureRecord {
-                    name: "Warden Elari".to_string(),
-                    subname: Some("Sunstrider Watch".to_string()),
-                    creature_type: 7,
-                    pet_family: 0,
-                    rank: 0,
-                    type_flags: 0,
-                    civilian: true,
-                    racial_leader: false,
-                    display_id: display_id.unwrap_or(0),
-                }),
-            );
-            events.push(SessionEvent::ObjectCreate {
-                guid,
-                kind: EntityKind::Unit,
-                display_id,
-                position: [npc.position.x, npc.position.y, npc.position.z],
-                orientation: npc.position.orientation,
-                scale,
-                speeds: None,
-                mover: None,
-                transport_progress: None,
-                transport: None,
-                spline: None,
-                fields: ObjectFields::from_pairs(&fields)
-                    .into_created(benilla_protocol::messages::ObjectType::Unit),
-            });
-        }
-    }
     let content = benilla_game_core::content::starting_zone_content();
     for spawn in content.spawns_near(
         snapshot.position.map_id,
@@ -604,6 +652,9 @@ fn emit_world_entry(
         let template = content
             .template(spawn.entry)
             .expect("converted spawn template was validated by the content loader");
+        if is_dnd_test_creature(template) {
+            continue;
+        }
         let waypoint_path: Vec<_> = content.waypoints_for(spawn.source_guid).copied().collect();
         let scale = creatures
             .and_then(|catalog| catalog.model_scale(template.display_id))
@@ -624,9 +675,9 @@ fn emit_world_entry(
             }),
         );
         let guid = imported_guid(template.entry, spawn.source_guid);
-        let combat_state = hostiles
-            .iter()
-            .find(|hostile| hostile.spawn_id == spawn.source_guid);
+        let combat_state = hostiles.iter().find(|hostile| {
+            hostile.position.map_id == spawn.map_id && hostile.spawn_id == spawn.source_guid
+        });
         let health = combat_state.map_or(100, |hostile| hostile.health);
         let max_health = combat_state.map_or(100, |hostile| hostile.max_health);
         let mut fields = vec![
@@ -653,6 +704,14 @@ fn emit_world_entry(
                 fields.push((164, u32::from(addon.sheath_state)));
             }
         }
+        if let Some(gender) = benilla_game_core::quest::quest_pack()
+            .quest
+            .iter()
+            .find(|quest| quest.giver_creature_entries.contains(&template.entry))
+            .map(|quest| quest.gossip_npc_gender)
+        {
+            fields.push((36, u32::from(gender) << 16));
+        }
         let fields = ObjectFields::from_pairs(&fields)
             .into_created(benilla_protocol::messages::ObjectType::Unit);
         events.push(SessionEvent::ObjectCreate {
@@ -675,18 +734,20 @@ fn emit_world_entry(
                 let target = [first.x, first.y, first.z];
                 let duration_ms = patrol_leg_duration_ms(start, target);
                 events.push(patrol_move(guid, start, target, 1, duration_ms));
-                if waypoint_path.len() > 1 {
-                    patrols.0.insert(
-                        guid,
-                        ActivePatrol {
-                            waypoints: waypoint_path,
-                            waypoint_index: 0,
-                            position: target,
-                            remaining_ms: duration_ms.saturating_add(first.wait_ms),
-                            spline_id: 1,
-                        },
-                    );
-                }
+                patrols.0.insert(
+                    guid,
+                    ActivePatrol {
+                        waypoints: waypoint_path,
+                        waypoint_index: 0,
+                        leg_start: start,
+                        position: target,
+                        current_position: start,
+                        leg_duration_ms: duration_ms,
+                        wait_ms: first.wait_ms,
+                        remaining_ms: duration_ms.saturating_add(first.wait_ms),
+                        spline_id: 1,
+                    },
+                );
             }
         }
     }
@@ -704,22 +765,100 @@ fn emit_world_entry(
     }
 }
 
-fn starter_loadout(class: u8) -> (Vec<u32>, Vec<benilla_protocol::messages::ActionButton>) {
-    let mut spell_ids = vec![benilla_game_core::ATTACK_SPELL_ID];
-    let mut buttons = vec![benilla_protocol::messages::ActionButton {
-        slot: 0,
-        action: benilla_game_core::ATTACK_SPELL_ID,
-        kind: benilla_protocol::messages::ACTION_KIND_SPELL,
+fn character_aura_field_pairs(auras: &[CharacterAura]) -> Vec<(u16, u32)> {
+    use benilla_protocol::messages::{
+        FIELD_UNIT_AURA, FIELD_UNIT_AURAAPPLICATIONS, FIELD_UNIT_AURAFLAGS, FIELD_UNIT_AURALEVELS,
+        UNIT_AURA_SLOTS,
+    };
+
+    let mut fields = BTreeMap::new();
+    for slot in 0..UNIT_AURA_SLOTS {
+        fields.insert(FIELD_UNIT_AURA + u16::from(slot), 0);
+    }
+    for word in 0..u16::from(UNIT_AURA_SLOTS / 8) {
+        fields.insert(FIELD_UNIT_AURAFLAGS + word, 0);
+    }
+    for word in 0..u16::from(UNIT_AURA_SLOTS / 4) {
+        fields.insert(FIELD_UNIT_AURALEVELS + word, 0);
+        fields.insert(FIELD_UNIT_AURAAPPLICATIONS + word, 0);
+    }
+    for aura in auras {
+        let slot = u16::from(aura.slot);
+        fields.insert(FIELD_UNIT_AURA + slot, aura.spell_id);
+        *fields.entry(FIELD_UNIT_AURAFLAGS + slot / 8).or_default() |=
+            u32::from(aura.flags) << ((slot % 8) * 4);
+        *fields.entry(FIELD_UNIT_AURALEVELS + slot / 4).or_default() |=
+            u32::from(aura.level) << ((slot % 4) * 8);
+        *fields
+            .entry(FIELD_UNIT_AURAAPPLICATIONS + slot / 4)
+            .or_default() |= u32::from(aura.stacks.saturating_sub(1)) << ((slot % 4) * 8);
+    }
+    fields.into_iter().collect()
+}
+
+fn hostile_spell_state_events(
+    guid: u64,
+    hostile: &benilla_game_core::HostileState,
+    expired_aura: Option<u32>,
+) -> Vec<SessionEvent> {
+    let auras = if hostile.burn_spell_id != 0 && hostile.burn_remaining_ms > 0 {
+        vec![CharacterAura {
+            slot: 32,
+            spell_id: hostile.burn_spell_id,
+            flags: 0x08,
+            level: hostile.burn_level,
+            stacks: 1,
+            remaining_ms: Some(hostile.burn_remaining_ms),
+        }]
+    } else {
+        Vec::new()
+    };
+    let mut fields = vec![
+        (22, hostile.health),
+        (143, if hostile.health == 0 { 0x20 } else { 0 }),
+    ];
+    fields.extend(character_aura_field_pairs(&auras));
+    let mut events = vec![SessionEvent::ObjectValues {
+        guid,
+        fields: ObjectFields::from_pairs(&fields),
     }];
-    if class == 8 {
-        spell_ids.push(benilla_game_core::FIREBALL_SPELL_ID);
-        buttons.push(benilla_protocol::messages::ActionButton {
-            slot: 1,
-            action: benilla_game_core::FIREBALL_SPELL_ID,
-            kind: benilla_protocol::messages::ACTION_KIND_SPELL,
+    if let Some(aura) = auras.first() {
+        events.push(SessionEvent::AuraDuration {
+            slot: aura.slot,
+            remaining_ms: aura.remaining_ms.unwrap_or(0),
+        });
+    } else if expired_aura.is_some() {
+        events.push(SessionEvent::AuraDuration {
+            slot: 32,
+            remaining_ms: 0,
         });
     }
-    (spell_ids, buttons)
+    events
+}
+
+fn free_talent_points(
+    snapshot: &benilla_game_core::CharacterSnapshot,
+    talents: Option<&crate::ui_talent::Talents>,
+) -> u32 {
+    let earned = u32::from(snapshot.level.saturating_sub(9));
+    if earned == 0 {
+        return 0;
+    }
+    let Some(talents) = talents else { return 0 };
+    let talent_spells: std::collections::BTreeSet<u32> = talents
+        .catalog
+        .tabs_for_class(snapshot.appearance.race, snapshot.appearance.class)
+        .into_iter()
+        .flat_map(|tab| talents.catalog.talents_in_tab(tab.id))
+        .flat_map(|talent| talent.ranks)
+        .filter(|spell_id| *spell_id != 0)
+        .collect();
+    let spent = snapshot
+        .known_spell_ids
+        .iter()
+        .filter(|spell_id| talent_spells.contains(spell_id))
+        .count() as u32;
+    earned.saturating_sub(spent)
 }
 
 fn starting_position(race: u8) -> Option<WorldPosition> {
@@ -756,17 +895,7 @@ fn hostile_name() -> &'static str {
 fn hostile_guid(spawn_id: u32) -> u64 {
     (u64::from(benilla_protocol::guid::HIGH_UNIT) << 48)
         | (u64::from(hostile_entry()) << 24)
-        | u64::from(spawn_id)
-}
-
-fn friendly_npc_entry() -> u32 {
-    91_001
-}
-
-fn friendly_npc_guid(spawn_id: u32) -> u64 {
-    (u64::from(benilla_protocol::guid::HIGH_UNIT) << 48)
-        | (u64::from(friendly_npc_entry()) << 24)
-        | u64::from(spawn_id)
+        | u64::from(spawn_id & 0x00ff_ffff)
 }
 
 fn imported_guid(entry: u32, source_guid: u32) -> u64 {
@@ -779,11 +908,340 @@ fn combat_target_guid(hostile: &HostileState) -> Option<u64> {
     if hostile.position.map_id != 530 {
         return Some(hostile_guid(hostile.spawn_id));
     }
-    benilla_game_core::content::starting_zone_content()
-        .spawn
+    Some(imported_guid(hostile.creature_entry, hostile.spawn_id))
+}
+
+fn inventory_item_guid(
+    snapshot: &benilla_game_core::CharacterSnapshot,
+    item: &benilla_game_core::quest::InventoryItem,
+) -> u64 {
+    let owner = snapshot.id.presentation_guid() & 0xffff_ffff;
+    let counter = (owner << 16) | (item.instance_id & 0xffff);
+    (u64::from(benilla_protocol::guid::HIGH_ITEM) << 48) | counter
+}
+
+/// Every inventory field the player object carries: the 19 worn slots and 16 backpack slots as
+/// item guids (0 when empty, so a vacated slot clears live), each worn item's public entry for the
+/// model, and `UNIT_FIELD_RESISTANCES[0]` = the worn armor total. Shared by world entry and every
+/// live inventory move.
+fn player_item_field_pairs(snapshot: &benilla_game_core::CharacterSnapshot) -> Vec<(u16, u32)> {
+    use benilla_game_core::quest::{BACKPACK_SLOTS, EQUIPMENT_SLOTS};
+
+    let mut pairs = Vec::with_capacity(76);
+    for slot in 0..EQUIPMENT_SLOTS {
+        let item = snapshot.equipment.iter().find(|item| item.slot == slot);
+        let guid = item
+            .map(|item| inventory_item_guid(snapshot, item))
+            .unwrap_or(0);
+        let field = FIELD_PLAYER_INV_SLOT_HEAD + 2 * u16::from(slot);
+        pairs.push((field, guid as u32));
+        pairs.push((field + 1, (guid >> 32) as u32));
+        pairs.push((
+            FIELD_PLAYER_VISIBLE_ITEM_1_CREATOR + 2 + 12 * u16::from(slot),
+            item.map(|item| item.entry).unwrap_or(0),
+        ));
+    }
+    for slot in 0..BACKPACK_SLOTS {
+        let guid = snapshot
+            .inventory
+            .iter()
+            .find(|item| item.slot == slot)
+            .map(|item| inventory_item_guid(snapshot, item))
+            .unwrap_or(0);
+        let field = FIELD_PLAYER_PACK_SLOT_1 + 2 * u16::from(slot);
+        pairs.push((field, guid as u32));
+        pairs.push((field + 1, (guid >> 32) as u32));
+    }
+    let armor: u32 = snapshot
+        .equipment
         .iter()
-        .find(|spawn| spawn.source_guid == hostile.spawn_id)
-        .map(|spawn| imported_guid(spawn.entry, spawn.source_guid))
+        .filter_map(|item| benilla_game_core::quest::item_template(item.entry))
+        .map(|template| template.armor)
+        .sum();
+    pairs.push((FIELD_UNIT_RESISTANCES, armor));
+    pairs
+}
+
+/// `PLAYER_FIELD_INV_SLOT_HEAD`.
+const FIELD_PLAYER_INV_SLOT_HEAD: u16 = 486;
+/// `PLAYER_FIELD_PACK_SLOT_1`.
+const FIELD_PLAYER_PACK_SLOT_1: u16 = 532;
+/// `PLAYER_VISIBLE_ITEM_1_CREATOR`; the entry sits two dwords in, each slot 12 wide.
+const FIELD_PLAYER_VISIBLE_ITEM_1_CREATOR: u16 = 258;
+/// `UNIT_FIELD_RESISTANCES[0]`, the armor total.
+const FIELD_UNIT_RESISTANCES: u16 = 155;
+/// The wire bag byte that names the player's own inventory array (equipment + backpack + bank).
+const BAG_PLAYER_INVENTORY: u8 = 255;
+/// The first backpack slot in that array; equipment is `0..19`.
+const SLOT_PACK_FIRST: u8 = 23;
+
+/// A wire `(bag, slot)` on the player's own inventory array as a core item position; `None` for a
+/// bag we do not model (an equipped bag) or a slot we do not carry (bank, keyring).
+fn wire_item_slot(bag_index: u8, slot: u8) -> Option<benilla_game_core::ItemSlot> {
+    use benilla_game_core::quest::{BACKPACK_SLOTS, EQUIPMENT_SLOTS};
+    use benilla_game_core::ItemSlot;
+    if bag_index != BAG_PLAYER_INVENTORY {
+        return None;
+    }
+    if slot < EQUIPMENT_SLOTS {
+        Some(ItemSlot::Equipment(slot))
+    } else if (SLOT_PACK_FIRST..SLOT_PACK_FIRST + BACKPACK_SLOTS).contains(&slot) {
+        Some(ItemSlot::Backpack(slot - SLOT_PACK_FIRST))
+    } else {
+        None
+    }
+}
+
+/// Push the player's item fields after a live change and persist the character.
+fn publish_offline_inventory(
+    core: &benilla_game_core::GameCore,
+    persistence: &mut OfflinePersistence,
+    channels: &OfflineChannels,
+) {
+    let Some(snapshot) = core.active().and_then(|id| core.snapshot(id)) else {
+        return;
+    };
+    send_gameplay_events(
+        channels,
+        [SessionEvent::ObjectValues {
+            guid: snapshot.id.presentation_guid(),
+            fields: ObjectFields::from_pairs(&player_item_field_pairs(snapshot)),
+        }],
+    );
+    save_after_command(core, persistence);
+}
+
+fn offline_auto_equip(
+    core: &mut benilla_game_core::GameCore,
+    persistence: &mut OfflinePersistence,
+    channels: &OfflineChannels,
+    bag_index: u8,
+    slot: u8,
+) {
+    let Some(benilla_game_core::ItemSlot::Backpack(backpack_slot)) =
+        wire_item_slot(bag_index, slot)
+    else {
+        return;
+    };
+    match core.equip_from_backpack(backpack_slot) {
+        Ok(()) => publish_offline_inventory(core, persistence, channels),
+        Err(error) => debug!("offline inventory: auto-equip {backpack_slot} refused: {error}"),
+    }
+}
+
+fn offline_swap_inv(
+    core: &mut benilla_game_core::GameCore,
+    persistence: &mut OfflinePersistence,
+    channels: &OfflineChannels,
+    src_slot: u8,
+    dst_slot: u8,
+) {
+    let (Some(from), Some(to)) = (
+        wire_item_slot(BAG_PLAYER_INVENTORY, src_slot),
+        wire_item_slot(BAG_PLAYER_INVENTORY, dst_slot),
+    ) else {
+        return;
+    };
+    match core.move_item(from, to) {
+        Ok(()) => publish_offline_inventory(core, persistence, channels),
+        Err(error) => debug!("offline inventory: swap {src_slot}/{dst_slot} refused: {error}"),
+    }
+}
+
+fn offline_swap_item(
+    core: &mut benilla_game_core::GameCore,
+    persistence: &mut OfflinePersistence,
+    channels: &OfflineChannels,
+    src: (u8, u8),
+    dst: (u8, u8),
+) {
+    let (Some(from), Some(to)) = (wire_item_slot(src.0, src.1), wire_item_slot(dst.0, dst.1))
+    else {
+        return;
+    };
+    match core.move_item(from, to) {
+        Ok(()) => publish_offline_inventory(core, persistence, channels),
+        Err(error) => debug!(
+            "offline inventory: swap {:?}/{:?} refused: {error}",
+            src, dst
+        ),
+    }
+}
+
+fn offline_store_bag(
+    core: &mut benilla_game_core::GameCore,
+    persistence: &mut OfflinePersistence,
+    channels: &OfflineChannels,
+    src_bag: u8,
+    src_slot: u8,
+) {
+    let Some(benilla_game_core::ItemSlot::Equipment(equip_slot)) =
+        wire_item_slot(src_bag, src_slot)
+    else {
+        return;
+    };
+    match core.unequip_to_backpack(equip_slot) {
+        Ok(()) => publish_offline_inventory(core, persistence, channels),
+        Err(error) => debug!("offline inventory: unequip {equip_slot} refused: {error}"),
+    }
+}
+
+fn offline_use_item(
+    core: &mut benilla_game_core::GameCore,
+    persistence: &mut OfflinePersistence,
+    channels: &OfflineChannels,
+    bag_index: u8,
+    slot: u8,
+) {
+    let Some(benilla_game_core::ItemSlot::Backpack(backpack_slot)) =
+        wire_item_slot(bag_index, slot)
+    else {
+        return;
+    };
+    if core.equip_from_backpack(backpack_slot).is_ok() {
+        publish_offline_inventory(core, persistence, channels);
+    }
+}
+
+fn offline_destroy_item(
+    core: &mut benilla_game_core::GameCore,
+    persistence: &mut OfflinePersistence,
+    channels: &OfflineChannels,
+    bag_index: u8,
+    slot: u8,
+) {
+    let Some(at) = wire_item_slot(bag_index, slot) else {
+        return;
+    };
+    match core.destroy_item(at) {
+        Ok(()) => publish_offline_inventory(core, persistence, channels),
+        Err(error) => debug!("offline inventory: destroy {slot} refused: {error}"),
+    }
+}
+
+fn quest_log_slot_fields(
+    slot: usize,
+    progress: &benilla_game_core::quest::QuestProgress,
+    complete: bool,
+) -> [(u16, u32); 3] {
+    let base = 198 + 3 * slot as u16;
+    if progress.reward_choice.is_some() {
+        return [(base, 0), (base + 1, 0), (base + 2, 0)];
+    }
+    let count_state = progress
+        .objective_counts
+        .iter()
+        .take(4)
+        .enumerate()
+        .fold(0u32, |word, (index, &count)| {
+            word | (count.min(0x3f) << (index * 6))
+        })
+        | (u32::from(complete) << 24);
+    [
+        (base, progress.quest_id),
+        (base + 1, count_state),
+        (base + 2, 0),
+    ]
+}
+
+fn quest_log_field_pairs(snapshot: &benilla_game_core::CharacterSnapshot) -> Vec<(u16, u32)> {
+    snapshot
+        .quest_journal
+        .entries
+        .iter()
+        .enumerate()
+        .flat_map(|(slot, progress)| {
+            quest_log_slot_fields(
+                slot,
+                progress,
+                snapshot.quest_journal.is_complete(progress.quest_id),
+            )
+        })
+        .collect()
+}
+
+fn item_info(entry: u32) -> Option<benilla_protocol::ItemInfo> {
+    let item = benilla_game_core::quest::item_template(entry)?;
+    Some(benilla_protocol::ItemInfo {
+        class: item.class,
+        subclass: item.subclass,
+        name: item.name.clone(),
+        display_info_id: item.display_id,
+        quality: item.quality,
+        flags: 0,
+        buy_price: item.buy_price,
+        sell_price: item.sell_price,
+        inventory_type: item.inventory_type,
+        allowable_class: item.allowable_class,
+        allowable_race: item.allowable_race,
+        item_level: item.item_level,
+        required_level: 0,
+        required_skill: 0,
+        required_skill_rank: 0,
+        required_spell: 0,
+        required_honor_rank: 0,
+        required_city_rank: 0,
+        required_rep_faction: 0,
+        required_rep_rank: 0,
+        max_count: 0,
+        stackable: item.stackable,
+        container_slots: 0,
+        stats: Vec::new(),
+        damages: Vec::new(),
+        dmg_min: 0.0,
+        dmg_max: 0.0,
+        dmg_type: 0,
+        armor: item.armor,
+        resistances: [0; 6],
+        delay_ms: 0,
+        ammo_type: 0,
+        ranged_mod_range: 0.0,
+        spells: Vec::new(),
+        spell_charges_0: 0,
+        use_spell: None,
+        bonding: item.bonding,
+        description: String::new(),
+        page_text: 0,
+        language_id: 0,
+        page_material: 0,
+        start_quest: 0,
+        lock_id: 0,
+        material: item.material,
+        sheath: 0,
+        random_property: 0,
+        block: 0,
+        item_set: 0,
+        max_durability: item.max_durability,
+        area: 0,
+        map: 0,
+        bag_family: 0,
+    })
+}
+
+fn item_create_event(
+    player_guid: u64,
+    snapshot: &benilla_game_core::CharacterSnapshot,
+    item: &benilla_game_core::quest::InventoryItem,
+) -> SessionEvent {
+    let guid = inventory_item_guid(snapshot, item);
+    let max_durability = item_info(item.entry).map_or(0, |info| info.max_durability);
+    SessionEvent::ItemCreate {
+        guid,
+        container: false,
+        fields: ObjectFields::from_pairs(&[
+            (2, 0x3),
+            (3, item.entry),
+            (4, 1.0f32.to_bits()),
+            (6, player_guid as u32),
+            (7, (player_guid >> 32) as u32),
+            (8, player_guid as u32),
+            (9, (player_guid >> 32) as u32),
+            (14, item.count),
+            (46, max_durability),
+            (47, max_durability),
+        ])
+        .into_created(benilla_protocol::messages::ObjectType::Item),
+    }
 }
 
 fn patrol_leg_duration_ms(start: [f32; 3], target: [f32; 3]) -> u32 {
@@ -821,7 +1279,7 @@ fn patrol_move(
 
 fn advance_offline_patrols(
     channels: Res<OfflineChannels>,
-    core: Res<OfflineGameCore>,
+    mut core: ResMut<OfflineGameCore>,
     time: Res<Time>,
     mut patrols: ResMut<OfflinePatrols>,
 ) {
@@ -830,35 +1288,113 @@ fn advance_offline_patrols(
         return;
     }
     let elapsed_ms = (time.delta_secs_f64() * 1_000.0).round() as u32;
-    if elapsed_ms == 0 {
-        return;
-    }
+    let mut remove = Vec::new();
     for (&guid, patrol) in &mut patrols.0 {
-        let Some(event) = advance_patrol(guid, patrol, elapsed_ms) else {
+        let hostile = core
+            .0
+            .hostiles()
+            .iter()
+            .find(|hostile| combat_target_guid(hostile) == Some(guid))
+            .copied();
+        if hostile.is_some_and(|hostile| hostile.engaged || hostile.provoked || hostile.evading) {
+            remove.push(guid);
             continue;
-        };
-        if channels.events.send(event).is_err() {
-            error!("offline patrol adapter: event receiver was dropped");
-            break;
         }
+        let event = advance_patrol(guid, patrol, elapsed_ms);
+        if let Some(hostile) = hostile {
+            let [x, y, z] = patrol.current_position;
+            let orientation = (patrol.position[1] - patrol.leg_start[1])
+                .atan2(patrol.position[0] - patrol.leg_start[0]);
+            core.0.update_hostile_position(
+                hostile.spawn_id,
+                WorldPosition {
+                    map_id: hostile.position.map_id,
+                    x,
+                    y,
+                    z,
+                    orientation,
+                },
+                patrol.spline_id,
+            );
+        }
+        if patrol.waypoints.len() == 1 && patrol.remaining_ms == 0 {
+            remove.push(guid);
+        }
+        if let Some(event) = event {
+            if channels.events.send(event).is_err() {
+                error!("offline patrol adapter: event receiver was dropped");
+                break;
+            }
+        }
+    }
+    for guid in remove {
+        patrols.0.remove(&guid);
     }
 }
 
 fn advance_patrol(guid: u64, patrol: &mut ActivePatrol, elapsed_ms: u32) -> Option<SessionEvent> {
     if elapsed_ms < patrol.remaining_ms {
         patrol.remaining_ms -= elapsed_ms;
+        let remaining_leg_ms = patrol
+            .remaining_ms
+            .saturating_sub(patrol.wait_ms)
+            .min(patrol.leg_duration_ms);
+        let progress = if patrol.leg_duration_ms == 0 {
+            1.0
+        } else {
+            (patrol.leg_duration_ms - remaining_leg_ms) as f32 / patrol.leg_duration_ms as f32
+        };
+        patrol.current_position = std::array::from_fn(|index| {
+            patrol.leg_start[index] + (patrol.position[index] - patrol.leg_start[index]) * progress
+        });
+        return None;
+    }
+    if patrol.waypoints.len() == 1 {
+        patrol.current_position = patrol.position;
+        patrol.remaining_ms = 0;
         return None;
     }
     let next_index = (patrol.waypoint_index + 1) % patrol.waypoints.len();
     let waypoint = patrol.waypoints[next_index];
     let target = [waypoint.x, waypoint.y, waypoint.z];
-    let duration_ms = patrol_leg_duration_ms(patrol.position, target);
+    let start = patrol.position;
+    let duration_ms = patrol_leg_duration_ms(start, target);
     patrol.spline_id = patrol.spline_id.wrapping_add(1).max(1);
-    let event = patrol_move(guid, patrol.position, target, patrol.spline_id, duration_ms);
+    let event = patrol_move(guid, start, target, patrol.spline_id, duration_ms);
     patrol.waypoint_index = next_index;
+    patrol.leg_start = start;
     patrol.position = target;
+    patrol.current_position = start;
+    patrol.leg_duration_ms = duration_ms;
+    patrol.wait_ms = waypoint.wait_ms;
     patrol.remaining_ms = duration_ms.saturating_add(waypoint.wait_ms);
     Some(event)
+}
+
+const SPELL_EFFECT_APPLY_AURA: u32 = 6;
+const SPELL_AURA_PERIODIC_DAMAGE: u32 = 3;
+
+fn supported_direct_effect_slot(effects: [u32; 3], auras: [u32; 3]) -> Option<usize> {
+    let mut direct = None;
+    let mut periodic_damage = false;
+    for (slot, effect) in effects.into_iter().enumerate() {
+        match effect {
+            0 => {}
+            benilla_formats::SPELL_EFFECT_SCHOOL_DAMAGE | benilla_formats::SPELL_EFFECT_HEAL => {
+                if direct.replace(slot).is_some() {
+                    return None;
+                }
+            }
+            SPELL_EFFECT_APPLY_AURA if auras[slot] == SPELL_AURA_PERIODIC_DAMAGE => {
+                periodic_damage = true;
+            }
+            _ => return None,
+        }
+    }
+
+    direct.filter(|slot| {
+        !periodic_damage || effects[*slot] == benilla_formats::SPELL_EFFECT_SCHOOL_DAMAGE
+    })
 }
 
 fn drive_offline_gameplay(
@@ -867,11 +1403,112 @@ fn drive_offline_gameplay(
     mut persistence: ResMut<OfflinePersistence>,
     time: Res<Time>,
     spells: Option<Res<crate::ui_action::Spells>>,
+    skill_lines: Option<Res<crate::ui_spellbook::SkillLines>>,
+    talents: Option<Res<crate::ui_talent::Talents>>,
 ) {
     while let Ok(command) = channels.commands.try_recv() {
         match &command {
+            crate::net::ClientCommand::ItemQuery { entry, .. } => {
+                let info = item_info(*entry).map(Box::new);
+                send_gameplay_events(
+                    &channels,
+                    [SessionEvent::ItemTemplate {
+                        entry: *entry,
+                        info,
+                    }],
+                );
+                continue;
+            }
+            crate::net::ClientCommand::GossipHello { guid } => {
+                send_offline_gossip_menu(&core.0, &channels, *guid);
+                continue;
+            }
+            crate::net::ClientCommand::NpcTextQuery { text_id, guid } => {
+                send_offline_npc_text(&core.0, &channels, *guid, *text_id);
+                continue;
+            }
+            crate::net::ClientCommand::QuestgiverStatusQuery { npc } => {
+                send_offline_questgiver_status(&core.0, &channels, *npc);
+                continue;
+            }
+            crate::net::ClientCommand::QuestgiverHello { npc } => {
+                send_offline_quest_greeting(&core.0, &channels, *npc);
+                continue;
+            }
+            crate::net::ClientCommand::QuestgiverQuery { npc, quest } => {
+                send_offline_quest_details(&core.0, &channels, *npc, *quest);
+                continue;
+            }
+            crate::net::ClientCommand::QuestgiverAccept { npc, quest } => {
+                accept_offline_quest(&mut core.0, &mut persistence, &channels, *npc, *quest);
+                continue;
+            }
+            crate::net::ClientCommand::QuestgiverComplete { npc, quest } => {
+                send_offline_quest_progress(&core.0, &channels, *npc, *quest);
+                continue;
+            }
+            crate::net::ClientCommand::QuestgiverRequestReward { npc, quest } => {
+                send_offline_quest_reward(&core.0, &channels, *npc, *quest);
+                continue;
+            }
+            crate::net::ClientCommand::QuestgiverChooseReward { npc, quest, choice } => {
+                reward_offline_quest(
+                    &mut core.0,
+                    &mut persistence,
+                    &channels,
+                    *npc,
+                    *quest,
+                    *choice,
+                    talents.as_deref(),
+                );
+                continue;
+            }
+            crate::net::ClientCommand::QuestQuery { quest } => {
+                send_offline_quest_template(&channels, *quest);
+                continue;
+            }
+            crate::net::ClientCommand::TrainerList { trainer } => {
+                send_offline_trainer_list(
+                    &core.0,
+                    &channels,
+                    *trainer,
+                    spells.as_deref(),
+                    skill_lines.as_deref(),
+                );
+                continue;
+            }
+            crate::net::ClientCommand::TrainerBuySpell { trainer, spell_id } => {
+                buy_offline_trainer_spell(
+                    &mut core.0,
+                    &mut persistence,
+                    &channels,
+                    *trainer,
+                    *spell_id,
+                    spells.as_deref(),
+                    skill_lines.as_deref(),
+                );
+                continue;
+            }
+            crate::net::ClientCommand::LearnTalent { talent_id, rank } => {
+                learn_offline_talent(
+                    &mut core.0,
+                    &mut persistence,
+                    &channels,
+                    talents.as_deref(),
+                    skill_lines.as_deref(),
+                    *talent_id,
+                    *rank,
+                );
+                continue;
+            }
             crate::net::ClientCommand::CancelCast { spell_id } => {
-                core.0.cancel_fireball(*spell_id);
+                if core.0.cancel_spell(*spell_id) {
+                    save_after_command(&core.0, &mut persistence);
+                }
+                continue;
+            }
+            crate::net::ClientCommand::CancelAura { spell_id } => {
+                cancel_offline_aura(&mut core.0, &mut persistence, &channels, *spell_id);
                 continue;
             }
             crate::net::ClientCommand::AttackSwing { guid } => {
@@ -880,6 +1517,63 @@ fn drive_offline_gameplay(
             }
             crate::net::ClientCommand::AttackStop => {
                 stop_offline_auto_attack(&mut core.0, &channels);
+                continue;
+            }
+            crate::net::ClientCommand::RepopRequest => {
+                respawn_offline_character(&mut core.0, &mut persistence, &channels);
+                continue;
+            }
+            crate::net::ClientCommand::AutoEquipItem { bag_index, slot } => {
+                offline_auto_equip(&mut core.0, &mut persistence, &channels, *bag_index, *slot);
+                continue;
+            }
+            crate::net::ClientCommand::SwapInvItem { src_slot, dst_slot } => {
+                offline_swap_inv(
+                    &mut core.0,
+                    &mut persistence,
+                    &channels,
+                    *src_slot,
+                    *dst_slot,
+                );
+                continue;
+            }
+            crate::net::ClientCommand::SwapItem {
+                dst_bag,
+                dst_slot,
+                src_bag,
+                src_slot,
+            } => {
+                offline_swap_item(
+                    &mut core.0,
+                    &mut persistence,
+                    &channels,
+                    (*src_bag, *src_slot),
+                    (*dst_bag, *dst_slot),
+                );
+                continue;
+            }
+            crate::net::ClientCommand::AutoStoreBagItem {
+                src_bag, src_slot, ..
+            } => {
+                offline_store_bag(
+                    &mut core.0,
+                    &mut persistence,
+                    &channels,
+                    *src_bag,
+                    *src_slot,
+                );
+                continue;
+            }
+            crate::net::ClientCommand::UseItem {
+                bag_index, slot, ..
+            } => {
+                offline_use_item(&mut core.0, &mut persistence, &channels, *bag_index, *slot);
+                continue;
+            }
+            crate::net::ClientCommand::DestroyItem {
+                bag_index, slot, ..
+            } => {
+                offline_destroy_item(&mut core.0, &mut persistence, &channels, *bag_index, *slot);
                 continue;
             }
             _ => {}
@@ -899,32 +1593,1046 @@ fn drive_offline_gameplay(
             }
             continue;
         }
-        let mana_cost = match &command {
+        let cast_data = match &command {
             crate::net::ClientCommand::CastSpell { spell_id, .. } => spells
                 .as_deref()
                 .and_then(|spells| {
                     let spell = spells.catalog.get(*spell_id)?;
-                    let cast_time_ms =
-                        spells.cast_time_ms(spell, 1, &crate::spell::SpellModifiers::default());
-                    Some((spell.mana_cost, cast_time_ms))
+                    if spell.power_type != 0 {
+                        return None;
+                    }
+                    let caster_level = core
+                        .0
+                        .active()
+                        .and_then(|id| core.0.snapshot(id))
+                        .map(|snapshot| u32::from(snapshot.level))?;
+                    let effect_slot =
+                        supported_direct_effect_slot(spell.effects, spell.effect_apply_aura)?;
+                    let (min, max) = spell.base_effect_range(effect_slot)?;
+                    let effect = match spell.effects[effect_slot] {
+                        benilla_formats::SPELL_EFFECT_SCHOOL_DAMAGE => {
+                            let periodic = (0..3).find_map(|slot| {
+                                if spell.effects[slot] != SPELL_EFFECT_APPLY_AURA
+                                    || spell.effect_apply_aura[slot] != SPELL_AURA_PERIODIC_DAMAGE
+                                {
+                                    return None;
+                                }
+                                let (min, max) = spell.base_effect_range(slot)?;
+                                let tick_ms = spell.effect_amplitude[slot];
+                                let duration_ms = u32::try_from(
+                                    spells.durations.get(spell.duration_index)?.base_ms,
+                                )
+                                .ok()?;
+                                (tick_ms > 0 && duration_ms >= tick_ms).then_some(
+                                    benilla_game_core::PeriodicDamage {
+                                        min: u32::try_from(min).ok()?,
+                                        max: u32::try_from(max).ok()?,
+                                        tick_ms,
+                                        duration_ms,
+                                    },
+                                )
+                            });
+                            benilla_game_core::DirectSpellEffect::Damage {
+                                min: u32::try_from(min).ok()?,
+                                max: u32::try_from(max).ok()?,
+                                school: 1_u32.checked_shl(spell.school)?,
+                                periodic,
+                            }
+                        }
+                        benilla_formats::SPELL_EFFECT_HEAL => {
+                            benilla_game_core::DirectSpellEffect::Heal {
+                                min: u32::try_from(min).ok()?,
+                                max: u32::try_from(max).ok()?,
+                            }
+                        }
+                        _ => return None,
+                    };
+                    let range = benilla_formats::min_max_range(
+                        spell,
+                        spells.ranges.get(spell.range_index),
+                        benilla_formats::RangeUnit::still(0.0),
+                        benilla_formats::RangeTargets::default(),
+                    );
+                    let range_yards = match (effect, range) {
+                        (benilla_game_core::DirectSpellEffect::Heal { .. }, None) => 0.0,
+                        (_, Some((_, max))) => max,
+                        _ => return None,
+                    };
+                    Some((
+                        spell.mana_cost_at_level(
+                            caster_level,
+                            benilla_game_core::PLAYER_MAX_MANA,
+                        ),
+                        spells.cast_time_ms(
+                            spell,
+                            caster_level,
+                            &crate::spell::SpellModifiers::default(),
+                        ),
+                        spell.recovery_ms,
+                        spell.start_recovery_ms,
+                        range_yards,
+                        effect,
+                    ))
                 })
                 .or_else(|| {
                     (*spell_id == benilla_game_core::FIREBALL_SPELL_ID).then_some((
                         benilla_game_core::FIREBALL_MANA_COST,
                         benilla_game_core::FIREBALL_CAST_MS,
+                        0,
+                        benilla_game_core::FIREBALL_CAST_MS,
+                        benilla_game_core::FIREBALL_RANGE_YARDS,
+                        benilla_game_core::DirectSpellEffect::Damage {
+                            min: benilla_game_core::FIREBALL_RANK1_DAMAGE_MIN,
+                            max: benilla_game_core::FIREBALL_RANK1_DAMAGE_MAX,
+                            school: 4,
+                            periodic: Some(benilla_game_core::PeriodicDamage {
+                                min: benilla_game_core::FIREBALL_BURN_DAMAGE,
+                                max: benilla_game_core::FIREBALL_BURN_DAMAGE,
+                                tick_ms: benilla_game_core::FIREBALL_BURN_TICK_MS,
+                                duration_ms: benilla_game_core::FIREBALL_BURN_MS,
+                            }),
+                        },
                     ))
                 }),
             _ => None,
         };
-        if let Some((mana_cost, cast_time_ms)) = mana_cost {
-            start_offline_cast(&mut core.0, &channels, command, mana_cost, cast_time_ms);
+        if let Some((
+            mana_cost,
+            cast_time_ms,
+            spell_cooldown_ms,
+            cooldown_ms,
+            range_yards,
+            effect,
+        )) = cast_data
+        {
+            let started = start_offline_cast(
+                &mut core.0,
+                &channels,
+                command,
+                mana_cost,
+                cast_time_ms,
+                spell_cooldown_ms,
+                cooldown_ms,
+                range_yards,
+                effect,
+            );
+            if started {
+                save_after_command(&core.0, &mut persistence);
+            }
+        } else if let crate::net::ClientCommand::CastSpell { spell_id, .. } = &command {
+            warn!(
+                "offline gameplay: spell {spell_id} has no available direct damage/heal handler"
+            );
         }
     }
     if core.0.active().is_none() {
         return;
     }
     let elapsed_ms = (time.delta_secs_f64() * 1000.0).round() as u32;
-    advance_offline_combat(&mut core.0, &channels, elapsed_ms);
+    let mut changed = advance_offline_combat(&mut core.0, &channels, elapsed_ms);
+    let expired_auras = core.0.advance_active_auras(elapsed_ms);
+    if !expired_auras.is_empty() {
+        publish_offline_auras(&core.0, &channels, &expired_auras);
+        changed = true;
+    }
+    if changed {
+        save_after_command(&core.0, &mut persistence);
+    }
+}
+
+fn cancel_offline_aura(
+    core: &mut GameCore,
+    persistence: &mut OfflinePersistence,
+    channels: &OfflineChannels,
+    spell_id: u32,
+) {
+    let Some(aura) = core
+        .active_auras()
+        .and_then(|auras| auras.iter().find(|aura| aura.spell_id == spell_id))
+        .copied()
+    else {
+        return;
+    };
+    core.remove_active_aura(aura.slot);
+    publish_offline_auras(
+        core,
+        channels,
+        &[CharacterAura {
+            remaining_ms: Some(0),
+            ..aura
+        }],
+    );
+    save_after_command(core, persistence);
+}
+
+fn publish_offline_auras(core: &GameCore, channels: &OfflineChannels, removed: &[CharacterAura]) {
+    let Some(id) = core.active() else { return };
+    let mut events = vec![SessionEvent::ObjectValues {
+        guid: id.presentation_guid(),
+        fields: ObjectFields::from_pairs(&character_aura_field_pairs(
+            core.active_auras().unwrap_or_default(),
+        )),
+    }];
+    events.extend(removed.iter().map(|aura| SessionEvent::AuraDuration {
+        slot: aura.slot,
+        remaining_ms: 0,
+    }));
+    send_gameplay_events(channels, events);
+}
+
+fn respawn_offline_character(
+    core: &mut GameCore,
+    persistence: &mut OfflinePersistence,
+    channels: &OfflineChannels,
+) {
+    if core.active_health() != 0 {
+        return;
+    }
+    let Some(character) = core.active().and_then(|id| core.snapshot(id)).cloned() else {
+        return;
+    };
+    let Some(position) = starting_position(character.appearance.race) else {
+        warn!(
+            "offline death recovery: no starting anchor for race {}",
+            character.appearance.race
+        );
+        return;
+    };
+    let stopped_attack = core.stop_auto_attack();
+    let snapshot = match core.respawn_active(position) {
+        Ok(snapshot) => snapshot,
+        Err(error) => {
+            warn!("offline death recovery failed: {error}");
+            return;
+        }
+    };
+    let player_guid = snapshot.id.presentation_guid();
+    let mut events = Vec::new();
+    if let Some(spawn_id) = stopped_attack {
+        if let Some(hostile) = core.hostile(spawn_id) {
+            if let Some(victim) = combat_target_guid(&hostile) {
+                events.push(SessionEvent::AttackStop {
+                    attacker: player_guid,
+                    victim,
+                });
+            }
+        }
+    }
+    events.push(SessionEvent::ObjectValues {
+        guid: player_guid,
+        fields: ObjectFields::from_pairs(&[
+            (22, benilla_game_core::PLAYER_MAX_HEALTH),
+            (23, core.active_mana()),
+        ]),
+    });
+    if character.position.map_id == position.map_id {
+        events.push(SessionEvent::Teleport {
+            guid: player_guid,
+            counter: 0,
+            position: [position.x, position.y, position.z],
+            orientation: position.orientation,
+        });
+    } else {
+        events.push(SessionEvent::Worldport {
+            map_id: position.map_id,
+            position: [position.x, position.y, position.z],
+            orientation: position.orientation,
+            needs_ack: false,
+        });
+    }
+    send_gameplay_events(channels, events);
+    save_after_command(core, persistence);
+}
+
+fn imported_spawn_for_guid(
+    guid: u64,
+) -> Option<&'static benilla_game_core::content::CreatureSpawn> {
+    let entry = benilla_protocol::guid::entry(guid)?;
+    let source_guid = (guid & 0x00ff_ffff) as u32;
+    benilla_game_core::content::starting_zone_content()
+        .spawn
+        .iter()
+        .find(|spawn| {
+            spawn.map_id == 530
+                && spawn.entry == entry
+                && spawn.source_guid & 0x00ff_ffff == source_guid
+        })
+}
+
+fn quest_npc_entry(core: &GameCore, guid: u64) -> Option<u32> {
+    let spawn = imported_spawn_for_guid(guid)?;
+    let template = benilla_game_core::content::starting_zone_content().template(spawn.entry)?;
+    let interaction_flags = crate::target::cursor_mode::npc_flags::GOSSIP
+        | crate::target::cursor_mode::npc_flags::QUESTGIVER;
+    if template.npc_flags & interaction_flags == 0 {
+        return None;
+    }
+    let player = core.snapshot(core.active()?)?.position;
+    (player.map_id == spawn.map_id).then_some(spawn.entry)
+}
+
+/// The target dispatcher already gates an interaction click against the live ECS pose. State-changing
+/// quest commands recheck reach against game-core's authoritative saved pose.
+fn quest_npc_in_range(core: &GameCore, guid: u64) -> Option<u32> {
+    let entry = quest_npc_entry(core, guid)?;
+    let spawn = imported_spawn_for_guid(guid)?;
+    let player = core.snapshot(core.active()?)?.position;
+    let dx = player.x - spawn.x;
+    let dy = player.y - spawn.y;
+    let dz = player.z - spawn.z;
+    (dx * dx + dy * dy + dz * dz
+        <= OFFLINE_INTERACTION_RANGE_YARDS * OFFLINE_INTERACTION_RANGE_YARDS)
+        .then_some(entry)
+}
+
+fn quest_giver_guid(core: &GameCore, npc_entry: u32) -> Option<u64> {
+    let player = core.snapshot(core.active()?)?.position;
+    benilla_game_core::content::starting_zone_content()
+        .spawns_near(
+            player.map_id,
+            player.x,
+            player.y,
+            OFFLINE_CONTENT_RADIUS_YARDS,
+        )
+        .find(|spawn| spawn.entry == npc_entry)
+        .map(|spawn| imported_guid(spawn.entry, spawn.source_guid))
+}
+
+fn quest_status_icon(status: benilla_game_core::quest::QuestOfferState) -> u32 {
+    match status {
+        benilla_game_core::quest::QuestOfferState::Available => {
+            benilla_protocol::messages::dialog_status::AVAILABLE
+        }
+        benilla_game_core::quest::QuestOfferState::Incomplete => {
+            benilla_protocol::messages::dialog_status::INCOMPLETE
+        }
+        benilla_game_core::quest::QuestOfferState::Rewardable => {
+            benilla_protocol::messages::dialog_status::REWARD2
+        }
+    }
+}
+
+fn quest_gossip_rows(core: &GameCore, npc_entry: u32) -> Vec<(u32, u32, u32, String)> {
+    core.quest_gossip_rows(npc_entry)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|row| {
+            (
+                row.quest_id,
+                quest_status_icon(row.icon),
+                row.level,
+                row.title,
+            )
+        })
+        .collect()
+}
+
+fn send_offline_gossip_menu(core: &GameCore, channels: &OfflineChannels, guid: u64) {
+    let Some(npc_entry) = quest_npc_entry(core, guid) else {
+        return;
+    };
+    let Some(definition) = benilla_game_core::quest::quest_pack()
+        .quest
+        .iter()
+        .find(|quest| quest.giver_creature_entries.contains(&npc_entry))
+    else {
+        return;
+    };
+    send_gameplay_events(
+        channels,
+        [SessionEvent::GossipMenu {
+            npc: guid,
+            text_id: definition.gossip_text_id,
+            options: Vec::new(),
+            quests: quest_gossip_rows(core, npc_entry),
+        }],
+    );
+}
+
+fn send_offline_npc_text(core: &GameCore, channels: &OfflineChannels, guid: u64, text_id: u32) {
+    let Some(npc_entry) = quest_npc_entry(core, guid) else {
+        return;
+    };
+    let Some(definition) = benilla_game_core::quest::quest_pack()
+        .quest
+        .iter()
+        .find(|quest| {
+            quest.giver_creature_entries.contains(&npc_entry) && quest.gossip_text_id == text_id
+        })
+    else {
+        return;
+    };
+    let mut blocks = vec![
+        benilla_protocol::messages::NpcTextBlock::default();
+        benilla_protocol::messages::NPC_TEXT_BLOCKS
+    ];
+    blocks[0] = benilla_protocol::messages::NpcTextBlock {
+        probability: definition.gossip_text_probability,
+        male: definition.gossip_text_male.clone(),
+        female: definition.gossip_text_female.clone(),
+    };
+    send_gameplay_events(channels, [SessionEvent::NpcGreeting { text_id, blocks }]);
+}
+
+fn send_offline_questgiver_status(core: &GameCore, channels: &OfflineChannels, npc: u64) {
+    let Some(spawn) = imported_spawn_for_guid(npc) else {
+        return;
+    };
+    let status = core
+        .quest_dialog_status(spawn.entry)
+        .ok()
+        .flatten()
+        .map(quest_status_icon)
+        .unwrap_or(benilla_protocol::messages::dialog_status::NONE);
+    info!(
+        "offline questgiver status: entry {} -> {status}",
+        spawn.entry
+    );
+    send_gameplay_events(channels, [SessionEvent::QuestGiverStatus { npc, status }]);
+}
+
+fn send_offline_quest_greeting(core: &GameCore, channels: &OfflineChannels, npc: u64) {
+    let Some(npc_entry) = quest_npc_entry(core, npc) else {
+        return;
+    };
+    let quests = quest_gossip_rows(core, npc_entry)
+        .into_iter()
+        .map(
+            |(quest_id, icon, level, title)| benilla_protocol::messages::QuestListEntry {
+                quest_id,
+                icon,
+                level,
+                title,
+            },
+        )
+        .collect();
+    send_gameplay_events(
+        channels,
+        [SessionEvent::QuestGreeting(
+            benilla_protocol::messages::QuestGiverList {
+                npc,
+                greeting: String::new(),
+                emote_delay: 0,
+                emote: 0,
+                quests,
+            },
+        )],
+    );
+}
+
+fn quest_reward_items(
+    definition: &benilla_game_core::quest::QuestDefinition,
+) -> Vec<benilla_protocol::messages::QuestRewardItem> {
+    definition
+        .reward_choice
+        .iter()
+        .map(|choice| benilla_protocol::messages::QuestRewardItem {
+            item_id: choice.item_entry,
+            count: choice.count,
+            display_id: choice.display_id,
+        })
+        .collect()
+}
+
+fn send_offline_quest_details(
+    core: &GameCore,
+    channels: &OfflineChannels,
+    npc: u64,
+    quest_id: u32,
+) {
+    let Some(npc_entry) = quest_npc_entry(core, npc) else {
+        return;
+    };
+    let Some(definition) = benilla_game_core::quest::quest_definition(quest_id) else {
+        return;
+    };
+    if !definition.giver_creature_entries.contains(&npc_entry)
+        || !core.quest_gossip_rows(npc_entry).is_ok_and(|rows| {
+            rows.iter().any(|row| {
+                row.quest_id == quest_id
+                    && row.icon == benilla_game_core::quest::QuestOfferState::Available
+            })
+        })
+    {
+        return;
+    }
+    send_gameplay_events(
+        channels,
+        [SessionEvent::QuestDetail(
+            benilla_protocol::messages::QuestDetails {
+                npc,
+                quest_id,
+                title: definition.title.clone(),
+                details: definition.details.clone(),
+                objectives: definition.objectives_text.clone(),
+                auto_finish: 0,
+                choices: quest_reward_items(definition),
+                rewards: Vec::new(),
+                money: definition.reward_money_copper as i32,
+                reward_spell: 0,
+            },
+        )],
+    );
+}
+
+fn quest_progress_panel(
+    npc: u64,
+    definition: &benilla_game_core::quest::QuestDefinition,
+    is_complete: bool,
+) -> SessionEvent {
+    SessionEvent::QuestProgress(benilla_protocol::messages::QuestRequestItems {
+        npc,
+        quest_id: definition.id,
+        title: definition.title.clone(),
+        request_text: definition.request_items_text.clone(),
+        emote: 0,
+        close_on_cancel: 0,
+        required_money: 0,
+        required_items: Vec::new(),
+        is_complete,
+    })
+}
+
+fn quest_reward_panel(
+    npc: u64,
+    definition: &benilla_game_core::quest::QuestDefinition,
+) -> SessionEvent {
+    SessionEvent::QuestOffer(benilla_protocol::messages::QuestOfferReward {
+        npc,
+        quest_id: definition.id,
+        title: definition.title.clone(),
+        offer_text: definition.offer_reward_text.clone(),
+        auto_finish: 0,
+        choices: quest_reward_items(definition),
+        rewards: Vec::new(),
+        money: definition.reward_money_copper as i32,
+        quest_flags: definition.quest_flags,
+        reward_spell: 0,
+    })
+}
+
+fn send_offline_quest_progress(
+    core: &GameCore,
+    channels: &OfflineChannels,
+    npc: u64,
+    quest_id: u32,
+) {
+    let Some(npc_entry) = quest_npc_entry(core, npc) else {
+        return;
+    };
+    let Some(definition) = benilla_game_core::quest::quest_definition(quest_id) else {
+        return;
+    };
+    if !definition.turnin_creature_entries.contains(&npc_entry) {
+        return;
+    }
+    let Some(journal) = core.active_quest_journal() else {
+        return;
+    };
+    let Some(progress) = journal.progress(quest_id) else {
+        return;
+    };
+    if progress.reward_choice.is_some() {
+        return;
+    }
+    let event = if journal.is_complete(quest_id) {
+        quest_reward_panel(npc, definition)
+    } else {
+        quest_progress_panel(npc, definition, false)
+    };
+    send_gameplay_events(channels, [event]);
+}
+
+fn send_offline_quest_reward(core: &GameCore, channels: &OfflineChannels, npc: u64, quest_id: u32) {
+    let Some(npc_entry) = quest_npc_entry(core, npc) else {
+        return;
+    };
+    let Some(definition) = benilla_game_core::quest::quest_definition(quest_id) else {
+        return;
+    };
+    if !definition.turnin_creature_entries.contains(&npc_entry)
+        || !core.active_quest_journal().is_some_and(|journal| {
+            journal.is_complete(quest_id)
+                && journal
+                    .progress(quest_id)
+                    .is_some_and(|progress| progress.reward_choice.is_none())
+        })
+    {
+        return;
+    }
+    send_gameplay_events(channels, [quest_reward_panel(npc, definition)]);
+}
+
+fn send_offline_quest_template(channels: &OfflineChannels, quest_id: u32) {
+    let Some(definition) = benilla_game_core::quest::quest_definition(quest_id) else {
+        return;
+    };
+    let mut choices = [(0, 0); 6];
+    for (slot, choice) in choices.iter_mut().zip(&definition.reward_choice) {
+        *slot = (choice.item_entry, choice.count);
+    }
+    let objectives = std::array::from_fn(|index| {
+        definition
+            .objective
+            .get(index)
+            .map(|objective| benilla_protocol::messages::QuestObjective {
+                creature_or_go: objective.creature_entry,
+                required_count: objective.count,
+                item_id: 0,
+                item_count: 0,
+                text: objective.text.clone(),
+            })
+            .unwrap_or(benilla_protocol::messages::QuestObjective {
+                creature_or_go: 0,
+                required_count: 0,
+                item_id: 0,
+                item_count: 0,
+                text: String::new(),
+            })
+    });
+    send_gameplay_events(
+        channels,
+        [SessionEvent::QuestTemplate(Box::new(
+            benilla_protocol::messages::QuestTemplate {
+                quest_id,
+                method: definition.method,
+                level: definition.quest_level.max(0) as u32,
+                zone_or_sort: definition.zone_or_sort,
+                quest_type: definition.quest_type,
+                rep_objective_faction: 0,
+                rep_objective_value: 0,
+                next_quest_in_chain: definition.next_quest_in_chain,
+                money: definition.reward_money_copper as i32,
+                money_max_level: definition.reward_money_max_level,
+                reward_spell: 0,
+                src_item_id: definition.source_item_entry,
+                flags: definition.quest_flags,
+                rewards: [(0, 0); 4],
+                choices,
+                point_map_id: 0,
+                point_x: 0.0,
+                point_y: 0.0,
+                point_opt: 0,
+                title: definition.title.clone(),
+                objectives_text: definition.objectives_text.clone(),
+                details: definition.details.clone(),
+                end_text: definition.end_text.clone(),
+                objectives,
+            },
+        ))],
+    );
+}
+
+fn quest_accept_failure(error: benilla_game_core::quest::QuestError) -> Option<SessionEvent> {
+    match error {
+        benilla_game_core::quest::QuestError::WrongRace => {
+            Some(SessionEvent::QuestGiverInvalid { reason: 6 })
+        }
+        benilla_game_core::quest::QuestError::LevelTooLow => {
+            Some(SessionEvent::QuestGiverInvalid { reason: 1 })
+        }
+        benilla_game_core::quest::QuestError::AlreadyAccepted => {
+            Some(SessionEvent::QuestGiverInvalid { reason: 13 })
+        }
+        benilla_game_core::quest::QuestError::QuestLogFull => Some(SessionEvent::QuestLogFull),
+        _ => Some(SessionEvent::QuestGiverInvalid { reason: 0 }),
+    }
+}
+
+fn quest_log_slot_fields_for(
+    snapshot: &benilla_game_core::CharacterSnapshot,
+    quest_id: u32,
+) -> Vec<(u16, u32)> {
+    let Some(slot) = snapshot.quest_journal.slot(quest_id) else {
+        return Vec::new();
+    };
+    let Some(progress) = snapshot.quest_journal.progress(quest_id) else {
+        return Vec::new();
+    };
+    quest_log_slot_fields(slot, progress, snapshot.quest_journal.is_complete(quest_id)).into()
+}
+
+fn accept_offline_quest(
+    core: &mut GameCore,
+    persistence: &mut OfflinePersistence,
+    channels: &OfflineChannels,
+    npc: u64,
+    quest_id: u32,
+) {
+    let Some(npc_entry) = quest_npc_in_range(core, npc) else {
+        return;
+    };
+    match core.accept_quest(npc_entry, quest_id) {
+        Ok(()) => {
+            let Some(id) = core.active().cloned() else {
+                return;
+            };
+            let Some(snapshot) = core.snapshot(&id) else {
+                return;
+            };
+            let mut events = vec![SessionEvent::GossipComplete];
+            events.push(SessionEvent::ObjectValues {
+                guid: id.presentation_guid(),
+                fields: ObjectFields::from_pairs(&quest_log_field_pairs(snapshot)),
+            });
+            if let Some(giver) = quest_giver_guid(core, npc_entry) {
+                events.push(SessionEvent::QuestGiverStatus {
+                    npc: giver,
+                    status: benilla_protocol::messages::dialog_status::INCOMPLETE,
+                });
+            }
+            send_gameplay_events(channels, events);
+            save_after_command(core, persistence);
+        }
+        Err(error) => {
+            if let Some(event) = quest_accept_failure(error) {
+                send_gameplay_events(channels, [event]);
+            }
+        }
+    }
+}
+
+fn reward_offline_quest(
+    core: &mut GameCore,
+    persistence: &mut OfflinePersistence,
+    channels: &OfflineChannels,
+    npc: u64,
+    quest_id: u32,
+    choice: u32,
+    talents: Option<&crate::ui_talent::Talents>,
+) {
+    let Some(npc_entry) = quest_npc_in_range(core, npc) else {
+        return;
+    };
+    let reward = match core.turn_in_quest(npc_entry, quest_id, choice) {
+        Ok(reward) => reward,
+        Err(_) => {
+            send_gameplay_events(channels, [SessionEvent::QuestGiverInvalid { reason: 0 }]);
+            return;
+        }
+    };
+    let Some(id) = core.active().cloned() else {
+        return;
+    };
+    let Some(snapshot) = core.snapshot(&id) else {
+        return;
+    };
+    let item_guid = inventory_item_guid(snapshot, &reward.item);
+    let mut values = vec![
+        (1176, snapshot.money_copper),
+        (716, snapshot.experience),
+        (
+            717,
+            benilla_game_core::progression::xp_to_next_level(snapshot.level).unwrap_or(0),
+        ),
+        (34, u32::from(snapshot.level)),
+        (1102, free_talent_points(snapshot, talents)),
+    ];
+    values.extend(quest_log_slot_fields_for(snapshot, quest_id));
+    let inventory_slot_field = 532 + 2 * u16::from(reward.item.slot);
+    values.extend([
+        (inventory_slot_field, item_guid as u32),
+        (inventory_slot_field + 1, (item_guid >> 32) as u32),
+    ]);
+    let mut events = vec![
+        SessionEvent::QuestComplete(benilla_protocol::messages::QuestComplete {
+            quest_id,
+            xp: reward.experience,
+            money: reward.money_copper,
+            items: Vec::new(),
+        }),
+        SessionEvent::ObjectValues {
+            guid: id.presentation_guid(),
+            fields: ObjectFields::from_pairs(&values),
+        },
+        item_create_event(id.presentation_guid(), snapshot, &reward.item),
+    ];
+    if let Some(info) = item_info(reward.item.entry) {
+        events.push(SessionEvent::ItemTemplate {
+            entry: reward.item.entry,
+            info: Some(Box::new(info)),
+        });
+    }
+    events.push(SessionEvent::ItemPushResult(
+        benilla_protocol::messages::ItemPushResult {
+            player_guid: id.presentation_guid(),
+            from_npc: true,
+            created: false,
+            show_in_chat: true,
+            bag_slot: benilla_protocol::messages::BAG_PLAYER_INVENTORY,
+            item_slot: u32::from(reward.item.slot),
+            item_entry: reward.item.entry,
+            suffix_factor: 0,
+            random_property_id: 0,
+            count: reward.item.count,
+        },
+    ));
+    if let Some(giver) = quest_giver_guid(core, npc_entry) {
+        events.push(SessionEvent::QuestGiverStatus {
+            npc: giver,
+            status: benilla_protocol::messages::dialog_status::NONE,
+        });
+    }
+    send_gameplay_events(channels, events);
+    save_after_command(core, persistence);
+}
+
+fn starter_action_buttons(race: u8, class: u8) -> Vec<benilla_protocol::messages::ActionButton> {
+    benilla_game_core::progression::starting_actions(race, class)
+        .map(|action| benilla_protocol::messages::ActionButton {
+            slot: action.button,
+            action: action.action,
+            kind: action.action_type,
+        })
+        .collect()
+}
+
+fn send_offline_trainer_list(
+    core: &GameCore,
+    channels: &OfflineChannels,
+    trainer: u64,
+    spells: Option<&crate::ui_action::Spells>,
+    skill_lines: Option<&crate::ui_spellbook::SkillLines>,
+) {
+    let Some(trainer_entry) = benilla_protocol::guid::entry(trainer) else {
+        return;
+    };
+    let services = core
+        .trainer_services_with_ranks(
+            trainer_entry,
+            |spell_id| {
+                spells
+                    .and_then(|spells| spells.catalog.learned_spell(spell_id))
+                    .unwrap_or(spell_id)
+            },
+            |spell_id| skill_lines.and_then(|lines| lines.catalog.rank_successor(spell_id)),
+        )
+        .unwrap_or_default()
+        .into_iter()
+        .map(|service| {
+            let offer = service.offer;
+            let mut req_spells = [0; 3];
+            for (slot, spell_id) in req_spells.iter_mut().zip(&offer.prerequisite_spell_ids) {
+                *slot = *spell_id;
+            }
+            let state = match service.state {
+                benilla_game_core::TrainerServiceState::Learnable => {
+                    benilla_protocol::messages::trainer_spell_state::GREEN
+                }
+                benilla_game_core::TrainerServiceState::Known => {
+                    benilla_protocol::messages::trainer_spell_state::GRAY
+                }
+                benilla_game_core::TrainerServiceState::Unavailable(_) => {
+                    benilla_protocol::messages::trainer_spell_state::RED
+                }
+            };
+            benilla_protocol::messages::TrainerSpell {
+                spell: offer.spell_id,
+                state,
+                cost: offer.cost_copper,
+                can_learn_primary_prof: false,
+                is_primary_prof_first_rank: false,
+                req_level: offer.required_level,
+                req_skill: offer.required_skill_id,
+                req_skill_value: offer.required_skill_value,
+                req_spells,
+            }
+        })
+        .collect();
+    send_gameplay_events(
+        channels,
+        [SessionEvent::TrainerList {
+            trainer,
+            trainer_type: 0,
+            services,
+            greeting: String::new(),
+        }],
+    );
+}
+
+fn buy_offline_trainer_spell(
+    core: &mut GameCore,
+    persistence: &mut OfflinePersistence,
+    channels: &OfflineChannels,
+    trainer: u64,
+    spell_id: u32,
+    spells: Option<&crate::ui_action::Spells>,
+    skill_lines: Option<&crate::ui_spellbook::SkillLines>,
+) {
+    let Some(trainer_entry) = benilla_protocol::guid::entry(trainer) else {
+        send_gameplay_events(
+            channels,
+            [SessionEvent::TrainerBuyFailed {
+                trainer,
+                spell_id,
+                error: benilla_protocol::messages::train_fail::UNAVAILABLE,
+            }],
+        );
+        return;
+    };
+    match core.buy_trainer_spell_with_ranks(
+        trainer_entry,
+        spell_id,
+        |spell_id| {
+            spells
+                .and_then(|spells| spells.catalog.learned_spell(spell_id))
+                .unwrap_or(spell_id)
+        },
+        |spell_id| skill_lines.and_then(|lines| lines.catalog.rank_successor(spell_id)),
+    ) {
+        Ok(purchase) => {
+            let Some(id) = core.active() else { return };
+            let mut events = vec![SessionEvent::TrainerBuySucceeded { trainer, spell_id }];
+            events.extend(
+                purchase
+                    .removed_spell_ids
+                    .into_iter()
+                    .map(|spell_id| SessionEvent::SpellRemoved { spell_id }),
+            );
+            events.push(SessionEvent::SpellLearned {
+                spell_id: purchase.learned_spell_id,
+            });
+            events.push(SessionEvent::ObjectValues {
+                guid: id.presentation_guid(),
+                fields: ObjectFields::from_pairs(&[(1176, purchase.remaining_copper)]),
+            });
+            send_gameplay_events(channels, events);
+            save_after_command(core, persistence);
+        }
+        Err(error) => {
+            let code = match error {
+                benilla_game_core::progression::TrainerError::InsufficientFunds => {
+                    benilla_protocol::messages::train_fail::NOT_ENOUGH_MONEY
+                }
+                benilla_game_core::progression::TrainerError::UnsupportedSkill => {
+                    benilla_protocol::messages::train_fail::NOT_ENOUGH_SKILL
+                }
+                _ => benilla_protocol::messages::train_fail::UNAVAILABLE,
+            };
+            send_gameplay_events(
+                channels,
+                [SessionEvent::TrainerBuyFailed {
+                    trainer,
+                    spell_id,
+                    error: code,
+                }],
+            );
+        }
+    }
+}
+
+fn learn_offline_talent(
+    core: &mut GameCore,
+    persistence: &mut OfflinePersistence,
+    channels: &OfflineChannels,
+    talents: Option<&crate::ui_talent::Talents>,
+    skill_lines: Option<&crate::ui_spellbook::SkillLines>,
+    talent_id: u32,
+    rank: u32,
+) {
+    let Some(talents) = talents else {
+        warn!("offline gameplay: talent catalog is unavailable");
+        return;
+    };
+    let Some(id) = core.active().cloned() else {
+        return;
+    };
+    let Some(snapshot) = core.snapshot(&id) else {
+        return;
+    };
+    let appearance = snapshot.appearance;
+    let Some((tab, talent)) = talents
+        .catalog
+        .tabs_for_class(appearance.race, appearance.class)
+        .into_iter()
+        .find_map(|tab| {
+            talents
+                .catalog
+                .talents_in_tab(tab.id)
+                .iter()
+                .find(|talent| talent.id == talent_id)
+                .map(|talent| (tab, talent))
+        })
+    else {
+        warn!("offline gameplay: talent {talent_id} is not available to this race/class");
+        return;
+    };
+    let rank_spell_ids: Vec<_> = talent
+        .ranks
+        .iter()
+        .copied()
+        .take_while(|spell_id| *spell_id != 0)
+        .collect();
+    let prerequisite_spell_id = if talent.prereq_talent == 0 {
+        0
+    } else {
+        talents
+            .catalog
+            .talent(tab.id, talent.prereq_talent)
+            .and_then(|prerequisite| {
+                prerequisite
+                    .ranks
+                    .get(talent.prereq_rank as usize)
+                    .copied()
+            })
+            .unwrap_or(0)
+    };
+    let tree_spell_ids: Vec<_> = talents
+        .catalog
+        .talents_in_tab(tab.id)
+        .iter()
+        .flat_map(|talent| talent.ranks)
+        .filter(|spell_id| *spell_id != 0)
+        .collect();
+    let class_spell_ids: Vec<_> = talents
+        .catalog
+        .tabs_for_class(appearance.race, appearance.class)
+        .into_iter()
+        .flat_map(|tab| talents.catalog.talents_in_tab(tab.id))
+        .flat_map(|talent| talent.ranks)
+        .filter(|spell_id| *spell_id != 0)
+        .collect();
+    let required_spell_id = if talent.required_spell == 0
+        || snapshot.known_spell_ids.contains(&talent.required_spell)
+        || skill_lines.is_some_and(|lines| {
+            lines.catalog.higher_rank_known(
+                talent.required_spell,
+                &snapshot.known_spell_ids.iter().copied().collect(),
+            )
+        })
+    {
+        0
+    } else {
+        talent.required_spell
+    };
+    match core.learn_talent(benilla_game_core::TalentGrantRules {
+        race_mask: tab.race_mask,
+        class_mask: tab.class_mask,
+        class_spell_ids: &class_spell_ids,
+        tree_spell_ids: &tree_spell_ids,
+        rank_spell_ids: &rank_spell_ids,
+        rank,
+        tier: talent.row,
+        required_spell_id,
+        prerequisite_spell_id,
+    }) {
+        Ok(purchase) => {
+            let mut events: Vec<_> = purchase
+                .learned_spell_ids
+                .into_iter()
+                .map(|spell_id| SessionEvent::SpellLearned { spell_id })
+                .collect();
+            if let Some(id) = core.active() {
+                events.push(SessionEvent::ObjectValues {
+                    guid: id.presentation_guid(),
+                    fields: ObjectFields::from_pairs(&[(1102, purchase.remaining_points)]),
+                });
+            }
+            send_gameplay_events(channels, events);
+            save_after_command(core, persistence);
+        }
+        Err(error) => warn!("offline gameplay: rejected talent {talent_id} rank {rank}: {error:?}"),
+    }
 }
 
 fn start_offline_cast(
@@ -933,24 +2641,56 @@ fn start_offline_cast(
     command: crate::net::ClientCommand,
     mana_cost: u32,
     cast_time_ms: u32,
-) {
+    spell_cooldown_ms: u32,
+    cooldown_ms: u32,
+    range_yards: f32,
+    effect: benilla_game_core::DirectSpellEffect,
+) -> bool {
     let crate::net::ClientCommand::CastSpell { spell_id, target } = command else {
-        return;
+        return false;
     };
     let Some(id) = core.active().cloned() else {
-        return;
+        return false;
     };
-    let Some(spawn_id) = core
-        .hostiles()
-        .iter()
-        .find(|hostile| target == combat_target_guid(hostile))
-        .map(|hostile| hostile.spawn_id)
-    else {
-        return;
+    let player_guid = id.presentation_guid();
+    let (presentation_target, cast_target) = match effect {
+        benilla_game_core::DirectSpellEffect::Damage { .. } => {
+            let Some(target) = target else { return false };
+            let Some(spawn_id) = core
+                .hostiles()
+                .iter()
+                .find(|hostile| combat_target_guid(hostile) == Some(target))
+                .map(|hostile| hostile.spawn_id)
+            else {
+                return false;
+            };
+            (
+                Some(target),
+                benilla_game_core::SpellTarget::Hostile(spawn_id),
+            )
+        }
+        benilla_game_core::DirectSpellEffect::Heal { .. } => {
+            if target.is_some_and(|target| target != player_guid) {
+                return false;
+            }
+            (
+                Some(player_guid),
+                benilla_game_core::SpellTarget::SelfCharacter,
+            )
+        }
     };
-    match core.begin_fireball(spell_id, spawn_id, mana_cost, cast_time_ms) {
+    match core.begin_direct_spell(
+        spell_id,
+        cast_target,
+        mana_cost,
+        cast_time_ms,
+        spell_cooldown_ms,
+        cooldown_ms,
+        range_yards,
+        effect,
+    ) {
         Ok(()) => {
-            let player_guid = id.presentation_guid();
+            info!("offline cast: spell {spell_id} -> {cast_time_ms}ms (mana {mana_cost})");
             send_gameplay_events(
                 channels,
                 [
@@ -959,7 +2699,7 @@ fn start_offline_cast(
                         spell_id,
                         cast_flags: 0x2,
                         cast_time_ms,
-                        target,
+                        target: presentation_target,
                         ammo_display_id: None,
                     },
                     SessionEvent::ObjectValues {
@@ -968,8 +2708,12 @@ fn start_offline_cast(
                     },
                 ],
             );
+            true
         }
-        Err(error) => debug!("offline gameplay: rejected spell {spell_id}: {error}"),
+        Err(error) => {
+            debug!("offline gameplay: rejected spell {spell_id}: {error}");
+            false
+        }
     }
 }
 
@@ -1017,14 +2761,20 @@ fn stop_offline_auto_attack(core: &mut GameCore, channels: &OfflineChannels) {
     );
 }
 
-fn advance_offline_combat(core: &mut GameCore, channels: &OfflineChannels, elapsed_ms: u32) {
+fn advance_offline_combat(
+    core: &mut GameCore,
+    channels: &OfflineChannels,
+    elapsed_ms: u32,
+) -> bool {
     if core.active().is_none() {
-        return;
+        return false;
     }
+    let mut changed = false;
     let updates = core.advance_combat(elapsed_ms);
     for update in updates {
         match update {
             CombatUpdate::Impact(impact) => {
+                changed = true;
                 let Some(id) = core.active() else {
                     continue;
                 };
@@ -1034,7 +2784,7 @@ fn advance_offline_combat(core: &mut GameCore, channels: &OfflineChannels, elaps
                 let Some(guid) = combat_target_guid(&hostile) else {
                     continue;
                 };
-                let events = [
+                let mut events = vec![
                     SessionEvent::SpellGo {
                         caster: id.presentation_guid(),
                         spell_id: benilla_game_core::FIREBALL_SPELL_ID,
@@ -1059,15 +2809,100 @@ fn advance_offline_combat(core: &mut GameCore, channels: &OfflineChannels, elaps
                         blocked: 0,
                         hit_info: 0,
                     }),
-                    SessionEvent::ObjectValues {
-                        guid,
-                        fields: ObjectFields::from_pairs(&[
-                            (22, impact.remaining_health),
-                            (143, if impact.killed { 0x20 } else { 0 }),
-                        ]),
-                    },
                 ];
+                events.extend(hostile_spell_state_events(
+                    guid,
+                    &hostile,
+                    impact.killed.then_some(benilla_game_core::FIREBALL_SPELL_ID),
+                ));
                 send_gameplay_events(channels, events);
+            }
+            CombatUpdate::SpellImpact {
+                spell_id,
+                school,
+                impact,
+            } => {
+                changed = true;
+                let Some(id) = core.active() else {
+                    continue;
+                };
+                let Some(hostile) = core.hostile(impact.spawn_id) else {
+                    continue;
+                };
+                let Some(guid) = combat_target_guid(&hostile) else {
+                    continue;
+                };
+                let mut events = vec![
+                        SessionEvent::SpellGo {
+                            caster: id.presentation_guid(),
+                            spell_id,
+                            cast_flags: 0x100,
+                            hits: vec![guid],
+                            misses: Vec::new(),
+                            target: Some(guid),
+                            go_target: None,
+                            dest: None,
+                            ammo_display_id: None,
+                            item_caster: None,
+                        },
+                        SessionEvent::SpellDamageLog(benilla_protocol::messages::SpellDamageLog {
+                            target: guid,
+                            attacker: id.presentation_guid(),
+                            spell_id,
+                            damage: impact.damage,
+                            school: u8::try_from(school).unwrap_or(0),
+                            absorb: 0,
+                            resist: 0,
+                            periodic: false,
+                            blocked: 0,
+                            hit_info: 0,
+                        }),
+                    ];
+                events.extend(hostile_spell_state_events(
+                    guid,
+                    &hostile,
+                    impact.killed.then_some(spell_id),
+                ));
+                send_gameplay_events(channels, events);
+            }
+            CombatUpdate::SpellHeal {
+                spell_id,
+                amount,
+                remaining_health,
+            } => {
+                changed = true;
+                let Some(id) = core.active() else {
+                    continue;
+                };
+                let guid = id.presentation_guid();
+                send_gameplay_events(
+                    channels,
+                    [
+                        SessionEvent::SpellGo {
+                            caster: guid,
+                            spell_id,
+                            cast_flags: 0x100,
+                            hits: vec![guid],
+                            misses: Vec::new(),
+                            target: Some(guid),
+                            go_target: None,
+                            dest: None,
+                            ammo_display_id: None,
+                            item_caster: None,
+                        },
+                        SessionEvent::SpellHealLog(benilla_protocol::messages::SpellHealLog {
+                            target: guid,
+                            healer: guid,
+                            spell_id,
+                            amount,
+                            critical: false,
+                        }),
+                        SessionEvent::ObjectValues {
+                            guid,
+                            fields: ObjectFields::from_pairs(&[(22, remaining_health)]),
+                        },
+                    ],
+                );
             }
             CombatUpdate::MeleeImpact(impact) => {
                 let Some(id) = core.active() else {
@@ -1079,10 +2914,8 @@ fn advance_offline_combat(core: &mut GameCore, channels: &OfflineChannels, elaps
                 let Some(victim) = combat_target_guid(&hostile) else {
                     continue;
                 };
-                send_gameplay_events(
-                    channels,
-                    [
-                        SessionEvent::AttackerState(benilla_protocol::messages::AttackerState {
+                let mut events = vec![
+                    SessionEvent::AttackerState(benilla_protocol::messages::AttackerState {
                             attacker: id.presentation_guid(),
                             victim,
                             hit_info: 0,
@@ -1094,15 +2927,118 @@ fn advance_offline_combat(core: &mut GameCore, channels: &OfflineChannels, elaps
                             melee_spell_id: 0,
                             school: 0,
                         }),
-                        SessionEvent::ObjectValues {
-                            guid: victim,
-                            fields: ObjectFields::from_pairs(&[
-                                (22, impact.remaining_health),
-                                (143, if impact.killed { 0x20 } else { 0 }),
-                            ]),
-                        },
-                    ],
-                );
+                ];
+                events.extend(hostile_spell_state_events(
+                    victim,
+                    &hostile,
+                    impact.killed.then_some(0),
+                ));
+                send_gameplay_events(channels, events);
+            }
+            CombatUpdate::DotImpact(impact) => {
+                let Some(id) = core.active() else {
+                    continue;
+                };
+                let Some(hostile) = core.hostile(impact.spawn_id) else {
+                    continue;
+                };
+                let Some(guid) = combat_target_guid(&hostile) else {
+                    continue;
+                };
+                let mut events = vec![
+                    SessionEvent::SpellDamageLog(benilla_protocol::messages::SpellDamageLog {
+                            target: guid,
+                            attacker: id.presentation_guid(),
+                            spell_id: benilla_game_core::FIREBALL_SPELL_ID,
+                            damage: impact.damage,
+                            school: 4,
+                            absorb: 0,
+                            resist: 0,
+                            periodic: true,
+                            blocked: 0,
+                            hit_info: 0,
+                        }),
+                ];
+                events.extend(hostile_spell_state_events(
+                    guid,
+                    &hostile,
+                    Some(benilla_game_core::FIREBALL_SPELL_ID),
+                ));
+                send_gameplay_events(channels, events);
+            }
+            CombatUpdate::PeriodicImpact {
+                spell_id,
+                school,
+                impact,
+            } => {
+                changed = true;
+                let Some(id) = core.active() else {
+                    continue;
+                };
+                let Some(hostile) = core.hostile(impact.spawn_id) else {
+                    continue;
+                };
+                let Some(guid) = combat_target_guid(&hostile) else {
+                    continue;
+                };
+                let mut events = vec![
+                    SessionEvent::SpellDamageLog(benilla_protocol::messages::SpellDamageLog {
+                                target: guid,
+                                attacker: id.presentation_guid(),
+                                spell_id,
+                                damage: impact.damage,
+                                school: u8::try_from(school).unwrap_or(0),
+                                absorb: 0,
+                                resist: 0,
+                                periodic: true,
+                                blocked: 0,
+                                hit_info: 0,
+                        }),
+                ];
+                events.extend(hostile_spell_state_events(guid, &hostile, Some(spell_id)));
+                send_gameplay_events(channels, events);
+            }
+            CombatUpdate::QuestObjective(update) => {
+                let Some(id) = core.active().cloned() else {
+                    continue;
+                };
+                let Some(snapshot) = core.snapshot(&id) else {
+                    continue;
+                };
+                let mut events = vec![
+                    SessionEvent::QuestObjectiveKill {
+                        quest_id: update.quest_id,
+                        entry: update.creature_entry,
+                        count: update.count,
+                        required: update.required,
+                    },
+                    SessionEvent::ObjectValues {
+                        guid: id.presentation_guid(),
+                        fields: ObjectFields::from_pairs(&quest_log_slot_fields_for(
+                            snapshot,
+                            update.quest_id,
+                        )),
+                    },
+                ];
+                if update.complete {
+                    events.push(SessionEvent::QuestObjectivesComplete {
+                        quest_id: update.quest_id,
+                    });
+                    if let Some(definition) =
+                        benilla_game_core::quest::quest_definition(update.quest_id)
+                    {
+                        if let Some(giver_entry) = definition.giver_creature_entries.first() {
+                            if let Some(giver) = quest_giver_guid(core, *giver_entry) {
+                                events.push(SessionEvent::QuestGiverStatus {
+                                    npc: giver,
+                                    status: benilla_protocol::messages::dialog_status::REWARD2,
+                                });
+                            }
+                        }
+                    }
+                }
+                send_gameplay_events(channels, events);
+                changed = true;
             }
             CombatUpdate::Respawned { spawn_id } => {
                 if core.active().is_none() {
@@ -1118,6 +3054,162 @@ fn advance_offline_combat(core: &mut GameCore, channels: &OfflineChannels, elaps
                     };
                     send_gameplay_events(channels, [event]);
                 }
+            }
+        }
+    }
+    if let Some(mana) = core.advance_mana_regen(elapsed_ms) {
+        if let Some(id) = core.active() {
+            send_gameplay_events(
+                channels,
+                [SessionEvent::ObjectValues {
+                    guid: id.presentation_guid(),
+                    fields: ObjectFields::from_pairs(&[(23, mana)]),
+                }],
+            );
+        }
+    }
+    changed
+}
+
+fn tick_offline_creature_ai(
+    channels: Res<OfflineChannels>,
+    mut core: ResMut<OfflineGameCore>,
+    mut patrols: ResMut<OfflinePatrols>,
+    time: Res<Time>,
+    mut elapsed: Local<u32>,
+) {
+    if core.0.active().is_none() {
+        *elapsed = 0;
+        return;
+    }
+    *elapsed = elapsed.saturating_add((time.delta_secs_f64() * 1_000.0).round() as u32);
+    if *elapsed < OFFLINE_CREATURE_AI_STEP_MS {
+        return;
+    }
+    let elapsed_ms = std::mem::replace(&mut *elapsed, 0);
+    advance_offline_creature_ai(&mut core.0, &channels, &mut patrols, elapsed_ms);
+}
+
+fn advance_offline_creature_ai(
+    core: &mut GameCore,
+    channels: &OfflineChannels,
+    patrols: &mut OfflinePatrols,
+    elapsed_ms: u32,
+) {
+    let Some(player) = core.active().and_then(|id| core.snapshot(id)) else {
+        return;
+    };
+    let player_guid = player.id.presentation_guid();
+    let updates = core.advance_creature_ai(elapsed_ms);
+    for update in updates {
+        match update {
+            CreatureAiUpdate::Aggro { spawn_id } => {
+                let Some(hostile) = core.hostile(spawn_id) else {
+                    continue;
+                };
+                let Some(guid) = combat_target_guid(&hostile) else {
+                    continue;
+                };
+                patrols.0.remove(&guid);
+                send_gameplay_events(
+                    channels,
+                    [SessionEvent::AiReaction {
+                        unit: guid,
+                        reaction: 2,
+                    }],
+                );
+            }
+            CreatureAiUpdate::AttackStart { spawn_id } => {
+                let Some(hostile) = core.hostile(spawn_id) else {
+                    continue;
+                };
+                let Some(guid) = combat_target_guid(&hostile) else {
+                    continue;
+                };
+                send_gameplay_events(
+                    channels,
+                    [SessionEvent::AttackStart {
+                        attacker: guid,
+                        victim: player_guid,
+                    }],
+                );
+            }
+            CreatureAiUpdate::AttackStop { spawn_id } => {
+                let Some(hostile) = core.hostile(spawn_id) else {
+                    continue;
+                };
+                let Some(guid) = combat_target_guid(&hostile) else {
+                    continue;
+                };
+                send_gameplay_events(
+                    channels,
+                    [SessionEvent::AttackStop {
+                        attacker: guid,
+                        victim: player_guid,
+                    }],
+                );
+            }
+            CreatureAiUpdate::Move {
+                spawn_id,
+                start,
+                end,
+                spline_id,
+                duration_ms,
+            } => {
+                let Some(hostile) = core.hostile(spawn_id) else {
+                    continue;
+                };
+                let Some(guid) = combat_target_guid(&hostile) else {
+                    continue;
+                };
+                send_gameplay_events(
+                    channels,
+                    [SessionEvent::MonsterMove {
+                        guid,
+                        transport: None,
+                        start: [start.x, start.y, start.z],
+                        spline_id,
+                        path: vec![[start.x, start.y, start.z], [end.x, end.y, end.z]],
+                        facing: benilla_protocol::MonsterMoveFacing::Angle(end.orientation),
+                        stop: false,
+                        duration_ms,
+                        flying: false,
+                        run_mode: true,
+                    }],
+                );
+            }
+            CreatureAiUpdate::MeleeImpact {
+                spawn_id,
+                damage,
+                remaining_player_health,
+            } => {
+                let Some(hostile) = core.hostile(spawn_id) else {
+                    continue;
+                };
+                let Some(guid) = combat_target_guid(&hostile) else {
+                    continue;
+                };
+                send_gameplay_events(
+                    channels,
+                    [
+                        SessionEvent::AttackerState(benilla_protocol::messages::AttackerState {
+                            attacker: guid,
+                            victim: player_guid,
+                            hit_info: 0,
+                            damage,
+                            victim_state: 1,
+                            absorb: 0,
+                            resist: 0,
+                            blocked: 0,
+                            melee_spell_id: 0,
+                            school: 0,
+                        }),
+                        SessionEvent::ObjectValues {
+                            guid: player_guid,
+                            fields: ObjectFields::from_pairs(&[(22, remaining_player_health)]),
+                        },
+                    ],
+                );
             }
         }
     }
@@ -1396,9 +3488,128 @@ mod tests {
     use bevy::ecs::system::RunSystemOnce;
 
     #[test]
+    fn cast_resolver_rejects_unsupported_secondary_effects() {
+        assert_eq!(
+            supported_direct_effect_slot([2, 6, 0], [0, 3, 0]),
+            Some(0),
+            "Fireball's direct and periodic damage are both supported"
+        );
+        assert_eq!(
+            supported_direct_effect_slot([6, 2, 0], [33, 0, 0]),
+            None,
+            "Frostbolt also applies a slow that the simulation does not model"
+        );
+        assert_eq!(
+            supported_direct_effect_slot([2, 6, 0], [0, 33, 0]),
+            None,
+            "unknown secondary auras must not be silently dropped"
+        );
+        assert_eq!(
+            supported_direct_effect_slot([2, 10, 0], [0, 0, 0]),
+            None,
+            "a cast with multiple direct effects is not modeled"
+        );
+    }
+
+    #[test]
     fn game_core_stays_engine_free_and_is_available_to_the_adapter() {
         let core = OfflineGameCore::default();
         assert_eq!(core.0, benilla_game_core::GameCore::default());
+    }
+
+    #[test]
+    fn offline_unequip_moves_worn_armor_to_the_backpack_and_announces_the_slot() {
+        use crossbeam_channel::unbounded;
+        let mut core = OfflineGameCore::default();
+        let appearance = benilla_game_core::Appearance {
+            race: 10,
+            class: 8,
+            gender: 0,
+            skin: 0,
+            face: 0,
+            hair_style: 0,
+            hair_color: 0,
+            facial_hair: 0,
+        };
+        let start = benilla_game_core::WorldPosition {
+            map_id: 530,
+            x: 10_349.6,
+            y: -6_357.3,
+            z: 33.4,
+            orientation: 0.0,
+        };
+        core.0
+            .create_character(
+                benilla_game_core::CharacterId::parse("0".repeat(31) + "1").unwrap(),
+                "Alara",
+                appearance,
+                start,
+            )
+            .unwrap();
+        core.0.enter_world().unwrap();
+        assert_eq!(core.0.active_armor(), 5, "the starting outfit is worn");
+
+        let (_picks_tx, picks) = unbounded();
+        let (events, events_rx) = unbounded();
+        let (_commands_tx, commands) = unbounded();
+        let channels = OfflineChannels {
+            picks,
+            events,
+            commands,
+        };
+        let mut persistence = OfflinePersistence::new(false);
+
+        offline_store_bag(
+            &mut core.0,
+            &mut persistence,
+            &channels,
+            BAG_PLAYER_INVENTORY,
+            4,
+        );
+
+        assert!(
+            !core
+                .0
+                .active_equipment()
+                .unwrap()
+                .iter()
+                .any(|item| item.slot == 4),
+            "the robe left the chest slot"
+        );
+        assert!(
+            core.0
+                .active_inventory()
+                .unwrap()
+                .iter()
+                .any(|item| item.entry == 20893),
+            "the robe is now in the backpack"
+        );
+        assert_eq!(core.0.active_armor(), 2, "only the pants remain worn");
+        assert!(
+            matches!(events_rx.try_recv(), Ok(SessionEvent::ObjectValues { .. })),
+            "the adapter publishes the changed item fields"
+        );
+    }
+
+    /// The overhead marker and the minimap quest dot both key off the dialog status: a rewardable
+    /// quest must answer `REWARD2` (7), the only status the minimap classifier dots (`quest_dot_cell`
+    /// compares to 7) and the gold `?` the marker layer draws — never `REWARD_REP`'s light-blue `?`.
+    #[test]
+    fn rewardable_quests_map_to_status_seven_for_the_marker_and_minimap_dot() {
+        use benilla_game_core::quest::QuestOfferState;
+        use benilla_protocol::messages::dialog_status;
+        assert_eq!(
+            quest_status_icon(QuestOfferState::Available),
+            dialog_status::AVAILABLE
+        );
+        assert_eq!(
+            quest_status_icon(QuestOfferState::Incomplete),
+            dialog_status::INCOMPLETE
+        );
+        assert_eq!(
+            quest_status_icon(QuestOfferState::Rewardable),
+            dialog_status::REWARD2
+        );
     }
 
     #[test]
@@ -1451,13 +3662,18 @@ mod tests {
                 },
             ],
             waypoint_index: 0,
+            leg_start: [0.0, 0.0, 0.0],
             position: [2.5, 0.0, 0.0],
+            current_position: [2.5, 0.0, 0.0],
+            leg_duration_ms: 1_000,
+            wait_ms: 100,
             remaining_ms: 1_100,
             spline_id: 1,
         };
 
         assert!(advance_patrol(42, &mut patrol, 1_099).is_none());
         assert_eq!(patrol.remaining_ms, 1);
+        assert_eq!(patrol.current_position, [2.5, 0.0, 0.0]);
         assert!(matches!(
             advance_patrol(42, &mut patrol, 1),
             Some(SessionEvent::MonsterMove {
@@ -1472,10 +3688,15 @@ mod tests {
                 && path == [[2.5, 0.0, 0.0], [7.5, 0.0, 0.0]]
         ));
         assert_eq!(patrol.waypoint_index, 1);
+        assert_eq!(patrol.leg_start, [2.5, 0.0, 0.0]);
+        assert_eq!(patrol.current_position, [2.5, 0.0, 0.0]);
+        assert_eq!(patrol.leg_duration_ms, 2_000);
+        assert_eq!(patrol.wait_ms, 250);
         assert_eq!(patrol.remaining_ms, 2_250);
 
         assert!(advance_patrol(42, &mut patrol, 2_249).is_none());
         assert_eq!(patrol.remaining_ms, 1);
+        assert_eq!(patrol.current_position, [7.5, 0.0, 0.0]);
         assert!(matches!(
             advance_patrol(42, &mut patrol, 1),
             Some(SessionEvent::MonsterMove {
@@ -1491,6 +3712,87 @@ mod tests {
         ));
         assert_eq!(patrol.waypoint_index, 0);
         assert_eq!(patrol.remaining_ms, 2_100);
+    }
+
+    #[test]
+    fn combat_position_tracks_interpolated_patrol_pose_before_aggro() {
+        let id = CharacterId::parse("00000000000000000000000000000001").unwrap();
+        let start = starting_position(1).unwrap();
+        let mut core = GameCore::default();
+        core.create_character(
+            id,
+            "Alaera",
+            Appearance {
+                race: 1,
+                class: 8,
+                gender: 0,
+                skin: 0,
+                face: 0,
+                hair_style: 0,
+                hair_color: 0,
+                facial_hair: 0,
+            },
+            start,
+        )
+        .unwrap();
+        core.enter_world().unwrap();
+        let spawn_id = benilla_game_core::HOSTILE_SPAWN_ID;
+        let hostile = core.hostile(spawn_id).unwrap();
+        let spawn = [hostile.position.x, hostile.position.y, hostile.position.z];
+        let waypoint = |point, x| benilla_game_core::content::CreatureWaypoint {
+            source_guid: spawn_id,
+            point,
+            x,
+            y: spawn[1],
+            z: spawn[2],
+            orientation: 0.0,
+            wait_ms: 0,
+        };
+        let guid = hostile_guid(spawn_id);
+        let mut patrols = OfflinePatrols::default();
+        patrols.0.insert(
+            guid,
+            ActivePatrol {
+                waypoints: vec![waypoint(1, spawn[0] + 5.0), waypoint(2, spawn[0] + 10.0)],
+                waypoint_index: 0,
+                leg_start: spawn,
+                position: [spawn[0] + 5.0, spawn[1], spawn[2]],
+                current_position: spawn,
+                leg_duration_ms: 2_000,
+                wait_ms: 0,
+                remaining_ms: 2_000,
+                spline_id: 3,
+            },
+        );
+        let (_pick_tx, picks) = crossbeam_channel::unbounded();
+        let (events, _received) = crossbeam_channel::unbounded();
+        let (_command_tx, commands) = crossbeam_channel::unbounded();
+        let mut app = App::new();
+        app.insert_resource(OfflineChannels {
+            picks,
+            events,
+            commands,
+        })
+        .insert_resource(OfflineGameCore(core))
+        .insert_resource(patrols)
+        .insert_resource(Time::<()>::default());
+        app.world_mut()
+            .resource_mut::<Time>()
+            .advance_by(std::time::Duration::from_millis(1_000));
+        app.world_mut()
+            .run_system_once(advance_offline_patrols)
+            .expect("patrol pose synchronizes with combat state");
+
+        let mut core = app.world_mut().resource_mut::<OfflineGameCore>();
+        let current = core.0.hostile(spawn_id).unwrap().position;
+        assert_eq!(current.x, spawn[0] + 2.5);
+        assert_eq!(core.0.hostile(spawn_id).unwrap().spline_id, 3);
+        let updates = core.0.advance_creature_ai(200);
+        assert!(updates.iter().any(|update| matches!(
+            update,
+            CreatureAiUpdate::Move { spawn_id: actual, start, spline_id, .. }
+                if *actual == spawn_id && *start == current && *spline_id == 4
+        )));
     }
 
     #[test]
@@ -1550,7 +3852,6 @@ mod tests {
                 },
                 &snapshot,
                 core.hostiles(),
-                core.friendly_npcs(),
                 None,
                 None,
                 None,
@@ -1566,6 +3867,11 @@ mod tests {
                     snapshot.position.y,
                     OFFLINE_CONTENT_RADIUS_YARDS,
                 )
+                .filter(|spawn| {
+                    content
+                        .template(spawn.entry)
+                        .is_some_and(|template| !is_dnd_test_creature(template))
+                })
                 .collect();
             let expected: BTreeMap<_, _> = nearby
                 .iter()
@@ -1628,32 +3934,445 @@ mod tests {
     }
 
     #[test]
-    fn starter_loadouts_always_include_attack_and_only_mages_get_fireball() {
-        let (mage_spells, mage_buttons) = starter_loadout(8);
-        assert_eq!(
-            mage_spells,
-            [
-                benilla_game_core::ATTACK_SPELL_ID,
-                benilla_game_core::FIREBALL_SPELL_ID
-            ]
+    fn offline_gossip_hello_command_reaches_erona_menu() {
+        let id = CharacterId::parse("00000000000000000000000000000001").unwrap();
+        let mut core = GameCore::default();
+        core.create_character(
+            id,
+            "Alaera",
+            Appearance {
+                race: 10,
+                class: 8,
+                gender: 0,
+                skin: 0,
+                face: 0,
+                hair_style: 0,
+                hair_color: 0,
+                facial_hair: 0,
+            },
+            starting_position(10).unwrap(),
+        )
+        .unwrap();
+        core.enter_world().unwrap();
+
+        let erona = benilla_game_core::content::starting_zone_content()
+            .spawn
+            .iter()
+            .find(|spawn| spawn.map_id == 530 && spawn.entry == 15_278)
+            .expect("converted Magistrix Erona spawn");
+        let erona_guid = imported_guid(erona.entry, erona.source_guid);
+        let (_pick_tx, picks) = crossbeam_channel::unbounded();
+        let (events, received) = crossbeam_channel::unbounded();
+        let (commands, command_receiver) = crossbeam_channel::unbounded();
+        commands
+            .send(crate::net::ClientCommand::GossipHello { guid: erona_guid })
+            .unwrap();
+
+        let mut app = App::new();
+        app.insert_resource(OfflineChannels {
+            picks,
+            events,
+            commands: command_receiver,
+        })
+        .insert_resource(OfflineGameCore(core))
+        .insert_resource(OfflinePersistence::new(false))
+        .insert_resource(Time::<()>::default());
+        app.world_mut()
+            .run_system_once(drive_offline_gameplay)
+            .expect("offline GossipHello command is handled");
+
+        assert!(matches!(
+            received.try_recv().unwrap(),
+            SessionEvent::GossipMenu { npc, text_id: 7_781, quests, .. }
+                if npc == erona_guid
+                    && quests.iter().any(|(quest, icon, _, title)| {
+                        *quest == 8_325
+                            && *icon == benilla_protocol::messages::dialog_status::AVAILABLE
+                            && title == "Reclaiming Sunstrider Isle"
+                    })
+        ));
+    }
+
+    #[test]
+    fn offline_quest_interaction_enforces_range_and_completes_the_stock_reward_flow() {
+        let id = CharacterId::parse("00000000000000000000000000000001").unwrap();
+        let mut core = GameCore::default();
+        core.create_character(
+            id.clone(),
+            "Alaera",
+            Appearance {
+                race: 10,
+                class: 8,
+                gender: 0,
+                skin: 0,
+                face: 0,
+                hair_style: 0,
+                hair_color: 0,
+                facial_hair: 0,
+            },
+            starting_position(10).unwrap(),
+        )
+        .unwrap();
+        core.enter_world().unwrap();
+
+        let erona = benilla_game_core::content::starting_zone_content()
+            .spawn
+            .iter()
+            .find(|spawn| spawn.map_id == 530 && spawn.entry == 15_278)
+            .expect("converted Magistrix Erona spawn");
+        let erona_guid = imported_guid(erona.entry, erona.source_guid);
+        let erona_position = WorldPosition {
+            map_id: erona.map_id,
+            x: erona.x,
+            y: erona.y,
+            z: erona.z,
+            orientation: erona.orientation,
+        };
+        let start_position = core.snapshot(&id).unwrap().position;
+        let distance_sq = (start_position.x - erona_position.x).powi(2)
+            + (start_position.y - erona_position.y).powi(2)
+            + (start_position.z - erona_position.z).powi(2);
+        assert!(distance_sq > OFFLINE_INTERACTION_RANGE_YARDS * OFFLINE_INTERACTION_RANGE_YARDS);
+        assert_eq!(quest_npc_entry(&core, erona_guid), Some(15_278));
+        assert_eq!(quest_npc_in_range(&core, erona_guid), None);
+
+        let (_pick_tx, picks) = crossbeam_channel::unbounded();
+        let (events, received) = crossbeam_channel::unbounded();
+        let (_command_tx, commands) = crossbeam_channel::unbounded();
+        let channels = OfflineChannels {
+            picks,
+            events,
+            commands,
+        };
+        send_offline_questgiver_status(&core, &channels, erona_guid);
+        assert!(matches!(
+            received.try_recv().unwrap(),
+            SessionEvent::QuestGiverStatus { npc, status }
+                if npc == erona_guid
+                    && status == benilla_protocol::messages::dialog_status::AVAILABLE
+        ));
+        send_offline_gossip_menu(&core, &channels, erona_guid);
+        assert!(matches!(
+            received.try_recv().unwrap(),
+            SessionEvent::GossipMenu { npc, text_id: 7_781, quests, .. }
+                if npc == erona_guid
+                    && quests.iter().any(|(quest, icon, _, title)| {
+                        *quest == 8_325
+                            && *icon == benilla_protocol::messages::dialog_status::AVAILABLE
+                            && title == "Reclaiming Sunstrider Isle"
+                    })
+        ));
+        send_offline_npc_text(&core, &channels, erona_guid, 7_781);
+        assert!(matches!(
+            received.try_recv().unwrap(),
+            SessionEvent::NpcGreeting { text_id: 7_781, blocks }
+                if blocks[0].female.contains("Sunstrider Isle")
+        ));
+
+        let mut persistence = OfflinePersistence::new(false);
+        core.update_active(erona_position, 0).unwrap();
+        assert_eq!(quest_npc_in_range(&core, erona_guid), Some(15_278));
+        core.update_active(
+            WorldPosition {
+                x: erona_position.x + OFFLINE_INTERACTION_RANGE_YARDS + 1.0,
+                ..erona_position
+            },
+            0,
+        )
+        .unwrap();
+        assert_eq!(quest_npc_in_range(&core, erona_guid), None);
+        accept_offline_quest(&mut core, &mut persistence, &channels, erona_guid, 8_325);
+        assert!(core.active_quest_journal().unwrap().entries.is_empty());
+        assert!(received.try_iter().next().is_none());
+        core.update_active(erona_position, 0).unwrap();
+
+        accept_offline_quest(&mut core, &mut persistence, &channels, erona_guid, 8_325);
+        assert!(core
+            .active_quest_journal()
+            .unwrap()
+            .progress(8_325)
+            .is_some());
+        let acceptance_events: Vec<_> = received.try_iter().collect();
+        assert!(acceptance_events
+            .iter()
+            .any(|event| matches!(event, SessionEvent::GossipComplete)));
+
+        let mana_wyrm = core
+            .hostiles()
+            .iter()
+            .find(|hostile| hostile.creature_entry == 15_274)
+            .copied()
+            .expect("nearby Mana Wyrm combat state");
+        core.update_active(mana_wyrm.position, 0).unwrap();
+        for expected_count in 1..=8 {
+            if expected_count > 1 {
+                advance_offline_combat(&mut core, &channels, benilla_game_core::HOSTILE_RESPAWN_MS);
+            }
+            core.start_auto_attack(mana_wyrm.spawn_id).unwrap();
+            assert!(advance_offline_combat(
+                &mut core,
+                &channels,
+                benilla_game_core::MELEE_SWING_MS * 12,
+            ));
+            let combat_events: Vec<_> = received.try_iter().collect();
+            assert!(combat_events.iter().any(|event| matches!(
+                event,
+                SessionEvent::QuestObjectiveKill {
+                    quest_id: 8_325,
+                    count,
+                    required: 8,
+                    ..
+                } if *count == expected_count
+            )));
+            if expected_count == 8 {
+                assert!(combat_events.iter().any(|event| matches!(
+                    event,
+                    SessionEvent::QuestObjectivesComplete { quest_id: 8_325 }
+                )));
+            }
+        }
+        core.update_active(erona_position, 0).unwrap();
+        send_offline_quest_progress(&core, &channels, erona_guid, 8_325);
+        assert!(matches!(
+            received.try_recv().unwrap(),
+            SessionEvent::QuestOffer(ref offer) if offer.quest_id == 8_325
+        ));
+        reward_offline_quest(
+            &mut core,
+            &mut persistence,
+            &channels,
+            erona_guid,
+            8_325,
+            0,
+            None,
         );
+        let reward_events: Vec<_> = received.try_iter().collect();
+        assert!(reward_events.iter().any(|event| matches!(
+            event,
+            SessionEvent::QuestComplete(complete)
+                if complete.quest_id == 8_325 && complete.xp == 50 && complete.money == 30
+        )));
+        assert!(reward_events
+            .iter()
+            .any(|event| matches!(event, SessionEvent::ItemCreate { .. })));
+        assert!(reward_events.iter().any(|event| matches!(
+            event,
+            SessionEvent::ItemPushResult(result)
+                if result.item_entry == 20_997 && result.count == 1
+        )));
+        let snapshot = core.snapshot(&id).unwrap();
+        assert_eq!(snapshot.experience, 50);
+        assert_eq!(snapshot.money_copper, 30);
+        assert_eq!(snapshot.inventory.len(), 1);
+    }
+
+    #[test]
+    fn one_point_waypoint_path_tracks_its_leg_without_repeating() {
+        let content = benilla_game_core::content::starting_zone_content();
+        let spawn = content
+            .spawn
+            .iter()
+            .find(|spawn| {
+                spawn.map_id == 530
+                    && spawn.movement_type == 2
+                    && content.waypoints_for(spawn.source_guid).count() == 1
+            })
+            .expect("the imported pack includes one-point waypoint paths");
+        let waypoint = content
+            .waypoints_for(spawn.source_guid)
+            .next()
+            .copied()
+            .unwrap();
+        let id = CharacterId::parse("00000000000000000000000000000003").unwrap();
+        let appearance = Appearance {
+            race: 10,
+            class: 8,
+            gender: 0,
+            skin: 0,
+            face: 0,
+            hair_style: 0,
+            hair_color: 0,
+            facial_hair: 0,
+        };
+        let mut core = GameCore::default();
+        core.create_character(
+            id.clone(),
+            "OnePoint",
+            appearance,
+            starting_position(10).unwrap(),
+        )
+        .unwrap();
+        core.enter_world().unwrap();
+        core.update_active(
+            WorldPosition {
+                map_id: spawn.map_id,
+                x: spawn.x,
+                y: spawn.y,
+                z: spawn.z,
+                orientation: spawn.orientation,
+            },
+            0,
+        )
+        .unwrap();
+
+        let (_pick_tx, picks) = crossbeam_channel::unbounded();
+        let (events, received) = crossbeam_channel::unbounded();
+        let (_command_tx, commands) = crossbeam_channel::unbounded();
+        let mut names = crate::names::NameCache::default();
+        let mut patrols = OfflinePatrols::default();
+        emit_world_entry(
+            &OfflineChannels {
+                picks,
+                events,
+                commands,
+            },
+            core.snapshot(&id).unwrap(),
+            &[],
+            None,
+            None,
+            None,
+            &mut names,
+            &mut patrols,
+        );
+
+        let guid = imported_guid(spawn.entry, spawn.source_guid);
+        let start = [spawn.x, spawn.y, spawn.z];
+        let target = [waypoint.x, waypoint.y, waypoint.z];
+        let events: Vec<_> = received.try_iter().collect();
+        let movement_events: Vec<_> = events
+            .iter()
+            .filter(|event| {
+                matches!(
+                    event,
+                    SessionEvent::MonsterMove {
+                        guid: moved_guid,
+                        ..
+                    } if *moved_guid == guid
+                )
+            })
+            .collect();
+        assert_eq!(
+            movement_events.len(),
+            1,
+            "the one waypoint makes one initial leg"
+        );
+        assert!(matches!(
+            movement_events[0],
+            SessionEvent::MonsterMove {
+                start: actual_start,
+                path,
+                duration_ms,
+                ..
+            } if *actual_start == start
+                && path == &vec![start, target]
+                && *duration_ms == patrol_leg_duration_ms(start, target)
+        ));
+        let patrol = patrols
+            .0
+            .get_mut(&guid)
+            .expect("the current pose must be tracked until the one leg finishes");
+        assert_eq!(patrol.waypoints.len(), 1);
+        let duration = patrol.remaining_ms;
+        assert!(advance_patrol(guid, patrol, duration).is_none());
+        assert_eq!(patrol.current_position, target);
+        assert_eq!(patrol.remaining_ms, 0);
+        assert!(advance_patrol(guid, patrol, 1_000).is_none());
+        assert_eq!(patrol.spline_id, 1, "the path never loops a second time");
+    }
+
+    #[test]
+    fn starter_spellbook_and_action_bar_come_from_converted_race_class_data() {
+        let mage_spells = benilla_game_core::progression::starter_spell_ids(10, 8);
+        assert!(mage_spells.contains(&benilla_game_core::ATTACK_SPELL_ID));
+        assert!(mage_spells.contains(&benilla_game_core::FIREBALL_SPELL_ID));
+        let mage_buttons = starter_action_buttons(10, 8);
         assert_eq!(
             mage_buttons
                 .iter()
-                .map(|button| (button.slot, button.action))
+                .map(|button| (button.slot, button.action, button.kind))
                 .collect::<Vec<_>>(),
             [
-                (0, benilla_game_core::ATTACK_SPELL_ID),
-                (1, benilla_game_core::FIREBALL_SPELL_ID)
+                (0, 6603, 0),
+                (1, 133, 0),
+                (2, 168, 0),
+                (3, 28734, 0),
+                (4, 28730, 0),
+                (10, 159, 128),
+                (11, 20857, 128)
             ]
         );
 
-        let (warrior_spells, warrior_buttons) = starter_loadout(1);
-        assert_eq!(warrior_spells, [benilla_game_core::ATTACK_SPELL_ID]);
-        assert_eq!(warrior_buttons.len(), 1);
-        assert_eq!(
-            warrior_buttons[0].action,
-            benilla_game_core::ATTACK_SPELL_ID
+        let warrior_spells = benilla_game_core::progression::starter_spell_ids(1, 1);
+        assert!(warrior_spells.contains(&benilla_game_core::ATTACK_SPELL_ID));
+        assert!(!warrior_spells.contains(&benilla_game_core::FIREBALL_SPELL_ID));
+        assert!(!starter_action_buttons(1, 1).is_empty());
+    }
+
+    #[test]
+    fn converted_starter_trainer_and_action_spells_exist_in_the_tbc_catalog() {
+        let Some(spells) = crate::ui_action::real_spells() else {
+            return;
+        };
+        let progression = benilla_game_core::progression::progression_data();
+        let mut ids = std::collections::BTreeSet::new();
+        ids.extend(progression.starter_spell.iter().map(|spell| spell.spell_id));
+        ids.extend(progression.trainer_spell.iter().map(|spell| spell.spell_id));
+        ids.extend(
+            progression
+                .action_bar
+                .iter()
+                .filter(|action| action.action_type == 0)
+                .map(|action| action.action),
+        );
+        let missing: Vec<_> = ids
+            .into_iter()
+            .filter(|spell_id| spells.catalog.get(*spell_id).is_none())
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "converted player spell sources must resolve in build-8606 Spell.dbc: {missing:?}"
+        );
+        let missing_taught: Vec<_> = progression
+            .trainer_spell
+            .iter()
+            .filter_map(|offer| {
+                let taught = spells
+                    .catalog
+                    .learned_spell(offer.spell_id)
+                    .unwrap_or(offer.spell_id);
+                spells
+                    .catalog
+                    .get(taught)
+                    .is_none()
+                    .then_some((offer.spell_id, taught))
+            })
+            .collect();
+        assert!(
+            missing_taught.is_empty(),
+            "every trainer learn effect must resolve to its player spell: {missing_taught:?}"
+        );
+
+        let data = benilla_formats::wow_data_or_skip!();
+        let mut chain = benilla_formats::open_chain(&data).expect("open build-8606 data");
+        let talent_catalog =
+            benilla_formats::load_talent_catalog(&mut chain).expect("load Talent/TalentTab");
+        let mut missing_talents = Vec::new();
+        for race in 1..=11 {
+            for class in 1..=11 {
+                for tab in talent_catalog.tabs_for_class(race, class) {
+                    for talent in talent_catalog.talents_in_tab(tab.id) {
+                        for spell_id in talent.ranks.iter().copied().filter(|id| *id != 0) {
+                            if spells.catalog.get(spell_id).is_none() {
+                                missing_talents.push((talent.id, spell_id));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert!(
+            missing_talents.is_empty(),
+            "every build-8606 talent rank must resolve in Spell.dbc: {missing_talents:?}"
         );
     }
 
@@ -1695,7 +4414,12 @@ mod tests {
             .find(|spawn| spawn.source_guid == hostile.spawn_id)
             .expect("combat state refers to a converted spawn");
         let hostile_template = content.template(hostile_spawn.entry).unwrap();
-        assert_eq!(hostile_template.faction, 16);
+        assert!(
+            benilla_game_core::SUNSTRIDER_ATTACKABLE_FACTION_TEMPLATES
+                .contains(&hostile_template.faction),
+            "combat state holds an attackable faction, got {}",
+            hostile_template.faction
+        );
         let hostile_guid = imported_guid(hostile_spawn.entry, hostile_spawn.source_guid);
 
         let friendly_spawn = nearby
@@ -1723,7 +4447,6 @@ mod tests {
             &channels,
             core.snapshot(&id).unwrap(),
             core.hostiles(),
-            core.friendly_npcs(),
             None,
             None,
             None,
@@ -1757,12 +4480,54 @@ mod tests {
             },
             benilla_game_core::FIREBALL_MANA_COST,
             benilla_game_core::FIREBALL_CAST_MS,
+            0,
+            benilla_game_core::FIREBALL_CAST_MS,
+            benilla_game_core::FIREBALL_RANGE_YARDS,
+            benilla_game_core::DirectSpellEffect::Damage {
+                min: 30,
+                max: 30,
+                school: 4,
+                periodic: None,
+            },
         );
         assert!(
             received.try_iter().next().is_none(),
             "friendly units sharing the unit presentation are not combat targets"
         );
 
+        let neutral_spawn = nearby
+            .iter()
+            .find(|spawn| {
+                content
+                    .template(spawn.entry)
+                    .is_some_and(|template| template.faction == 7)
+            })
+            .expect("nearby neutral Mana Wyrm");
+        let neutral = core
+            .hostile(neutral_spawn.source_guid)
+            .expect("neutral Mana Wyrm is a core combat target");
+        let neutral_guid = imported_guid(neutral_spawn.entry, neutral_spawn.source_guid);
+        assert_eq!(initial_unit_health(neutral_guid), Some(Some(60)));
+        core.update_active(neutral.position, 0).unwrap();
+        start_offline_auto_attack(&mut core, &channels, neutral_guid);
+        assert!(matches!(
+            received.try_recv().unwrap(),
+            SessionEvent::AttackStart { victim, .. } if victim == neutral_guid
+        ));
+        advance_offline_combat(&mut core, &channels, benilla_game_core::MELEE_SWING_MS);
+        let neutral_hit: Vec<_> = received.try_iter().collect();
+        assert!(neutral_hit.iter().any(|event| matches!(
+            event,
+            SessionEvent::ObjectValues { guid, fields }
+                if *guid == neutral_guid
+                    && fields.unit_health()
+                        == Some(benilla_game_core::HOSTILE_MAX_HEALTH
+                            - benilla_game_core::MELEE_DAMAGE)
+        )));
+        stop_offline_auto_attack(&mut core, &channels);
+        let _ = received.try_iter().count();
+
+        core.update_active(hostile.position, 0).unwrap();
         start_offline_auto_attack(&mut core, &channels, hostile_guid);
         assert!(matches!(
             received.try_recv().unwrap(),
@@ -1797,6 +4562,15 @@ mod tests {
                 },
                 benilla_game_core::FIREBALL_MANA_COST,
                 benilla_game_core::FIREBALL_CAST_MS,
+                0,
+                benilla_game_core::FIREBALL_CAST_MS,
+                benilla_game_core::FIREBALL_RANGE_YARDS,
+                benilla_game_core::DirectSpellEffect::Damage {
+                    min: 30,
+                    max: 30,
+                    school: 4,
+                    periodic: None,
+                },
             );
             assert!(matches!(
                 received.try_recv().unwrap(),
@@ -1859,7 +4633,6 @@ mod tests {
             &channels,
             core.snapshot(&id).unwrap(),
             core.hostiles(),
-            core.friendly_npcs(),
             None,
             None,
             None,
@@ -1882,18 +4655,12 @@ mod tests {
         assert!(entry_events.iter().any(|event| matches!(
             event,
             SessionEvent::SpellBook { spell_ids, .. }
-                if spell_ids == &[
-                    benilla_game_core::ATTACK_SPELL_ID,
-                    benilla_game_core::FIREBALL_SPELL_ID
-                ]
+                if spell_ids == &benilla_game_core::progression::starter_spell_ids(1, 8)
         )));
         assert!(entry_events.iter().any(|event| matches!(
             event,
             SessionEvent::ActionButtons { buttons }
-                if buttons.iter().any(|button| button.slot == 0
-                    && button.action == benilla_game_core::ATTACK_SPELL_ID)
-                    && buttons.iter().any(|button| button.slot == 1
-                        && button.action == benilla_game_core::FIREBALL_SPELL_ID)
+                if buttons == &starter_action_buttons(1, 8)
         )));
         let player_guid = id.presentation_guid();
         let player = entry_events.iter().find_map(|event| match event {
@@ -1954,17 +4721,33 @@ mod tests {
                 },
                 30,
                 benilla_game_core::FIREBALL_CAST_MS,
+                0,
+                benilla_game_core::FIREBALL_CAST_MS,
+                benilla_game_core::FIREBALL_RANGE_YARDS,
+                benilla_game_core::DirectSpellEffect::Damage {
+                    min: 30,
+                    max: 30,
+                    school: 4,
+                    periodic: None,
+                },
             );
             assert!(matches!(
                 received.try_recv().unwrap(),
                 SessionEvent::SpellStart { spell_id: 133, .. }
             ));
             let mana = received.try_recv().unwrap();
+            // Second cast starts from 75: one `MANA_REGEN_PER_TICK` lands while advancing the first
+            // cast's 1500 ms (`MANA_REGEN_TICK_MS` is 1000 ms).
             assert!(matches!(
                 mana,
                 SessionEvent::ObjectValues { guid, fields }
                     if guid == id.presentation_guid()
-                        && fields.unit_power(0) == Some(if expected_health == 30 { 70 } else { 40 })
+                        && fields.unit_power(0)
+                            == Some(if expected_health == 30 {
+                                70
+                            } else {
+                                70 + benilla_game_core::MANA_REGEN_PER_TICK - 30
+                            })
             ));
             advance_offline_combat(&mut core, &channels, benilla_game_core::FIREBALL_CAST_MS);
             let impact_events: Vec<_> = received.try_iter().collect();
@@ -2111,6 +4894,296 @@ mod tests {
     }
 
     #[test]
+    fn offline_entry_restores_aura_descriptor_slots_and_remaining_durations() {
+        let id = CharacterId::parse("00000000000000000000000000000001").unwrap();
+        let mut core = GameCore::default();
+        core.create_character(
+            id.clone(),
+            "Alaera",
+            Appearance {
+                race: 1,
+                class: 8,
+                gender: 0,
+                skin: 0,
+                face: 0,
+                hair_style: 0,
+                hair_color: 0,
+                facial_hair: 0,
+            },
+            starting_position(1).unwrap(),
+        )
+        .unwrap();
+        core.enter_world().unwrap();
+        let hostile = core.hostile(benilla_game_core::HOSTILE_SPAWN_ID).unwrap();
+        core.update_active(hostile.position, 0).unwrap();
+        core.advance_creature_ai(benilla_game_core::CREATURE_SWING_MS);
+        core.begin_fireball(
+            benilla_game_core::FIREBALL_SPELL_ID,
+            hostile.spawn_id,
+            benilla_game_core::FIREBALL_MANA_COST,
+            benilla_game_core::FIREBALL_CAST_MS,
+            benilla_game_core::FIREBALL_CAST_MS,
+            benilla_game_core::FIREBALL_RANGE_YARDS,
+            30,
+            30,
+        )
+        .unwrap();
+        core.advance_combat(benilla_game_core::FIREBALL_CAST_MS);
+        let buff = CharacterAura {
+            slot: 5,
+            spell_id: 1_001,
+            flags: 0x03,
+            level: 1,
+            stacks: 2,
+            remaining_ms: Some(3_500),
+        };
+        let debuff = CharacterAura {
+            slot: 36,
+            spell_id: 1_002,
+            flags: 0x02,
+            level: 1,
+            stacks: 1,
+            remaining_ms: None,
+        };
+        core.set_active_aura(buff).unwrap();
+        core.set_active_aura(debuff).unwrap();
+
+        let (_pick_tx, picks) = crossbeam_channel::unbounded();
+        let (events, received) = crossbeam_channel::unbounded();
+        let (_command_tx, commands) = crossbeam_channel::unbounded();
+        let channels = OfflineChannels {
+            picks,
+            events,
+            commands,
+        };
+        let mut names = crate::names::NameCache::default();
+        let mut patrols = OfflinePatrols::default();
+        emit_world_entry(
+            &channels,
+            core.snapshot(&id).unwrap(),
+            core.hostiles(),
+            None,
+            None,
+            None,
+            &mut names,
+            &mut patrols,
+        );
+        let entry_events: Vec<_> = received.try_iter().collect();
+        let player = entry_events
+            .iter()
+            .find_map(|event| match event {
+                SessionEvent::ObjectCreate {
+                    guid,
+                    kind: EntityKind::Player,
+                    fields,
+                    ..
+                } if *guid == id.presentation_guid() => Some(fields),
+                _ => None,
+            })
+            .expect("world entry includes the saved player aura fields");
+        assert_eq!(
+            player.unit_health(),
+            Some(benilla_game_core::PLAYER_MAX_HEALTH - benilla_game_core::CREATURE_DAMAGE)
+        );
+        assert_eq!(
+            player.unit_power(0),
+            Some(benilla_game_core::STARTER_MANA - benilla_game_core::FIREBALL_MANA_COST)
+        );
+        assert_eq!(
+            player.unit_aura(buff.slot),
+            Some(benilla_protocol::messages::UnitAuraSlot {
+                slot: buff.slot,
+                spell_id: buff.spell_id,
+                flags: buff.flags,
+                level: buff.level,
+                stacks: buff.stacks,
+            })
+        );
+        assert_eq!(
+            player.unit_aura(debuff.slot).unwrap().spell_id,
+            debuff.spell_id
+        );
+        assert!(entry_events.iter().any(|event| matches!(
+            event,
+            SessionEvent::AuraDuration { slot, remaining_ms }
+                if *slot == buff.slot && *remaining_ms == 3_500
+        )));
+        assert!(!entry_events.iter().any(|event| matches!(
+            event,
+            SessionEvent::AuraDuration { slot, .. } if *slot == debuff.slot
+        )));
+
+        let expired = core.advance_active_auras(3_500);
+        publish_offline_auras(&core, &channels, &expired);
+        let expiration_events: Vec<_> = received.try_iter().collect();
+        assert!(expiration_events.iter().any(|event| matches!(
+            event,
+            SessionEvent::ObjectValues { guid, fields }
+                if *guid == id.presentation_guid()
+                    && fields.unit_aura(buff.slot).is_none()
+                    && fields.unit_aura(debuff.slot).is_some()
+        )));
+        assert!(expiration_events.iter().any(|event| matches!(
+            event,
+            SessionEvent::AuraDuration { slot, remaining_ms: 0 } if *slot == buff.slot
+        )));
+
+        let mut persistence = OfflinePersistence::new(false);
+        cancel_offline_aura(&mut core, &mut persistence, &channels, debuff.spell_id);
+        let cancelled_events: Vec<_> = received.try_iter().collect();
+        assert!(cancelled_events.iter().any(|event| matches!(
+            event,
+            SessionEvent::ObjectValues { guid, fields }
+                if *guid == id.presentation_guid() && fields.unit_aura(debuff.slot).is_none()
+        )));
+        assert!(cancelled_events.iter().any(|event| matches!(
+            event,
+            SessionEvent::AuraDuration { slot, remaining_ms: 0 } if *slot == debuff.slot
+        )));
+        assert!(core.active_auras().unwrap().is_empty());
+    }
+
+    #[test]
+    fn hostile_ai_events_drive_chase_attack_and_player_health() {
+        let id = CharacterId::parse("00000000000000000000000000000001").unwrap();
+        let appearance = Appearance {
+            race: 1,
+            class: 8,
+            gender: 0,
+            skin: 0,
+            face: 0,
+            hair_style: 0,
+            hair_color: 0,
+            facial_hair: 0,
+        };
+        let mut core = GameCore::default();
+        core.create_character(
+            id.clone(),
+            "Alaera",
+            appearance,
+            starting_position(1).unwrap(),
+        )
+        .unwrap();
+        core.enter_world().unwrap();
+        let target = hostile_guid(benilla_game_core::HOSTILE_SPAWN_ID);
+        let (_pick_tx, picks) = crossbeam_channel::unbounded();
+        let (events, received) = crossbeam_channel::unbounded();
+        let (_command_tx, commands) = crossbeam_channel::unbounded();
+        let channels = OfflineChannels {
+            picks,
+            events,
+            commands,
+        };
+        let mut patrols = OfflinePatrols::default();
+
+        advance_offline_creature_ai(&mut core, &channels, &mut patrols, 500);
+        let chase_events: Vec<_> = received.try_iter().collect();
+        assert!(chase_events.iter().any(|event| matches!(
+            event,
+            SessionEvent::AiReaction { unit, reaction: 2 } if *unit == target
+        )));
+        assert!(chase_events.iter().any(|event| matches!(
+            event,
+            SessionEvent::MonsterMove { guid, run_mode: true, path, .. }
+                if *guid == target && path.len() == 2
+        )));
+
+        let contact = core
+            .hostile(benilla_game_core::HOSTILE_SPAWN_ID)
+            .unwrap()
+            .position;
+        core.update_active(contact, 0).unwrap();
+        advance_offline_creature_ai(&mut core, &channels, &mut patrols, 0);
+        assert!(matches!(
+            received.try_recv().unwrap(),
+            SessionEvent::AttackStart { attacker, victim }
+                if attacker == target && victim == id.presentation_guid()
+        ));
+
+        advance_offline_creature_ai(
+            &mut core,
+            &channels,
+            &mut patrols,
+            benilla_game_core::CREATURE_SWING_MS,
+        );
+        let impact_events: Vec<_> = received.try_iter().collect();
+        assert!(impact_events.iter().any(|event| matches!(
+            event,
+            SessionEvent::AttackerState(state)
+                if state.attacker == target
+                    && state.victim == id.presentation_guid()
+                    && state.damage == benilla_game_core::CREATURE_DAMAGE
+        )));
+        assert!(impact_events.iter().any(|event| matches!(
+            event,
+            SessionEvent::ObjectValues { guid, fields }
+                if *guid == id.presentation_guid()
+                    && fields.unit_health()
+                        == Some(benilla_game_core::PLAYER_MAX_HEALTH - benilla_game_core::CREATURE_DAMAGE)
+        )));
+    }
+
+    #[test]
+    fn repop_request_recovers_dead_character_at_race_start() {
+        let id = CharacterId::parse("00000000000000000000000000000001").unwrap();
+        let appearance = Appearance {
+            race: 1,
+            class: 8,
+            gender: 0,
+            skin: 0,
+            face: 0,
+            hair_style: 0,
+            hair_color: 0,
+            facial_hair: 0,
+        };
+        let start = starting_position(1).unwrap();
+        let mut core = GameCore::default();
+        core.create_character(id.clone(), "Alaera", appearance, start)
+            .unwrap();
+        core.enter_world().unwrap();
+        let target = core.hostiles()[0];
+        core.update_active(target.position, 0).unwrap();
+        core.advance_creature_ai(benilla_game_core::CREATURE_SWING_MS * 40);
+        assert_eq!(core.active_health(), 0);
+
+        let (_pick_tx, picks) = crossbeam_channel::unbounded();
+        let (events, received) = crossbeam_channel::unbounded();
+        let (commands, command_receiver) = crossbeam_channel::unbounded();
+        let mut app = App::new();
+        app.insert_resource(OfflineChannels {
+            picks,
+            events,
+            commands: command_receiver,
+        })
+        .insert_resource(OfflineGameCore(core))
+        .insert_resource(OfflinePersistence::new(false))
+        .insert_resource(Time::<()>::default());
+        commands
+            .send(crate::net::ClientCommand::RepopRequest)
+            .unwrap();
+
+        app.world_mut()
+            .run_system_once(drive_offline_gameplay)
+            .expect("offline release-spirit command is handled");
+        let events: Vec<_> = received.try_iter().collect();
+        assert!(events.iter().any(|event| matches!(
+            event,
+            SessionEvent::ObjectValues { guid, fields }
+                if *guid == id.presentation_guid()
+                    && fields.unit_health() == Some(benilla_game_core::PLAYER_MAX_HEALTH)
+        )));
+        assert!(events.iter().any(|event| matches!(
+            event,
+            SessionEvent::Teleport { guid, position, .. }
+                if *guid == id.presentation_guid()
+                    && *position == [start.x, start.y, start.z]
+        )));
+        let core = &app.world().resource::<OfflineGameCore>().0;
+        assert_eq!(core.active_health(), benilla_game_core::PLAYER_MAX_HEALTH);
+        assert_eq!(core.snapshot(&id).unwrap().position, start);
+    }
+
+    #[test]
     fn offline_fireball_uses_project_rules_when_spell_catalog_is_unavailable() {
         let id = CharacterId::parse("00000000000000000000000000000001").unwrap();
         let appearance = Appearance {
@@ -2185,8 +5258,120 @@ mod tests {
         assert!(matches!(
             received.try_recv().unwrap(),
             SessionEvent::SpellDamageLog(log)
-                if log.spell_id == benilla_game_core::FIREBALL_SPELL_ID && log.damage == 30
+                if log.spell_id == benilla_game_core::FIREBALL_SPELL_ID
+                    && (benilla_game_core::FIREBALL_RANK1_DAMAGE_MIN
+                        ..=benilla_game_core::FIREBALL_RANK1_DAMAGE_MAX)
+                        .contains(&log.damage)
         ));
+    }
+
+    #[test]
+    fn offline_fireball_uses_build_8606_damage_and_publishes_its_periodic_debuff() {
+        let Some(spells) = crate::ui_action::real_spells() else {
+            return;
+        };
+        let id = CharacterId::parse("00000000000000000000000000000001").unwrap();
+        let mut core = GameCore::default();
+        core.create_character(
+            id.clone(),
+            "Alaera",
+            Appearance {
+                race: 1,
+                class: 8,
+                gender: 0,
+                skin: 0,
+                face: 0,
+                hair_style: 0,
+                hair_color: 0,
+                facial_hair: 0,
+            },
+            starting_position(1).unwrap(),
+        )
+        .unwrap();
+        core.enter_world().unwrap();
+
+        let (_pick_tx, picks) = crossbeam_channel::unbounded();
+        let (events, received) = crossbeam_channel::unbounded();
+        let (commands, command_receiver) = crossbeam_channel::unbounded();
+        let mut app = App::new();
+        app.insert_resource(OfflineChannels {
+            picks,
+            events,
+            commands: command_receiver,
+        })
+        .insert_resource(OfflineGameCore(core))
+        .insert_resource(OfflinePersistence::new(false))
+        .insert_resource(Time::<()>::default())
+        .insert_resource(spells);
+
+        let target = hostile_guid(benilla_game_core::HOSTILE_SPAWN_ID);
+        commands
+            .send(crate::net::ClientCommand::CastSpell {
+                spell_id: benilla_game_core::FIREBALL_SPELL_ID,
+                target: Some(target),
+            })
+            .unwrap();
+        app.world_mut()
+            .run_system_once(drive_offline_gameplay)
+            .expect("offline cast reads the real Spell.dbc catalog");
+        let cast_start: Vec<_> = received.try_iter().collect();
+        assert!(cast_start.iter().any(|event| matches!(
+            event,
+            SessionEvent::SpellStart {
+                spell_id: 133,
+                cast_time_ms: 1_500,
+                ..
+            }
+        )));
+        assert!(cast_start.iter().any(|event| matches!(
+            event,
+            SessionEvent::ObjectValues { fields, .. }
+                if fields.unit_power(0)
+                    == Some(benilla_game_core::STARTER_MANA - 30)
+        )));
+
+        let channels = app.world().resource::<OfflineChannels>().clone();
+        advance_offline_combat(
+            &mut app.world_mut().resource_mut::<OfflineGameCore>().0,
+            &channels,
+            benilla_game_core::FIREBALL_CAST_MS,
+        );
+        let impact: Vec<_> = received.try_iter().collect();
+        assert!(impact.iter().any(|event| matches!(
+            event,
+            SessionEvent::SpellDamageLog(log)
+                if log.spell_id == 133 && (14..=22).contains(&log.damage)
+        )));
+        assert!(impact.iter().any(|event| matches!(
+            event,
+            SessionEvent::ObjectValues { guid, fields }
+                if *guid == target && fields.unit_aura(32).is_some_and(|aura| aura.spell_id == 133)
+        )));
+        assert!(impact.iter().any(|event| matches!(
+            event,
+            SessionEvent::AuraDuration { slot: 32, remaining_ms: 4_000 }
+        )));
+
+        advance_offline_combat(
+            &mut app.world_mut().resource_mut::<OfflineGameCore>().0,
+            &channels,
+            benilla_game_core::FIREBALL_BURN_TICK_MS * 2,
+        );
+        let expiry: Vec<_> = received.try_iter().collect();
+        assert!(expiry.iter().any(|event| matches!(
+            event,
+            SessionEvent::SpellDamageLog(log)
+                if log.spell_id == 133 && log.periodic && log.damage == 1
+        )));
+        assert!(expiry.iter().any(|event| matches!(
+            event,
+            SessionEvent::AuraDuration { slot: 32, remaining_ms: 0 }
+        )));
+        assert!(expiry.iter().any(|event| matches!(
+            event,
+            SessionEvent::ObjectValues { guid, fields }
+                if *guid == target && fields.unit_aura(32).is_none()
+        )));
     }
 
     #[test]
@@ -2372,6 +5557,15 @@ mod tests {
                 .expect("load TBC character creation catalog"),
         );
         let mut core = GameCore::default();
+        let proportions = crate::body_shape::BodyProportions {
+            enabled: true,
+            height: 35,
+            waist: -10,
+            hips: 15,
+            bust: 10,
+            seat: 12,
+            ..default()
+        };
         create_local_character(
             &mut core,
             Some(&catalog),
@@ -2386,12 +5580,14 @@ mod tests {
                 hair_color: 0,
                 facial_hair: 0,
             },
+            proportions,
         )
         .expect("create Blood Elf Mage");
 
         let id = core.selected().expect("created character selected").clone();
         let snapshot = core.snapshot(&id).expect("created snapshot");
         assert_eq!(snapshot.name, "Alaera");
+        assert_eq!(snapshot.body_proportions, proportions.into());
         assert_eq!(
             (snapshot.appearance.race, snapshot.appearance.class),
             (10, 8)
@@ -2412,7 +5608,6 @@ mod tests {
             },
             core.snapshot(&id).expect("active snapshot"),
             core.hostiles(),
-            core.friendly_npcs(),
             Some(&catalog),
             None,
             None,
@@ -2435,12 +5630,16 @@ mod tests {
             Some(SessionEvent::Worldport { map_id: 530, .. })
         ));
         let Some(SessionEvent::ObjectCreate {
-            fields, display_id, ..
+            fields,
+            display_id,
+            scale,
+            ..
         }) = events.get(2)
         else {
             panic!("world entry did not emit the player create event: {events:?}");
         };
         assert_eq!(*display_id, catalog.0.body_display(10, 0));
+        assert!((*scale - 1.35).abs() < 1e-5);
         assert_eq!(
             (
                 fields.unit_race(),

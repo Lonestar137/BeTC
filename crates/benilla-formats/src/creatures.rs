@@ -369,6 +369,12 @@ fn creature_display_info_schema_for(tbc: bool) -> Schema {
 
 /// CreatureDisplayInfoExtra.dbc: 19 fields, 76-byte records in 5875 (vmangos `DBCStructure.h`).
 pub(crate) fn creature_display_info_extra_schema() -> Schema {
+    creature_display_info_extra_schema_for(false)
+}
+
+/// Build 8606 adds an eleventh equipment column (the cape) and a flags column before `BakeName`:
+/// 21 fields, 84-byte records.
+fn creature_display_info_extra_schema_for(tbc: bool) -> Schema {
     let mut s = Schema::new("CreatureDisplayInfoExtra");
     for (name, ty) in [
         ("ID", FieldType::UInt32),
@@ -384,6 +390,10 @@ pub(crate) fn creature_display_info_extra_schema() -> Schema {
     }
     for i in 0..10 {
         s.add_field(SchemaField::new(format!("Equipment{i}"), FieldType::UInt32));
+    }
+    if tbc {
+        s.add_field(SchemaField::new("Equipment10", FieldType::UInt32));
+        s.add_field(SchemaField::new("Flags", FieldType::UInt32));
     }
     s.add_field(SchemaField::new("BakeName", FieldType::String));
     s
@@ -467,12 +477,13 @@ pub fn load_creature_catalog(chain: &mut Chain) -> Result<CreatureCatalog> {
 
 /// Load CreatureDisplayInfoExtra.dbc: `extendedDisplayInfoId` → [`NpcAppearance`].
 fn load_creature_display_info_extra(chain: &mut Chain) -> Result<HashMap<u32, NpcAppearance>> {
+    let tbc = chain.client_build() == Some(8606);
     let bytes = chain
         .read_file(CREATURE_DISPLAY_INFO_EXTRA)
         .with_context(|| format!("reading {CREATURE_DISPLAY_INFO_EXTRA}"))?;
     let rs = parse(
         &bytes,
-        creature_display_info_extra_schema(),
+        creature_display_info_extra_schema_for(tbc),
         "CreatureDisplayInfoExtra",
     )?;
     let mut e = HashMap::with_capacity(rs.records().len());
@@ -489,7 +500,7 @@ fn load_creature_display_info_extra(chain: &mut Chain) -> Result<HashMap<u32, Np
                     hair_color: u32_at(r, 6).unwrap_or(0) as u8,
                     facial_hair: u32_at(r, 7).unwrap_or(0) as u8,
                     equipment: std::array::from_fn(|i| u32_at(r, 8 + i).unwrap_or(0)),
-                    bake_name: str_at(&rs, r, 18),
+                    bake_name: str_at(&rs, r, if tbc { 20 } else { 18 }),
                 },
             );
         }

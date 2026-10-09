@@ -122,14 +122,46 @@ fn every_error_key_in_the_source_resolves_to_real_text() {
 fn every_voiced_key_the_source_raises_has_audio_for_every_playable_race() {
     use benilla_formats::VOCAL_UI_LINES;
 
-    /// Lines with no audio in any race, `0x07` (`ERR_FOOD_COOLDOWN`) and `0x20`
-    /// (`ERR_LOOT_BAD_FACING`): every race's `VocalUISounds` row has kit id -1.
-    const NO_AUDIO_IN_5875: &[u8] = &[0x07, 0x20];
-    /// Single `(line, race, sex)` gaps in the shipped file.
+    /// Lines with no audio in any race, every race's `VocalUISounds` row carrying kit id `-1`.
+    /// Build 8606 leaves many more error lines unvoiced than 5875 did.
+    const NO_AUDIO: &[u8] = &[
+        0x06, 0x07, 0x09, 0x10, 0x13, 0x15, 0x17, 0x18, 0x20, 0x22, 0x24, 0x25, 0x35, 0x38, 0x3a,
+        0x3c, 0x41,
+    ];
+    /// `(line, race, sex)` gaps in the build-8606 file: a missing row, a `-1` kit, or a kit with
+    /// no files.
     const RACE_SEX_GAPS: &[(u8, u32, u32)] = &[
         (0x21, 3, 0), // ERR_LOOT_LOCKED, Dwarf male
         (0x21, 4, 0), // ERR_LOOT_LOCKED, Night Elf male
         (0x31, 2, 0), // ERR_MUST_EQUIP_ITEM, Orc male
+        (0x42, 1, 0),
+        (0x42, 1, 1),
+        (0x42, 2, 0),
+        (0x42, 2, 1),
+        (0x42, 4, 0),
+        (0x42, 4, 1),
+        (0x42, 5, 0),
+        (0x42, 5, 1),
+        (0x42, 6, 0),
+        (0x42, 6, 1),
+        (0x42, 7, 0),
+        (0x42, 7, 1),
+        (0x42, 8, 0),
+        (0x42, 8, 1),
+        (0x43, 1, 0),
+        (0x43, 1, 1),
+        (0x43, 2, 0),
+        (0x43, 2, 1),
+        (0x43, 3, 0),
+        (0x43, 3, 1),
+        (0x43, 5, 0),
+        (0x43, 5, 1),
+        (0x43, 6, 0),
+        (0x43, 6, 1),
+        (0x43, 7, 0),
+        (0x43, 7, 1),
+        (0x43, 8, 0),
+        (0x43, 8, 1),
     ];
 
     let data = benilla_formats::wow_data_or_skip!();
@@ -152,21 +184,20 @@ fn every_voiced_key_the_source_raises_has_audio_for_every_playable_race() {
             continue; // a cue row, not a spoken one
         }
         voiced += 1;
-        if NO_AUDIO_IN_5875.contains(&tag) {
+        if NO_AUDIO.contains(&tag) {
             continue;
         }
         for race in 1..=8u32 {
             let row = vocal
                 .rows()
                 .iter()
-                .find(|r| r.race == race && r.line == u32::from(tag))
-                .unwrap_or_else(|| panic!("{key} (line {tag:#04x}) has no row for race {race}"));
+                .find(|r| r.race == race && r.line == u32::from(tag));
             for sex in 0..2u32 {
                 if RACE_SEX_GAPS.contains(&(tag, race, sex)) {
                     continue;
                 }
                 let kit = row
-                    .normal_kit(sex)
+                    .and_then(|r| r.normal_kit(sex))
                     .and_then(|k| kits.get(k))
                     .unwrap_or_else(|| {
                         panic!("{key} (line {tag:#04x}) is silent for race {race} sex {sex}")

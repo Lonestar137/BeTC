@@ -600,6 +600,7 @@ fn assemble(spec: &PreviewSpec, ctx: &mut PreviewCtx<'_, '_>) -> Option<Assemble
             static_mesh: p.mesh.clone(),
             skinned_mesh: p.skinned_mesh.clone(),
             material: steady_material(p, &char_mats).unwrap_or_else(|| p.material.clone()),
+            shape_body: !matches!(p.char_slot, Some(CharSkinSlot::Hair | CharSkinSlot::Object)),
             twins: part_twins(p, &char_mats),
             // Not carried yet: a character batch's authored dimming constant previews at 1.0.
             alpha_anim: None,
@@ -950,6 +951,7 @@ fn assemble_pet(
                 static_mesh: p.mesh.clone(),
                 skinned_mesh: p.skinned_mesh.clone(),
                 material: p.material.clone(),
+                shape_body: false,
                 alpha_anim: p.alpha_anim.clone(),
                 // The pet hangs on the scene, never the character (`0x47306e`), so it is never
                 // ghosted with its owner; the twins are the batch's all the same.

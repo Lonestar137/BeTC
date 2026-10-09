@@ -240,15 +240,16 @@ fn real_mono_value_split_class_lines_yes_weapons_no() {
     let mut chain = crate::open_chain(&data).expect("open chain");
     let cat = load_skill_line_catalog(&mut chain).expect("load skill lines");
 
-    // Beast Mastery / Survival / Marksmanship (0x410), Dual Wield / Night Elf Racial / the
-    // Tiger Riding mount line / GENERIC (DND) (0x492).
-    for line in [50u32, 51, 163, 118, 126, 150, 183] {
+    // Beast Mastery / Survival / Marksmanship (0x410), Night Elf Racial / the Tiger Riding mount
+    // line / GENERIC (DND) (0x492). On 8606 Dual Wield (118) is no longer single-rank: its
+    // admitting row carries 0x92, so it moves to the rank-keeping list below.
+    for line in [50u32, 51, 163, 126, 150, 183] {
         assert!(cat.mono_value(line, 4, 3), "line {line} is single-rank");
     }
     // Weapon lines (Axes/Bows/Daggers/Crossbows/Unarmed/Defense), armor proficiencies
-    // (Cloth/Leather/Mail), languages (Common/Darnassian), Riding, First Aid.
+    // (Cloth/Leather/Mail), languages (Common/Darnassian), Riding, First Aid, and 8606 Dual Wield.
     for line in [
-        44u32, 45, 173, 226, 162, 95, 415, 414, 413, 98, 113, 762, 129,
+        118u32, 44, 45, 173, 226, 162, 95, 415, 414, 413, 98, 113, 762, 129,
     ] {
         assert!(!cat.mono_value(line, 4, 3), "line {line} keeps its rank");
     }
@@ -294,8 +295,11 @@ fn real_rank_chains_resolve_the_highest_known_rank() {
     let mut chain = crate::open_chain(&data).expect("open chain");
     let cat = load_skill_line_catalog(&mut chain).expect("load skill lines");
 
-    // Sinister Strike ranks 1 to 8: a saved bar can hold rank 1 while the book holds rank 8.
-    const SS: [u32; 8] = [1752, 1757, 1758, 1759, 1760, 8621, 11293, 11294];
+    // Sinister Strike ranks 1 to 10: a saved bar can hold rank 1 while the book holds rank 10. 8606
+    // adds ranks 9 (26861) and 10 (26862) after the 5875 chain's rank 8 (11294).
+    const SS: [u32; 10] = [
+        1752, 1757, 1758, 1759, 1760, 8621, 11293, 11294, 26861, 26862,
+    ];
     for pair in SS.windows(2) {
         assert_eq!(
             cat.rank_successor(pair[0]),
@@ -305,7 +309,7 @@ fn real_rank_chains_resolve_the_highest_known_rank() {
             pair[1]
         );
     }
-    assert_eq!(cat.rank_successor(11294), None, "rank 8 tops the chain");
+    assert_eq!(cat.rank_successor(26862), None, "rank 10 tops the 8606 chain");
     // Charge (100, 6178, 11578) and Heroic Strike's last link.
     assert_eq!(cat.rank_successor(100), Some(6178));
     assert_eq!(cat.rank_successor(6178), Some(11578));

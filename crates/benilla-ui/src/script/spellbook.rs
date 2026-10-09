@@ -11,7 +11,7 @@
 
 use mlua::{Lua, MultiValue, Value};
 
-use super::binding_abi::{bool_or_default, flag};
+use super::binding_abi::{flag, unit_is_self};
 use super::cursor::{queue_cursor_update, CursorPayload, CursorSpell};
 use super::{Model, ScriptCall};
 
@@ -464,31 +464,33 @@ pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
         })?,
     )?;
 
-    g.set(
-        "IsSpellPassive",
-        lua.create_function(|lua, (id, book_type): (Value, Value)| {
-            let (id, book_type) = spell_slot_args(id, book_type, "IsSpellPassive")?;
-            let model = lua.app_data_ref::<Model>().expect("model app_data");
-            Ok(flag(
-                book_slot(&model, id, &book_type).is_some_and(|s| s.passive),
-            ))
-        })?,
-    )?;
+    // `IsPassiveSpell` is the 2.4.3 name the shipped `SpellBookFrame.lua` calls; 1.12 exposed it as
+    // `IsSpellPassive` (`1.12-globals.tsv`). Register both so either install's book renders.
+    for name in ["IsPassiveSpell", "IsSpellPassive"] {
+        g.set(
+            name,
+            lua.create_function(move |lua, (id, book_type): (Value, Value)| {
+                let (id, book_type) = spell_slot_args(id, book_type, name)?;
+                let model = lua.app_data_ref::<Model>().expect("model app_data");
+                Ok(flag(
+                    book_slot(&model, id, &book_type).is_some_and(|s| s.passive),
+                ))
+            })?,
+        )?;
+    }
 
-    // CastSpell(id, bookType [, onSelf]), the plain click, queues the slot's spell unless it is
-    // passive. The third argument goes through `GetBoolOrDefault(L, 3, 0)` (`0x4b4333`-`0x4b433c`),
-    // and a nonzero one swaps the target guid for the active player's (`0x4b4345`) before the
-    // dispatcher `0x4b3300`. On the pet book that forks at `0x4b34c8` (the player's cast is
-    // `0x6e5a90`) to send `CMSG_PET_ACTION` (0x175), `{ u64 [0xb714a0], u32 (spellId & 0xFFFF) |
-    // 0x01000000, u64 target }` (`0x4b34ce`), so the pet book casts a spell not on the bar; the
-    // target falls back to the selection (`0x4b34af`), as in `CastPetAction`. The app sends both at
-    // the drain.
+    // CastSpell(id, bookType [, target]), the plain click, queues the slot's spell unless it is
+    // passive. The third argument is TBC's resolved cast-target unit ("player" on a self-cast
+    // modifier), not the 1.12 `onSelf` boolean; a "player" token swaps the target for the active
+    // player's before the dispatcher `0x4b3300`. On the pet book that forks at `0x4b34c8` (the
+    // player's cast is `0x6e5a90`) to send `CMSG_PET_ACTION` (0x175) with the target falling back
+    // to the selection, as in `CastPetAction`.
     g.set(
         "CastSpell",
         lua.create_function(
-            |lua, (id, book_type, on_self): (Value, Value, Option<Value>)| {
+            |lua, (id, book_type, target): (Value, Value, Option<Value>)| {
                 let (id, book_type) = spell_slot_args(id, book_type, "CastSpell")?;
-                let on_self = bool_or_default(on_self.as_ref(), false);
+                let on_self = unit_is_self(target.as_ref());
                 let mut model = lua.app_data_mut::<Model>().expect("model app_data");
                 if let Some(slot) = book_slot(&model, id, &book_type) {
                     if !slot.passive {
@@ -558,14 +560,13 @@ pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
         })?,
     )?;
 
-    // CastSpellByName(name [, onSelf]) (`0x4b4ab0`) shares the dispatcher `0x4b3300` with
-    // `CastSpell`, so it queues the same call; `SlashCmdList["CAST"]` calls it. The target guid
-    // defaults to the selection (`0x4b4adb`), and a nonzero `GetBoolOrDefault(L, 2, 0)`
-    // (`0x4b4aea`-`0x4b4af1`) swaps it for the active player's (`0x4b4afa`).
+    // CastSpellByName(name [, target]) (`0x4b4ab0`) shares the dispatcher `0x4b3300` with
+    // `CastSpell`, so it queues the same call; `SlashCmdList["CAST"]` calls it. The target defaults
+    // to the selection, and a `"player"` token resolves to the caster (the self-cast arm).
     g.set(
         "CastSpellByName",
-        lua.create_function(|lua, (name, on_self): (String, Option<Value>)| {
-            let on_self = bool_or_default(on_self.as_ref(), false);
+        lua.create_function(|lua, (name, target): (String, Option<Value>)| {
+            let on_self = unit_is_self(target.as_ref());
             let mut model = lua.app_data_mut::<Model>().expect("model app_data");
             if let Some(slot) = resolve_spell_by_name(&model.spellbook, &name) {
                 let spell_id = slot.spell_id;
@@ -993,35 +994,28 @@ mod tests {
         assert!(s.take_spell_casts().is_empty());
 
         assert!(s
-            .eval::<bool>(r#"return IsSpellPassive(2, BOOKTYPE_SPELL)"#)
+            .eval::<bool>(r#"return IsPassiveSpell(2, BOOKTYPE_SPELL)"#)
             .unwrap());
         assert!(!s
-            .eval::<bool>(r#"return IsSpellPassive(1, BOOKTYPE_SPELL)"#)
+            .eval::<bool>(r#"return IsPassiveSpell(1, BOOKTYPE_SPELL)"#)
             .unwrap());
     }
 
-    /// `CastSpellByName`'s second argument goes through `GetBoolOrDefault(L, 2, 0)`
-    /// (`0x4b4aea`-`0x4b4af1`), which is not Lua truthiness: `"0"`, `"false"` and `0.5` are false.
+    /// `CastSpellByName`'s second argument is TBC's resolved target unit: only `"player"` is the
+    /// self-cast, case-insensitively; nil and any other token cast at the selection.
     #[test]
-    fn cast_spell_by_name_reads_on_self_as_the_reference_coerces_it() {
+    fn cast_spell_by_name_reads_the_target_unit() {
         let mut s = UiScript::new().unwrap();
         s.set_spellbook(book());
         for (arg, on_self) in [
             ("", false),
             (", nil", false),
-            (", false", false),
-            (", 0", false),
-            (", 0.5", false),
-            (r#", "0""#, false),
-            (r#", "false""#, false),
-            (r#", "off""#, false),
-            (", 1", true),
-            (", true", true),
-            (", 1, 0", true),
-            (r#", "1""#, true),
-            (r#", "yes""#, true),
-            (r#", "on""#, true),
-            (r#", "enabled""#, true),
+            (r#", "target""#, false),
+            (r#", "mouseover""#, false),
+            (r#", "focus""#, false),
+            (r#", "party1""#, false),
+            (r#", "player""#, true),
+            (r#", "PLAYER""#, true),
         ] {
             s.run(&format!(r#"CastSpellByName("Fireball"{arg})"#))
                 .unwrap();
@@ -1033,21 +1027,18 @@ mod tests {
         }
     }
 
-    /// `CastSpell`'s third argument is `GetBoolOrDefault(L, 3, 0)` (`0x4b4333`-`0x4b433c`), on the
-    /// pet book as well, and a passive is refused whatever it says.
+    /// `CastSpell`'s third argument is TBC's target unit, on the pet book as well, and a passive is
+    /// refused whatever it says.
     #[test]
-    fn cast_spell_reads_on_self_from_its_third_argument() {
+    fn cast_spell_reads_the_target_unit() {
         let mut s = UiScript::new().unwrap();
         s.set_spellbook(book());
         s.set_pet_book(pet_book());
         for (arg, on_self) in [
             ("", false),
-            (", 0.5", false),
-            (r#", "false""#, false),
-            (", 1", true),
-            (", 1, 0", true),
-            (r#", "yes""#, true),
-            (r#", "on""#, true),
+            (", nil", false),
+            (r#", "target""#, false),
+            (r#", "player""#, true),
         ] {
             s.run(&format!("CastSpell(1, BOOKTYPE_SPELL{arg})"))
                 .unwrap();
@@ -1063,7 +1054,7 @@ mod tests {
                 "CastSpell(1, BOOKTYPE_PET{arg})"
             );
         }
-        s.run("CastSpell(2, BOOKTYPE_SPELL, 1) CastSpell(3, BOOKTYPE_PET, 1)")
+        s.run("CastSpell(2, BOOKTYPE_SPELL, \"player\") CastSpell(3, BOOKTYPE_PET, \"player\")")
             .unwrap();
         assert!(s.take_spell_casts().is_empty(), "a passive is refused");
         assert!(s.take_pet_spell_casts().is_empty(), "a passive is refused");
@@ -1083,7 +1074,7 @@ mod tests {
             .eval::<bool>(r#"return GetSpellTexture(1, BOOKTYPE_PET) == nil"#)
             .unwrap());
         assert!(!s
-            .eval::<bool>(r#"return IsSpellPassive(1, BOOKTYPE_PET)"#)
+            .eval::<bool>(r#"return IsPassiveSpell(1, BOOKTYPE_PET)"#)
             .unwrap());
         assert!(s
             .eval::<bool>(r#"local n, t = HasPetSpells() return n == nil and t == nil"#)

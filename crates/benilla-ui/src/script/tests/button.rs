@@ -1368,3 +1368,22 @@ fn button_get_text_color_answers_four_values_through_the_state_font() {
         .unwrap();
     assert_eq!(s.arity("ChkColorBtn:GetTextColor()").unwrap(), 4);
 }
+
+/// Stock TBC `GossipFrame.lua` titles each quest row with `Button:SetFormattedText`; a missing
+/// method aborts the frame update and leaves every template row showing.
+#[test]
+fn button_set_formatted_text_formats_into_the_label() {
+    let s = script();
+    s.run(
+        r#"
+        b = CreateFrame("Button", "FmtBtn")
+        b:SetFormattedText("|cff000000%s|r (%d)", "Reclaiming Sunstrider Isle", 1)
+    "#,
+    )
+    .unwrap();
+    assert!(s.eval::<bool>("return b.SetFormattedText ~= nil").unwrap());
+    assert_eq!(
+        s.eval::<String>("return b:GetText()").unwrap(),
+        "|cff000000Reclaiming Sunstrider Isle|r (1)"
+    );
+}

@@ -1,5 +1,7 @@
 //! `ItemDisplayInfo.dbc`: a display id to a held item's or worn equipment's visual identity. 23
-//! fields and 92-byte records in 5875, both checked by the reference loader (`0x547590`).
+//! fields and 92-byte records in 5875, both checked by the reference loader (`0x547590`); build
+//! 8606 adds a second inventory icon at column 6 (shifting every later column one) and a trailing
+//! `ParticleColorID`, for 25 fields.
 //!
 //! A row's model and texture are independently resolved basenames in the same
 //! `Item\ObjectComponents\<dir>\` folder; never derive one from the other. The Worn Wooden Shield
@@ -113,11 +115,15 @@ fn item_display_info_schema_for(tbc: bool) -> Schema {
         ("ModelTextureLeft", FieldType::String),
         ("ModelTextureRight", FieldType::String),
         ("Icon", FieldType::String),
-        ("GeosetGroup0", FieldType::UInt32),
-        ("GeosetGroup1", FieldType::UInt32),
-        ("GeosetGroup2", FieldType::UInt32),
     ] {
         s.add_field(SchemaField::new(name, ty));
+    }
+    // Build 8606 inserts a second inventory icon at column 6, shifting every later column one.
+    if tbc {
+        s.add_field(SchemaField::new("Icon2", FieldType::String));
+    }
+    for name in ["GeosetGroup0", "GeosetGroup1", "GeosetGroup2"] {
+        s.add_field(SchemaField::new(name, FieldType::UInt32));
     }
     for name in [
         "Flags",
@@ -143,13 +149,14 @@ fn item_display_info_schema_for(tbc: bool) -> Schema {
     s.add_field(SchemaField::new("ItemVisualID", FieldType::UInt32));
     if tbc {
         s.add_field(SchemaField::new("ParticleColorID", FieldType::UInt32));
-        s.add_field(SchemaField::new("Unused24", FieldType::UInt32));
     }
     s
 }
 
-/// The catalog from a parsed record set, testable without a chain.
-fn catalog_from_records(rs: RecordSet) -> ItemDisplayCatalog {
+/// The catalog from a parsed record set, testable without a chain. `tbc` shifts every column from
+/// the second icon onward by one, the build-8606 layout.
+fn catalog_from_records(rs: RecordSet, tbc: bool) -> ItemDisplayCatalog {
+    let g = usize::from(tbc);
     let mut displays = HashMap::with_capacity(rs.records().len());
     for r in rs.records() {
         let Some(id) = u32_at(r, 0) else { continue };
@@ -159,17 +166,17 @@ fn catalog_from_records(rs: RecordSet) -> ItemDisplayCatalog {
         ];
         let model_texture = [str_at(&rs, r, 3), str_at(&rs, r, 4)];
         let geoset_groups = [
-            u32_at(r, 6).unwrap_or(0),
-            u32_at(r, 7).unwrap_or(0),
-            u32_at(r, 8).unwrap_or(0),
+            u32_at(r, 6 + g).unwrap_or(0),
+            u32_at(r, 7 + g).unwrap_or(0),
+            u32_at(r, 8 + g).unwrap_or(0),
         ];
-        let region_textures = std::array::from_fn(|i| str_at(&rs, r, 14 + i));
-        let helmet_vis = [u32_at(r, 12).unwrap_or(0), u32_at(r, 13).unwrap_or(0)];
+        let region_textures = std::array::from_fn(|i| str_at(&rs, r, 14 + i + g));
+        let helmet_vis = [u32_at(r, 12 + g).unwrap_or(0), u32_at(r, 13 + g).unwrap_or(0)];
         let icon = str_at(&rs, r, 5).map(|i| format!("Interface\\Icons\\{i}"));
-        let group_sounds = u32_at(r, 11).unwrap_or(0);
-        let spell_visual = u32_at(r, 10).unwrap_or(0);
-        let flags = u32_at(r, 9).unwrap_or(0);
-        let item_visual = u32_at(r, 22).unwrap_or(0) as i32;
+        let group_sounds = u32_at(r, 11 + g).unwrap_or(0);
+        let spell_visual = u32_at(r, 10 + g).unwrap_or(0);
+        let flags = u32_at(r, 9 + g).unwrap_or(0);
+        let item_visual = u32_at(r, 22 + g).unwrap_or(0) as i32;
         displays.insert(
             id,
             ItemDisplay {
@@ -194,12 +201,9 @@ pub fn load_item_display_catalog(chain: &mut Chain) -> Result<ItemDisplayCatalog
     let bytes = chain
         .read_file(ITEM_DISPLAY_INFO)
         .with_context(|| format!("reading {ITEM_DISPLAY_INFO}"))?;
-    let rs = parse(
-        &bytes,
-        item_display_info_schema_for(chain.client_build() == Some(8606)),
-        "ItemDisplayInfo",
-    )?;
-    Ok(catalog_from_records(rs))
+    let tbc = chain.client_build() == Some(8606);
+    let rs = parse(&bytes, item_display_info_schema_for(tbc), "ItemDisplayInfo")?;
+    Ok(catalog_from_records(rs, tbc))
 }
 
 #[cfg(test)]
@@ -305,7 +309,7 @@ mod tests {
 
         let bytes = build_wdbc(1, FIELD_COUNT, RECORD_SIZE, &rec, &strings.0);
         let rs = parse(&bytes, item_display_info_schema(), "test").expect("synthetic DBC parses");
-        let catalog = catalog_from_records(rs);
+        let catalog = catalog_from_records(rs, false);
 
         assert_eq!(catalog.len(), 1);
         let display = catalog.get(18730).expect("displayId 18730 present");
@@ -342,7 +346,7 @@ mod tests {
         let rec = vec![0u8; RECORD_SIZE as usize]; // ID 0, everything else empty or zero
         let bytes = build_wdbc(1, FIELD_COUNT, RECORD_SIZE, &rec, &StringBlock::new().0);
         let rs = parse(&bytes, item_display_info_schema(), "test").expect("synthetic DBC parses");
-        let catalog = catalog_from_records(rs);
+        let catalog = catalog_from_records(rs, false);
         assert_eq!(catalog.len(), 1);
         assert!(catalog.get(999).is_none());
     }

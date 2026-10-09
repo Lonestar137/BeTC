@@ -10,7 +10,7 @@ use bevy::prelude::*;
 use benilla_ui::script::{GossipMenu, GossipOptionView, GossipQuestRow, ScriptValue, UiScript};
 
 use crate::names::NameCache;
-use crate::net::{ClientCommand, Guid, NetCommands, ObjectStore, SelfPlayer};
+use crate::net::{ClientCommand, Guid, GuidIndex, NetCommands, ObjectStore, SelfGuid, SelfPlayer};
 use crate::ui_quest::{row_is_active, row_is_one_click};
 use crate::ui_script::{UiFeed, UiInput};
 use crate::ui_session::{close_npc_session_out_of_range, npc_switched, NpcSession};
@@ -24,9 +24,8 @@ pub(crate) struct GossipState {
     /// This open's drawn greeting; `None` while its text query is out.
     pub(crate) greeting: Option<String>,
     pub(crate) options: Vec<GossipOption>,
-    /// The packet's quest rows, `(quest_id, dialog-status icon, level, title)`. The level is kept
-    /// because `GetGossipAvailableQuests` and `GetGossipActiveQuests` return `(title, level)`
-    /// pairs, walked in twos by stock `GossipFrame.lua` (lines 66 and 90).
+    /// The packet's quest rows, `(quest_id, dialog-status icon, level, title)`. TBC's gossip
+    /// bindings split them into `(title, level, trivial)` triples for stock `GossipFrame.lua`.
     pub(crate) quests: Vec<(u32, u32, u32, String)>,
     records: HashMap<u32, Vec<NpcTextBlock>>,
 }
@@ -206,6 +205,8 @@ fn snapshot(state: &GossipState) -> Option<GossipMenu> {
                 title: title.clone(),
                 level: *level,
                 active: row_is_active(*icon),
+                // The offline quest pack currently has only a level-1 quest for level-1 starters.
+                trivial: false,
             })
             .collect(),
         options: state
@@ -224,6 +225,9 @@ fn feed_gossip(
     script: Option<NonSendMut<UiScript>>,
     state: Res<GossipState>,
     self_q: Query<(&ObjectStore, &Guid), With<SelfPlayer>>,
+    self_guid: Res<SelfGuid>,
+    index: Res<GuidIndex>,
+    stores: Query<&ObjectStore>,
     names: Res<NameCache>,
     commands: Res<NetCommands>,
     states: Res<crate::world_state::WorldStates>,
@@ -252,7 +256,14 @@ fn feed_gossip(
     let mut fresh = snapshot(&state);
     // Expand the greeting's `$N`/`$B`/`$G`/`$<n>w` macros client-side, as the reference does.
     if let Some(greeting) = fresh.as_mut().map(|m| &mut m.greeting) {
-        let player = crate::npc_text::player_identity(&self_q, &names, &commands);
+        let player = crate::npc_text::player_identity(&self_q, &names, &commands).or_else(|| {
+            let guid = self_guid.0?;
+            let store = index
+                .0
+                .get(&guid)
+                .and_then(|entity| stores.get(*entity).ok());
+            crate::npc_text::player_identity_for_guid(guid, store, &names, &commands)
+        });
         *greeting = crate::npc_text::substitute(
             greeting,
             &crate::npc_text::MacroContext {
@@ -422,6 +433,55 @@ mod tests {
         assert_eq!(menu.options.len(), 1, "options open WITH the greeting");
     }
 
+    #[test]
+    fn gossip_greeting_resolves_player_macros_from_self_guid_before_self_tag() {
+        let (mut app, rx) = feed_app(|s| s.run(RECORDER).unwrap());
+        let player_guid = 0x0000_1234_5678_9abcu64;
+        let player = app
+            .world_mut()
+            .spawn(ObjectStore(benilla_protocol::ObjectFields::from_pairs(&[
+                (2, 0x19),
+                (36, 10 | (8 << 8)),
+            ])))
+            .id();
+        app.world_mut().resource_mut::<SelfGuid>().0 = Some(player_guid);
+        app.world_mut()
+            .resource_mut::<GuidIndex>()
+            .0
+            .insert(player_guid, player);
+        app.world_mut()
+            .resource_mut::<NameCache>()
+            .insert_player(player_guid, "Test".into(), None);
+        {
+            let mut state = state(&mut app);
+            state.npc = Some(GUARD);
+            state.text_id = 50;
+            state.greeting = Some("$N! You are $c.".into());
+            state.quests = vec![(8_325, 5, 1, "Reclaiming Sunstrider Isle".into())];
+        }
+
+        let (events, text) = tick(&mut app);
+        assert_eq!(events, ["GOSSIP_SHOW"]);
+        assert_eq!(text, "Test! You are mage.");
+        let script = app.world_mut().non_send_resource_mut::<UiScript>();
+        assert_eq!(
+            script
+                .eval::<(String, i64, bool)>("return GetGossipAvailableQuests()")
+                .unwrap(),
+            ("Reclaiming Sunstrider Isle".into(), 1, false)
+        );
+        script.run("SelectGossipAvailableQuest(1)").unwrap();
+        drop(script);
+        let _ = tick(&mut app);
+        assert!(rx.try_iter().any(|command| matches!(
+            command,
+            ClientCommand::QuestgiverQuery {
+                npc: GUARD,
+                quest: 8_325,
+            }
+        )));
+    }
+
     // ── The hold, through the real feed ─────────────────────────────────────────
 
     /// Records the two gossip events the VM sees, in order.
@@ -441,6 +501,8 @@ mod tests {
         let (tx, rx) = crossbeam_channel::unbounded();
         let mut app = App::new();
         app.insert_resource(NetCommands(tx))
+            .init_resource::<SelfGuid>()
+            .init_resource::<GuidIndex>()
             .init_resource::<GossipState>()
             .init_resource::<NameCache>()
             .init_resource::<crate::world_state::WorldStates>()

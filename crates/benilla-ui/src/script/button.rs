@@ -4,7 +4,7 @@
 //! Lookup runs CheckButton's table, then Button's, then the frame table, the client's class chain,
 //! so `SetChecked` is nil on a plain Button and `GetText` on a plain Frame.
 
-use mlua::{Lua, MultiValue, ObjectLike, Table, Value};
+use mlua::{Function, Lua, MultiValue, ObjectLike, Table, Value};
 
 use super::object::{as_f32, frame_handle_of};
 use super::region::region_wrapper;
@@ -474,6 +474,37 @@ pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
             // A nil returns at once (`0x778dcc`): no clear, no label created. The guard is the
             // button's own; `FontString:SetText(nil)` clears (`0x771d80`).
             let Some(text) = text else { return Ok(()) };
+            let id = ensure_slot(lua, &this, Slot::Text)?;
+            let mut model = lua.app_data_mut::<Model>().expect("model app_data");
+            let rh = *model.id_to_region.get(&id).expect("text region id");
+            model.region_data.entry(rh).or_default().text = Some(text);
+            model.touch_measure(rh);
+            Ok(())
+        })?,
+    )?;
+    // SetFormattedText(format, ...): `string.format` into the ButtonText label, as `SetText` does.
+    // Stock TBC `GossipFrame.lua` titles every quest row through it, so a missing binding aborts
+    // `GossipFrameUpdate` after the first row's icon and leaves the template's 32 rows showing.
+    m.set(
+        "SetFormattedText",
+        lua.create_function(|lua, values: MultiValue| {
+            let mut values = values.into_iter();
+            let this = match values.next() {
+                Some(Value::Table(this)) => this,
+                _ => {
+                    return Err(mlua::Error::runtime(
+                        "Usage: Button:SetFormattedText(format, ...)",
+                    ));
+                }
+            };
+            let Some(format) = super::binding_abi::text_arg(lua, values.next())? else {
+                return Ok(());
+            };
+            let mut params = vec![Value::String(lua.create_string(format)?)];
+            params.extend(values);
+            let string: Table = lua.globals().get("string")?;
+            let formatter: Function = string.get("format")?;
+            let text = formatter.call::<String>(MultiValue::from_vec(params))?;
             let id = ensure_slot(lua, &this, Slot::Text)?;
             let mut model = lua.app_data_mut::<Model>().expect("model app_data");
             let rh = *model.id_to_region.get(&id).expect("text region id");

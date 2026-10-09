@@ -382,6 +382,15 @@ impl Creatures {
             animations: dm.animations.as_ref(),
         })
     }
+
+    /// The character M2's vertical range and horizontal half-extents in Bevy model axes.
+    pub(crate) fn body_shape_bounds(&self, display_id: u32) -> Option<benilla_formats::M2Bounds> {
+        let dm = self.models.get(&display_id)?;
+        if !dm.is_character_body {
+            return None;
+        }
+        dm.body_bounds
+    }
 }
 
 /// The skeleton/animation surface the portrait booth poses a bake with ([`Creatures::display_rig`]).
@@ -1486,12 +1495,9 @@ mod practice_display_tests {
 
     #[test]
     fn build_8606_contains_the_sunstrider_creature_models() {
-        let Some(data) = benilla_formats::wow_data() else {
-            eprintln!("skipping: no client install");
-            return;
-        };
+        let data = benilla_formats::wow_data_or_skip!();
         if !benilla_formats::is_tbc_data_dir(&data) {
-            eprintln!("skipping: resolved install is not TBC");
+            benilla_formats::skipped("resolved install is not TBC", std::slice::from_ref(&data));
             return;
         }
         let mut chain = benilla_formats::open_chain(&data).expect("open TBC archive chain");
@@ -1505,6 +1511,7 @@ mod practice_display_tests {
                 "Creature\\ManaWurm\\ManaWurm.m2",
                 "Creature/ManaWurm/ManaWurm.mdx",
             ),
+            ("Creature\\Wolf\\Wolf.m2", "Creature/Wolf/Wolf.mdx"),
             ("Creature\\Cat\\Cat.m2", "Creature/Cat/Cat.mdx"),
         ] {
             let display = creatures.display_for_model_path(path).unwrap_or_else(|| {

@@ -1,7 +1,8 @@
 //! The zone audio tables: `AreaTable` (the row an MCNK `areaId` names) joined to `ZoneMusic`,
-//! `SoundAmbience` and `ZoneIntroMusicTable`. `AreaTable.dbc` has 25 columns in 5875, not the 28
-//! of later builds: the eleven `area_schema` names, `AreaName_lang` (11-19), `FactionGroupMask`
-//! and `LiquidTypeID[4]`.
+//! `SoundAmbience` and `ZoneIntroMusicTable`. `AreaTable.dbc` has 35 columns in build 8606: the
+//! eleven `area_schema` names, `AreaName_lang` (16 locales plus a flags word, columns 11-27),
+//! `FactionGroupMask`, `LiquidTypeID[4]`, `MinElevation` and `AmbientMultiplier`. The audio fields
+//! keep their 5875 column positions, so only the width and the trailing columns differ.
 
 use std::collections::HashMap;
 
@@ -164,7 +165,7 @@ fn area_schema() -> Schema {
         s.add_field(SchemaField::new(name, FieldType::UInt32));
     }
     s.add_field(SchemaField::new("AreaName", FieldType::String));
-    for i in 12..25 {
+    for i in 12..35 {
         s.add_field(SchemaField::new(format!("_pad{i}"), FieldType::UInt32));
     }
     s
@@ -309,13 +310,13 @@ pub fn load_area_sound_catalog(chain: &mut Chain) -> Result<AreaSoundCatalog> {
 mod tests {
     use super::*;
 
-    /// The 5875 tables: Elwynn Forest (area 12) and a subzone inheriting its music.
+    /// The 8606 tables: Elwynn Forest (area 12) and a subzone inheriting its music.
     #[test]
     fn real_area_chain_resolves_elwynn() {
         let data = crate::wow_data_or_skip!();
         let mut chain = crate::open_chain(&data).expect("open chain");
         let cat = load_area_sound_catalog(&mut chain).expect("load area-sound catalog");
-        assert_eq!(cat.len(), 1081, "all AreaTable rows load");
+        assert_eq!(cat.len(), 1643, "all AreaTable rows load");
 
         let elwynn = cat.resolve(12).expect("Elwynn resolves");
         assert_eq!(elwynn.area_name, "Elwynn Forest");
@@ -349,5 +350,40 @@ mod tests {
             sub.id,
             sub.name
         );
+    }
+
+    /// The slice's zones: the day and night track kits and the ambience, resolved from the 8606
+    /// rows, with Sunstrider's unset ambience inherited from its Eversong Woods parent.
+    #[test]
+    fn real_target_zones_resolve_day_night_music_and_ambience() {
+        let data = crate::wow_data_or_skip!();
+        let mut chain = crate::open_chain(&data).expect("open chain");
+        let cat = load_area_sound_catalog(&mut chain).expect("load area-sound catalog");
+
+        // Eversong Woods (3430) is its own top-level zone.
+        let eversong = cat.resolve(3430).expect("Eversong resolves");
+        assert_eq!(eversong.area_name, "Eversong Woods");
+        let music = eversong.music.expect("Eversong has zone music");
+        assert_eq!(music.set_name, "Zone-Eversong");
+        assert_eq!(music.sounds, [9789, 9790], "[day, night] track kits");
+        assert_eq!(eversong.ambience.expect("ambience").kits, [8472, 8471]);
+
+        // Sunstrider Isle (3431) sits under Eversong and leaves ambience 0, inheriting it.
+        let isle = cat.resolve(3431).expect("Sunstrider Isle resolves");
+        assert_eq!(isle.area_name, "Sunstrider Isle");
+        assert_eq!(isle.music.expect("music").set_name, "Zone-SunstriderIsle");
+        assert_eq!(isle.music.expect("music").sounds, [9791, 9792]);
+        assert_eq!(
+            isle.ambience.expect("inherited ambience").kits,
+            [8472, 8471],
+            "Sunstrider inherits Eversong's ambience"
+        );
+
+        // Silvermoon City (3487) is its own top-level zone with its own intro fanfare.
+        let city = cat.resolve(3487).expect("Silvermoon resolves");
+        assert_eq!(city.area_name, "Silvermoon City");
+        assert_eq!(city.music.expect("music").set_name, "Zone-Silvermoon");
+        assert_eq!(city.music.expect("music").sounds, [9793, 9794]);
+        assert_eq!(city.intro.expect("intro").sound_id, 9801);
     }
 }

@@ -3,6 +3,7 @@
 
 import argparse
 import math
+import re
 import sys
 import tomllib
 from pathlib import Path
@@ -58,6 +59,8 @@ TABLE_FIELDS = {
     },
 }
 
+# Source values are asserted in crates/benilla-game-core/src/content.rs and behavior is described in
+# crates/benilla-game-core/RULES.md; only 2 currently drives waypoint movement in presentation.
 MOVEMENT_TYPES = {0, 1, 2, 4}
 
 
@@ -84,6 +87,9 @@ def validate_document(document):
             not isinstance(document[key], str) or not document[key].strip()
         ):
             errors.append(f"{key}: expected a non-empty provenance string")
+    revision = document.get("revision")
+    if isinstance(revision, str) and re.fullmatch(r"[0-9a-f]{40}", revision) is None:
+        errors.append("revision: expected a 40-character lowercase hexadecimal commit hash")
 
     tables = {}
     for table_name, fields in TABLE_FIELDS.items():

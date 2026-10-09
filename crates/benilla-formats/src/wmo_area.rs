@@ -124,7 +124,7 @@ fn schema() -> Schema {
         s.add_field(SchemaField::new(name, FieldType::UInt32));
     }
     s.add_field(SchemaField::new("AreaName", FieldType::String));
-    for i in 12..20 {
+    for i in 12..28 {
         s.add_field(SchemaField::new(format!("_pad{i}"), FieldType::UInt32));
     }
     s
@@ -169,8 +169,8 @@ mod tests {
         let data = crate::wow_data_or_skip!();
         let mut chain = crate::open_chain(&data).expect("open chain");
         let cat = load_wmo_area_catalog(&mut chain).expect("load WMOAreaTable");
-        // 21115 rows but 21105 distinct (wmo, nameset, group) keys: the shipped data repeats 10.
-        assert_eq!(cat.len(), 21105, "all distinct rows load");
+        // 16234 rows but 16221 distinct (wmo, nameset, group) keys: the shipped data repeats 13.
+        assert_eq!(cat.len(), 16221, "all distinct rows load");
 
         // NSabbey (59): an unknown group falls back to the whole-WMO row, the monk chant.
         let abbey = cat.resolve(59, 0, 9999).expect("abbey default row");
@@ -192,7 +192,7 @@ mod tests {
 
         // Chapel (656) group 478: cave reverb and ambience over the whole-WMO underwater preset.
         let chapel = cat.resolve(656, 0, 478).expect("chapel group row");
-        assert_eq!(chapel.sound_provider, [75, 11]);
+        assert_eq!(chapel.sound_provider, [75, 0]);
         assert_eq!(chapel.ambience, 50);
         assert_eq!(chapel.zone_music, 0);
 

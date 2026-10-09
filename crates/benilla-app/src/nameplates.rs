@@ -558,7 +558,13 @@ pub(crate) fn drive_nameplates(
                 if let Some(bracketed) = bracketed {
                     lines.push(format!("<{bracketed}>"));
                 }
-                debug!("nameplates: rebuild {entity} -> {lines:?} ({color:?})");
+                debug!(
+                    "nameplates: rebuild {entity} guid={:#x} faction_tpl={:?} npc_flags={:#x} \
+                     reaction={rank} -> {lines:?} ({color:?})",
+                    guid.0,
+                    store.and_then(|s| s.0.unit_faction_template()),
+                    store.map_or(0, |s| s.0.unit_npc_flags()),
+                );
                 let mesh = plates
                     .meshes
                     .entry(lines.clone())
@@ -830,6 +836,10 @@ mod tests {
             Color::linear_rgb(0.0, 1.0, 0.0),
             "0xFF00FF00 — the ring's own green, byte for byte"
         );
+        // Erona's logged ring rank is 4; NPC-service flags do not divert its friendly paint.
+        let friendly_npc = paint(4, false, false, false, false);
+        assert_eq!(friendly_npc, NamePaint::Variant(RingVariant::Friendly));
+        assert_eq!(friendly_npc.color(), Color::linear_rgb(0.0, 1.0, 0.0));
         assert_eq!(
             paint(6, true, false, true, true),
             NamePaint::Variant(RingVariant::PartyPvp)

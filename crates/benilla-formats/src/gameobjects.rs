@@ -42,6 +42,10 @@ fn schema() -> Schema {
     for i in 0..10 {
         s.add_field(SchemaField::new(format!("Sound{i}"), FieldType::UInt32));
     }
+    // Build 8606 appends the model's bounding box (six floats) after the sound slots.
+    for i in 0..6 {
+        s.add_field(SchemaField::new(format!("_box{i}"), FieldType::UInt32));
+    }
     s
 }
 

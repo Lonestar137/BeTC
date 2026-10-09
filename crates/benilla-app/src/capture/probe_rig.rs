@@ -278,17 +278,20 @@ fn drive_rig(
                 None => {
                     let (race, class, gender) = rig.spec.body.expect("name implies a body");
                     info!("rig: {want} does not exist — creating it");
-                    let _ = pick.0.send(CharRequest::Create(CharCreateReq {
-                        name: want,
-                        race,
-                        class,
-                        gender,
-                        skin: 0,
-                        face: 0,
-                        hair_style: 0,
-                        hair_color: 0,
-                        facial_hair: 0,
-                    }));
+                    let _ = pick.0.send(CharRequest::Create {
+                        request: CharCreateReq {
+                            name: want,
+                            race,
+                            class,
+                            gender,
+                            skin: 0,
+                            face: 0,
+                            hair_style: 0,
+                            hair_color: 0,
+                            facial_hair: 0,
+                        },
+                        body_proportions: crate::body_shape::BodyProportions::default(),
+                    });
                     rig.phase = RigPhase::Creating;
                 }
             }

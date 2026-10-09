@@ -7,20 +7,26 @@ use bevy::ui::FocusPolicy;
 use bevy::ui_render::ui_material::MaterialNode;
 
 use super::parts::{
-    DynIcon, DynText, DynTint, InfoKind, InfoScroll, ScrollArrow, ScrollHides, ScrollThumb,
+    BodyOptionsPanel, BodyShapeField, BodyShapeRow, BodySlider, BodySliderKnob, BodySliderValue,
+    DynIcon, DynText, DynTint, InfoKind, InfoPanel, InfoScroll, ScrollArrow, ScrollHides,
+    ScrollThumb,
 };
+use super::CreateAction;
 use crate::glue::art::{
-    ALLIANCE_FILL, FALLBACK_ALPHA, GOLD, GlueArt, INFO_TEXT, PANEL_EDGE, SCROLL_BTN_TC, ScrollArt,
-    tc_rect,
+    tc_rect, GlueArt, ScrollArt, ALLIANCE_FILL, FALLBACK_ALPHA, GOLD, INFO_TEXT, PANEL_EDGE,
+    SCROLL_BTN_TC,
 };
 use crate::glue::backdrop::{backdrop_border, tiled_bg_node};
-use crate::glue::widgets::{GlueText, Hilight, abs, outlined_text, overlay};
+use crate::glue::widgets::{
+    abs, glue_button, outlined_text, overlay, GlueBtnKind, GlueText, Hilight,
+};
 
 pub(super) fn right_stack(
     ui: &mut ChildSpawnerCommands,
     art: &GlueArt,
     font: &Handle<Font>,
     s: f32,
+    body_customization: bool,
 ) {
     let px = |v: f32| Val::Px(v * s);
     ui.spawn((Node {
@@ -33,16 +39,28 @@ pub(super) fn right_stack(
         ..default()
     },))
         .with_children(|stack| {
-            for (kind, height) in [
-                (InfoKind::Faction, 160.0),
-                (InfoKind::Race, 260.0),
-                (InfoKind::Class, 210.0),
-            ] {
-                let mut panel = stack.spawn((Node {
-                    width: Val::Percent(100.0),
-                    height: px(height),
-                    ..default()
-                },));
+            let panels = if body_customization {
+                [
+                    (InfoKind::Faction, 140.0),
+                    (InfoKind::Race, 240.0),
+                    (InfoKind::Class, 195.0),
+                ]
+            } else {
+                [
+                    (InfoKind::Faction, 160.0),
+                    (InfoKind::Race, 260.0),
+                    (InfoKind::Class, 210.0),
+                ]
+            };
+            for (kind, height) in panels {
+                let mut panel = stack.spawn((
+                    InfoPanel,
+                    Node {
+                        width: Val::Percent(100.0),
+                        height: px(height),
+                        ..default()
+                    },
+                ));
                 let framed = art.panel_border.is_some() && art.tooltip_bg.is_some();
                 if !framed {
                     panel.insert((
@@ -167,7 +185,213 @@ pub(super) fn right_stack(
                     }
                 });
             }
+            if body_customization {
+                glue_button(
+                    stack,
+                    art,
+                    font,
+                    CreateAction::ToggleBodyOptions,
+                    "Body proportions",
+                    224.0,
+                    32.0,
+                    GlueBtnKind::Small,
+                    s,
+                );
+                body_options(stack, art, font, s);
+            }
         });
+}
+
+fn body_options(stack: &mut ChildSpawnerCommands, art: &GlueArt, font: &Handle<Font>, s: f32) {
+    let px = |v: f32| Val::Px(v * s);
+    let mut panel = stack.spawn((
+        BodyOptionsPanel,
+        Node {
+            display: Display::None,
+            width: Val::Percent(100.0),
+            height: px(610.0),
+            flex_direction: FlexDirection::Column,
+            row_gap: px(7.0),
+            padding: UiRect::all(px(10.0)),
+            ..default()
+        },
+        DynTint::BoxFill,
+        BackgroundColor(ALLIANCE_FILL.with_alpha(FALLBACK_ALPHA)),
+    ));
+    if art.panel_border.is_some() && art.tooltip_bg.is_some() {
+        panel.with_children(|body| {
+            body.spawn((
+                DynTint::BoxFill,
+                tiled_bg_node(
+                    art.tooltip_bg.clone().unwrap(),
+                    PANEL_EDGE,
+                    s,
+                    ALLIANCE_FILL,
+                ),
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: px(3.0),
+                    right: px(3.0),
+                    top: px(3.0),
+                    bottom: px(3.0),
+                    ..default()
+                },
+            ));
+            backdrop_border(
+                body,
+                art.panel_border.as_ref().unwrap(),
+                PANEL_EDGE,
+                Color::WHITE,
+            );
+            body_controls(body, art, font, s);
+        });
+    } else {
+        panel.with_children(|body| body_controls(body, art, font, s));
+    }
+}
+
+fn body_controls(body: &mut ChildSpawnerCommands, art: &GlueArt, font: &Handle<Font>, s: f32) {
+    let px = |v: f32| Val::Px(v * s);
+    outlined_text(
+        body,
+        Node::default(),
+        (),
+        (),
+        GlueText {
+            text: "Body Proportions",
+            size: 18.0,
+            color: GOLD,
+            wrap: false,
+        },
+        font,
+        s,
+    );
+    outlined_text(
+        body,
+        Node::default(),
+        (),
+        DynText::BodyShapeStatus,
+        GlueText {
+            text: "Custom proportions are off",
+            size: 12.0,
+            color: INFO_TEXT,
+            wrap: false,
+        },
+        font,
+        s,
+    );
+    body.spawn((Node {
+        flex_direction: FlexDirection::Row,
+        column_gap: px(4.0),
+        ..default()
+    },))
+        .with_children(|actions| {
+            glue_button(
+                actions,
+                art,
+                font,
+                CreateAction::ToggleBodyProportions,
+                "Enable / Disable",
+                122.0,
+                28.0,
+                GlueBtnKind::Small,
+                s,
+            );
+            glue_button(
+                actions,
+                art,
+                font,
+                CreateAction::ResetBodyProportions,
+                "Reset",
+                82.0,
+                28.0,
+                GlueBtnKind::Small,
+                s,
+            );
+        });
+
+    for field in [
+        BodyShapeField::Height,
+        BodyShapeField::Shoulders,
+        BodyShapeField::Arms,
+        BodyShapeField::Waist,
+        BodyShapeField::Hips,
+        BodyShapeField::Bust,
+        BodyShapeField::Seat,
+    ] {
+        body.spawn((
+            BodyShapeRow(field),
+            Node {
+                flex_direction: FlexDirection::Column,
+                row_gap: px(2.0),
+                ..default()
+            },
+        ))
+        .with_children(|row| {
+            row.spawn((Node {
+                flex_direction: FlexDirection::Row,
+                justify_content: JustifyContent::SpaceBetween,
+                ..default()
+            },))
+                .with_children(|labels| {
+                    outlined_text(
+                        labels,
+                        Node::default(),
+                        (),
+                        (),
+                        GlueText {
+                            text: field.label(),
+                            size: 12.0,
+                            color: INFO_TEXT,
+                            wrap: false,
+                        },
+                        font,
+                        s,
+                    );
+                    outlined_text(
+                        labels,
+                        Node::default(),
+                        (),
+                        BodySliderValue(field),
+                        GlueText {
+                            text: "0%",
+                            size: 12.0,
+                            color: GOLD,
+                            wrap: false,
+                        },
+                        font,
+                        s,
+                    );
+                });
+            row.spawn((
+                BodySlider(field),
+                Button,
+                Interaction::default(),
+                FocusPolicy::Block,
+                BackgroundColor(Color::srgb(0.10, 0.08, 0.05)),
+                Node {
+                    width: Val::Percent(100.0),
+                    height: px(12.0),
+                    position_type: PositionType::Relative,
+                    ..default()
+                },
+            ))
+            .with_children(|track| {
+                track.spawn((
+                    BodySliderKnob(field),
+                    BackgroundColor(GOLD),
+                    Node {
+                        position_type: PositionType::Absolute,
+                        left: Val::Percent(50.0),
+                        top: px(-2.0),
+                        width: px(8.0),
+                        height: px(16.0),
+                        ..default()
+                    },
+                ));
+            });
+        });
+    }
 }
 
 /// One panel's scrollbar, `GlueScrollFrameTemplate` in panel coordinates; the whole bar hides

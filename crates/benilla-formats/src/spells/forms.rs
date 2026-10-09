@@ -48,14 +48,27 @@ impl ShapeshiftForm {
 /// Load `SpellShapeshiftForm.dbc` by form id. The bonus bar is data, not a stance switch:
 /// `GetBonusBarOffset` (`0x4e7620`) returns what the `UPDATE_BONUS_ACTIONBAR` handler (`0x4e4fc0`)
 /// read from column 1 for the player's form. `flags1` feeds the form gate (`0x612480`).
+///
+/// Build 8606 widens the row from 14 to 35 fields (sixteen-locale name at 2..=18, flag word at
+/// 18): `flags1` moves to 19, `creatureType` to 20, `AttackIconID` to 21, then `combatRoundTime`
+/// (22), `creatureDisplayID[4]` (23..=26) and `presetSpellID[8]` (27..=34). Measured against the
+/// install: Cat Form row 1 reads flags `0x78`, creature type 1 (Beast), combat round 1000 and
+/// display 892, and the warrior stances keep flags `0x7` at column 19.
 pub fn load_shapeshift_forms(chain: &mut Chain) -> Result<HashMap<u32, ShapeshiftForm>> {
+    let tbc = chain.client_build() == Some(8606);
+    let (width, flags_col, creature_type_col, attack_icon_col) = if tbc {
+        (35, 19, 20, 21)
+    } else {
+        (14, 11, 12, 13)
+    };
     let bytes = chain
         .read_file(SHAPESHIFT_FORM)
         .context("reading SpellShapeshiftForm.dbc")?;
     let mut schema = Schema::new("SpellShapeshiftForm");
-    for i in 0..14 {
+    for i in 0..width {
         match i {
-            // Column 2: the enUS slot of the name locstring (2..10, eight locales and a flag word).
+            // Column 2: the enUS slot of the name locstring (5875: 2..10, eight locales and a flag
+            // word; 8606: 2..=18, sixteen locales and a flag word).
             2 => schema.add_field(SchemaField::new("Name", FieldType::String)),
             _ => schema.add_field(SchemaField::new(format!("F{i}"), FieldType::UInt32)),
         }
@@ -71,9 +84,9 @@ pub fn load_shapeshift_forms(chain: &mut Chain) -> Result<HashMap<u32, Shapeshif
                 ShapeshiftForm {
                     bonus_bar: u32_at(r, 1).unwrap_or(0),
                     name: str_at(&set, r, 2).unwrap_or_default(),
-                    flags: u32_at(r, 11).unwrap_or(0),
-                    creature_type: i32_at(r, 12).unwrap_or(0),
-                    attack_icon: u32_at(r, 13)
+                    flags: u32_at(r, flags_col).unwrap_or(0),
+                    creature_type: i32_at(r, creature_type_col).unwrap_or(0),
+                    attack_icon: u32_at(r, attack_icon_col)
                         .filter(|&i| i != 0)
                         .and_then(|i| icons.get(&i).cloned()),
                 },

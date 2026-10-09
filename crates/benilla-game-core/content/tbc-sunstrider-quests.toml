@@ -1,0 +1,98 @@
+schema_version = 1
+source = "https://github.com/cmangos/tbc-db"
+revision = "866723612d93791e442fb1b18d642118fa682edd"
+license = "GPL-3.0"
+conversion_version = 1
+client_build = 8606
+client_gender_source = "CreatureDisplayInfo.dbc 15516 -> CreatureDisplayInfoExtra.dbc 10661"
+extraction_command = "SELECT * FROM quest_template WHERE entry=8325; SELECT * FROM creature_template WHERE Entry=15278; SELECT * FROM creature_questrelation WHERE quest=8325; SELECT * FROM creature_involvedrelation WHERE quest=8325; SELECT * FROM gossip_menu WHERE entry=6566; SELECT * FROM npc_text WHERE ID=7781; SELECT * FROM item_template WHERE entry IN (20997,20998);"
+
+# quest_template has no XP reward field; project_reward_xp below is the project's quest-8325 rule.
+[[quest]]
+id = 8325
+title = "Reclaiming Sunstrider Isle"
+method = 2
+zone_or_sort = 3431
+min_level = 1
+max_level = 255
+quest_level = 1
+quest_type = 0
+quest_flags = 136
+required_race_mask = 512
+required_class_mask = 0
+next_quest_in_chain = 0
+source_item_entry = 0
+giver_creature_entries = [15278]
+turnin_creature_entries = [15278]
+giver_npc_flags = 3
+gossip_menu_id = 6566
+gossip_text_id = 7781
+gossip_text_male = ""
+gossip_text_female = "$N!  I hope you're ready to get to work, because there is much for you to do here on Sunstrider Isle.$B$BEver since the destruction of the Sunwell by Arthas and the Scourge, we have been a race adrift on a sea of uncertainty.  We teeter on the edge of oblivion.  This will change, $c, and you will learn and aid our recovery at the same time.$B$BThe Outland awaits us!"
+gossip_text_probability = 1.0
+# Client build 8606 display 15516 -> extra display 10661 identifies Erona as a female Blood Elf.
+gossip_npc_gender = 1
+details = "The sooner you begin your education, $N, the better for us all.  There is little room for error, so listen closely.$B$BThe Burning Crystals - the green floating objects to the west of the Sunspire here - have long been used to power the isle's experimentations.  The mana wyrms were their guardians, but the Scourge invasion of Quel'Thalas has driven them errant from our lack of magical control over them.$B$BThere is little choice but to thin their numbers for reclamation.  Do this, then return to me."
+objectives_text = "Kill 8 Mana Wyrms; they are located close to the Burning Crystals that are adjacent to the tower and gazebo.  Return to Magistrix Erona at the tower on Sunstrider Isle when you are done."
+request_items_text = "Have finished your task $C ?"
+offer_reward_text = "For your toubles you may choose your reward."
+end_text = ""
+reward_money_copper = 30
+reward_money_max_level = 60
+project_reward_xp = 50
+
+[[quest.objective]]
+kind = "creature_kill"
+creature_entry = 15274
+count = 8
+text = ""
+
+[[quest.reward_choice]]
+item_entry = 20997
+item_name = "Green Chain Boots"
+display_id = 33325
+count = 1
+
+[[quest.reward_choice]]
+item_entry = 20998
+item_name = "Wyrm Sash"
+display_id = 33326
+count = 1
+
+[[item_template]]
+entry = 20997
+name = "Green Chain Boots"
+class = 4
+subclass = 3
+display_id = 33325
+quality = 1
+buy_price = 56
+sell_price = 11
+inventory_type = 8
+allowable_class = -1
+allowable_race = -1
+item_level = 5
+stackable = 1
+armor = 46
+bonding = 1
+material = 5
+max_durability = 25
+
+[[item_template]]
+entry = 20998
+name = "Wyrm Sash"
+class = 4
+subclass = 1
+display_id = 33326
+quality = 1
+buy_price = 24
+sell_price = 4
+inventory_type = 6
+allowable_class = -1
+allowable_race = -1
+item_level = 5
+stackable = 1
+armor = 6
+bonding = 1
+material = 7
+max_durability = 14

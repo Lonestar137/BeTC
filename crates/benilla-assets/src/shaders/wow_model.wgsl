@@ -64,6 +64,11 @@ struct ModelParams {
     // MONKEY (skybox): stage 1 of a two-texture batch: x = 0 none / 1 Mod / 2 Mod2x, z/w = the
     // matanim rows of its translation and affine.
     stage1: vec4<f32>,
+    // Opt-in character shape controls; zero preserves the stock model exactly.
+    body_shape: vec4<f32>,
+    body_shape2: vec4<f32>,
+    body_shape_bounds: vec4<f32>,
+    body_shape_regions: vec4<f32>,
 };
 @group(#{MATERIAL_BIND_GROUP}) @binding(100) var<uniform> m: ModelParams;
 // MONKEY (skybox): stage 1's texture, the fallback image off `WOW_STAGE1`.
@@ -1067,6 +1072,52 @@ fn wow_skin_normals(frame_from_local: mat4x4<f32>, normal: vec3<f32>) -> vec3<f3
         )) * normal
     );
 }
+
+fn body_region(height: f32, bottom: f32, top: f32) -> f32 {
+    let enter = smoothstep(bottom, min(bottom + 0.05, top), height);
+    let leave = 1.0 - smoothstep(max(top - 0.05, bottom), top, height);
+    return enter * leave;
+}
+
+struct BodyShapeVertex {
+    position: vec3<f32>,
+    scale: vec3<f32>,
+}
+
+fn shape_body_vertex(position: vec3<f32>) -> BodyShapeVertex {
+    let height_span = max(m.body_shape_bounds.y - m.body_shape_bounds.x, 0.001);
+    let h = (position.y - m.body_shape_bounds.x) / height_span;
+    let waist_torso = 1.0 - smoothstep(m.body_shape_bounds.z * 0.08,
+        m.body_shape_bounds.z * 0.18, abs(position.x));
+    let shoulders_torso = 1.0 - smoothstep(m.body_shape_bounds.z * 0.20,
+        m.body_shape_bounds.z * 0.50, abs(position.x));
+    let shoulders = body_region(h, 0.62, 0.82) * shoulders_torso;
+    let arms = body_region(h, 0.32, 0.88)
+        * smoothstep(m.body_shape_bounds.z * 0.10, m.body_shape_bounds.z * 0.28, abs(position.x));
+    let waist = body_region(h, 0.51, 0.68) * waist_torso;
+    let hip_center = 0.49 + m.body_shape_regions.x;
+    let hips = body_region(h, hip_center - 0.09, hip_center + 0.09);
+    let bust_center = 0.74 + m.body_shape_regions.y;
+    let bust = body_region(h, bust_center - 0.065, bust_center + 0.065) * m.body_shape2.z
+        * (1.0 - smoothstep(-m.body_shape_bounds.w * 0.06, m.body_shape_bounds.w * 0.18, position.z));
+    let seat_center = 0.485 + m.body_shape_regions.z;
+    let seat = body_region(h, seat_center - 0.085, seat_center + 0.085)
+        * smoothstep(0.0, m.body_shape_bounds.w * 0.18, position.z);
+    let bust_delta = m.body_shape2.x * bust;
+    let seat_delta = m.body_shape2.y * seat;
+    let sx = max(0.70, 1.0 + m.body_shape.x * shoulders + m.body_shape.y * arms
+        + m.body_shape.z * waist + m.body_shape.w * hips + bust_delta * 0.75 + seat_delta * 0.60);
+    let sy = max(0.70, 1.0 + bust_delta * 0.35 + seat_delta * 0.50);
+    let sz = max(0.70, 1.0 + m.body_shape.z * waist * 0.35 + m.body_shape.w * hips * 0.15
+        + bust_delta * 0.50 + seat_delta * 0.55);
+    let bust_y = m.body_shape_bounds.x + height_span * bust_center;
+    let seat_y = m.body_shape_bounds.x + height_span * seat_center;
+    let y = position.y + (position.y - bust_y) * bust_delta * 0.35
+        + (position.y - seat_y) * seat_delta * 0.50;
+    let z = position.z * sz - m.body_shape_bounds.w * bust_delta * 0.45
+        + m.body_shape_bounds.w * seat_delta * 0.35;
+    return BodyShapeVertex(vec3(position.x * sx, y, z), vec3(sx, sy, sz));
+}
 #endif
 
 // Bevy 0.18's `mesh.wgsl` vertex stage plus our skinning and point lights. A `MaterialExtension`
@@ -1076,9 +1127,26 @@ fn vertex(vertex: WowVertex) -> WowVsOut {
     var out: WowVsOut;
 
     let mesh_world_from_local = mesh_functions::get_world_from_local(vertex.instance_index);
+#ifdef VERTEX_POSITIONS
+    var local_position = vertex.position;
+#endif
+#ifdef VERTEX_NORMALS
+    var local_normal = vertex.normal;
+#endif
     // Precision: `frame_from_local` holds the orientation and a small translation, `frame_origin`
     // the ~9 k yd world position, so no f32 product mixes the two (an f32 ULP at 9 k is ~1 mm).
 #ifdef WOW_RIG_SKIN
+    if (m.body_shape2.w > 0.5) {
+        let shaped = shape_body_vertex(local_position);
+        local_position = shaped.position;
+#ifdef VERTEX_NORMALS
+        local_normal = normalize(vec3(
+            local_normal.x / shaped.scale.x,
+            local_normal.y / shaped.scale.y,
+            local_normal.z / shaped.scale.z,
+        ));
+#endif
+    }
     var frame_from_local = wow_skin_model(
         vertex.instance_index,
         vertex.joint_indices,
@@ -1093,7 +1161,7 @@ fn vertex(vertex: WowVertex) -> WowVsOut {
 
 #ifdef VERTEX_NORMALS
 #ifdef WOW_RIG_SKIN
-    out.world_normal = wow_skin_normals(frame_from_local, vertex.normal);
+        out.world_normal = wow_skin_normals(frame_from_local, local_normal);
 #else
     out.world_normal = mesh_functions::mesh_normal_local_to_world(
         vertex.normal,
@@ -1106,7 +1174,7 @@ fn vertex(vertex: WowVertex) -> WowVsOut {
     // Precision: camera-relative to clip space; `clip_from_world × p_world` cancels
     // catastrophically with camera and geometry near 9 k yd. `world_position` is absolute again:
     // lighting and fog need no such precision.
-    var p_cam = (frame_from_local * vec4<f32>(vertex.position, 1.0)).xyz
+    var p_cam = (frame_from_local * vec4<f32>(local_position, 1.0)).xyz
         + (frame_origin - view.world_position);
     // MONKEY (wind): clutter UV_B is `(height-from-base, per-tuft phase)` authored by clutter.rs;
     // UV_0 and vertex colour alpha retain their texture/cutout meanings.

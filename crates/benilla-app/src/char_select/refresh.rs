@@ -9,8 +9,8 @@ use crate::glue_strings::GlueStrings;
 use crate::net::NetStatus;
 use crate::portrait::{GlueLook, GluePreview, SelectLook};
 
-use super::screen::{MAX_ROWS, RealmBanner, RowText, SelectAction, SelectedName};
-use super::{Roster, class_name};
+use super::screen::{RealmBanner, RowText, SelectAction, SelectedName, MAX_ROWS};
+use super::{class_name, Roster};
 
 /// Refill the rows, the selected name and the realm banner when the roster changes or the screen
 /// was just spawned (a return from the create screen finds the roster unchanged).
@@ -181,6 +181,7 @@ fn should_show_create(has_realm: bool, offline: bool, character_count: usize) ->
 /// with no character, the reference's OnLoad default), the look its geared enum record.
 pub(super) fn feed_glue_preview(
     roster: Res<Roster>,
+    body_shapes: Option<Res<crate::body_shape::BodyProportionRoster>>,
     mut preview: ResMut<GluePreview>,
     mut showing: Local<Option<u64>>,
 ) {
@@ -192,7 +193,18 @@ pub(super) fn feed_glue_preview(
         preview.yaw = 0.0;
     }
     let (race, look) = match roster.selected_char() {
-        Some(c) => (c.race, Some(GlueLook::Select(SelectLook::from(c)))),
+        Some(c) => {
+            let proportions = body_shapes
+                .as_deref()
+                .and_then(|profiles| profiles.0.get(&c.guid).copied())
+                .unwrap_or_default();
+            (
+                c.race,
+                Some(GlueLook::Select(
+                    SelectLook::from(c).with_body_proportions(proportions),
+                )),
+            )
+        }
         None => (2, None), // UI_Orc, the reference's empty-account scene
     };
     let scene = Some(crate::portrait::GlueScene::Race(race));

@@ -8,7 +8,7 @@ use bevy::pbr::ExtendedMaterial;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Buffer, Face};
 
-use benilla_assets::materials::{TorchBinds, WowModelExt, WowModelMaterial, VANILLA_ALPHA_KEY_REF};
+use benilla_assets::materials::{TorchBinds, VANILLA_ALPHA_KEY_REF, WowModelExt, WowModelMaterial};
 
 mod batch;
 pub mod lazy;
@@ -461,6 +461,10 @@ fn model_material_impl(
                 anim_slots: Vec4::ZERO,
                 // MONKEY (skybox): no second stage.
                 stage1: Vec4::ZERO,
+                body_shape: Vec4::ZERO,
+                body_shape2: Vec4::ZERO,
+                body_shape_bounds: Vec4::ZERO,
+                body_shape_regions: Vec4::ZERO,
                 stage1_texture: None,
                 light_buf: light.clone(),
                 // MONKEY (torch shadows Phase 3A): the shared torch receiver bindings.
@@ -595,6 +599,10 @@ pub fn zfill_material(
                 anim_slots: Vec4::ZERO,
                 // MONKEY (skybox): no second stage.
                 stage1: Vec4::ZERO,
+                body_shape: Vec4::ZERO,
+                body_shape2: Vec4::ZERO,
+                body_shape_bounds: Vec4::ZERO,
+                body_shape_regions: Vec4::ZERO,
                 stage1_texture: None,
                 light_buf: light.clone(),
                 // MONKEY (torch shadows Phase 3A): the shared torch receiver bindings.

@@ -12,8 +12,9 @@ use benilla_ui::widget::EditBoxState;
 use bevy::input::keyboard::KeyboardInput;
 
 use crate::textinput::{self, HostClipboard};
-use bevy::input::ButtonState;
 use bevy::input::mouse::AccumulatedMouseMotion;
+use bevy::input::mouse::MouseButton;
+use bevy::input::ButtonState;
 use bevy::prelude::*;
 
 use crate::char_select::{ClientState, Roster};
@@ -98,7 +99,10 @@ fn debug_auto_create(
     }
     sel.name.set_text(&name);
     sel.creating = true;
-    let _ = pick.0.send(CharRequest::Create(sel.request()));
+    let _ = pick.0.send(CharRequest::Create {
+        request: sel.request(),
+        body_proportions: sel.body_proportions,
+    });
     *fired = true;
     info!("char create: auto-create fired for {:?}", sel.name.text);
 }
@@ -120,8 +124,9 @@ fn debug_enter(
     }
 }
 
-/// `WOW_CHARCREATE_PICK="race,sex[,class]"`: applied once the screen is up, after its enter reset;
-/// a class the race may not be is ignored.
+/// `WOW_CHARCREATE_PICK="race,sex[,class[,height,shoulders,arms,waist,hips,bust,buttocks]]"`: applied
+/// once the screen is up, after its enter reset; a class the race may not be is ignored. Supplying
+/// any proportion enables and opens the opt-in panel for a visual capture.
 fn debug_pick(
     state: Res<State<ClientState>>,
     catalog: Option<Res<CharCreate>>,
@@ -139,11 +144,19 @@ fn debug_pick(
     if *state.get() != ClientState::CharCreate {
         return;
     }
-    let mut it = spec.split(',').map(|s| s.trim().parse::<u8>().ok());
-    sel.race = it.next().flatten().unwrap_or(1).max(1);
-    sel.sex = it.next().flatten().unwrap_or(0).min(1);
+    let mut it = spec.split(',').map(str::trim);
+    sel.race = it
+        .next()
+        .and_then(|s| s.parse::<u8>().ok())
+        .unwrap_or(1)
+        .max(1);
+    sel.sex = it
+        .next()
+        .and_then(|s| s.parse::<u8>().ok())
+        .unwrap_or(0)
+        .min(1);
     sel.clamp(catalog.as_deref());
-    if let Some(class) = it.next().flatten() {
+    if let Some(class) = it.next().and_then(|s| s.parse::<u8>().ok()) {
         if race_classes(catalog.as_deref(), sel.race).contains(&class) {
             sel.class = class;
         } else {
@@ -151,6 +164,27 @@ fn debug_pick(
                 "char create: pick instrument class {class} invalid for race {} — keeping {}",
                 sel.race, sel.class
             );
+        }
+    }
+    let body: Vec<Option<i8>> = it.take(7).map(|field| field.parse::<i8>().ok()).collect();
+    if body.iter().any(Option::is_some) {
+        sel.body_proportions.enabled = true;
+        sel.body_options_open = true;
+        for (field, value) in [
+            parts::BodyShapeField::Height,
+            parts::BodyShapeField::Shoulders,
+            parts::BodyShapeField::Arms,
+            parts::BodyShapeField::Waist,
+            parts::BodyShapeField::Hips,
+            parts::BodyShapeField::Bust,
+            parts::BodyShapeField::Seat,
+        ]
+        .into_iter()
+        .zip(body)
+        {
+            if let Some(value) = value {
+                field.set(&mut sel.body_proportions, value);
+            }
         }
     }
     // `WOW_CHARCREATE_DIALS="skin,face,hairStyle,hairColor,facialHair"`: each field optional
@@ -199,7 +233,7 @@ fn debug_shot(
     if time.elapsed_secs() - start < 5.0 {
         return;
     }
-    use bevy::render::view::screenshot::{Screenshot, save_to_disk};
+    use bevy::render::view::screenshot::{save_to_disk, Screenshot};
     commands
         .spawn(Screenshot::primary_window())
         .observe(save_to_disk(out.clone()));
@@ -218,6 +252,8 @@ pub(crate) struct CreateSelection {
     sex: u8,
     class: u8,
     dials: [u8; 5],
+    body_proportions: crate::body_shape::BodyProportions,
+    body_options_open: bool,
     /// The typed name; the shared feed enforces letters only and the 12-character cap, pasted too.
     name: EditBoxState,
     /// Waiting on `SMSG_CHAR_CREATE`: Create is disarmed.
@@ -251,6 +287,8 @@ impl CreateSelection {
             })
             .unwrap_or(1);
         self.dials = [0; 5];
+        self.body_proportions = crate::body_shape::BodyProportions::default();
+        self.body_options_open = false;
         self.name.set_text("");
         self.creating = false;
     }
@@ -283,6 +321,7 @@ impl CreateSelection {
             hair_style: self.dials[2],
             hair_color: self.dials[3],
             facial_hair: self.dials[4],
+            body_proportions: self.body_proportions,
         }
     }
 
@@ -317,6 +356,9 @@ enum CreateAction {
     /// Hold to rotate, like the reference's rotate buttons.
     RotateLeft,
     RotateRight,
+    ToggleBodyOptions,
+    ToggleBodyProportions,
+    ResetBodyProportions,
     /// The model pane: drag to rotate, no click action.
     Model,
 }
@@ -366,7 +408,19 @@ fn create_input(
     mut next: ResMut<NextState<ClientState>>,
     mut sounds: MessageWriter<GlueSound>,
     mut rng: Local<u64>,
+    body_slider_input: (
+        Res<ButtonInput<MouseButton>>,
+        Query<&Window, With<bevy::window::PrimaryWindow>>,
+        Query<(
+            &parts::BodySlider,
+            &ComputedNode,
+            &UiGlobalTransform,
+            &Interaction,
+        )>,
+        Local<Option<parts::BodyShapeField>>,
+    ),
 ) {
+    let (mouse, window, sliders, mut body_drag) = body_slider_input;
     let mods = textinput::mods_now(&keys);
     let wl = textinput::wayland_display(raw_handle.iter().next());
     // The create screen has one field and no focus model, so it is always focused while up.
@@ -426,7 +480,51 @@ fn create_input(
                 sounds.write(GlueSound("gsCharacterCreationCancel"));
                 next.set(ClientState::CharSelect);
             }
+            CreateAction::ToggleBodyOptions => {
+                sel.body_options_open = !sel.body_options_open;
+            }
+            CreateAction::ToggleBodyProportions => {
+                sel.body_proportions.enabled = !sel.body_proportions.enabled;
+                changed_look = true;
+            }
+            CreateAction::ResetBodyProportions => {
+                let enabled = sel.body_proportions.enabled;
+                sel.body_proportions = crate::body_shape::BodyProportions {
+                    enabled,
+                    ..default()
+                };
+                changed_look = true;
+            }
             CreateAction::RotateLeft | CreateAction::RotateRight | CreateAction::Model => {}
+        }
+    }
+
+    let cursor = window
+        .single()
+        .ok()
+        .and_then(Window::physical_cursor_position);
+    if mouse.just_pressed(MouseButton::Left) {
+        *body_drag = sliders.iter().find_map(|(slider, _, _, interaction)| {
+            (*interaction == Interaction::Pressed).then_some(slider.0)
+        });
+    }
+    if !mouse.pressed(MouseButton::Left) || cursor.is_none() {
+        *body_drag = None;
+    }
+    if sel.body_proportions.enabled {
+        if let (Some(field), Some(cursor)) = (*body_drag, cursor) {
+            if let Some((_, node, transform, _)) =
+                sliders.iter().find(|(slider, ..)| slider.0 == field)
+            {
+                if let Some(local) = node.normalize_point(*transform, cursor) {
+                    let fraction = (local.x + 0.5).clamp(0.0, 1.0);
+                    let (min, max) = field.range();
+                    let value = (f32::from(min) + fraction * f32::from(max - min)).round() as i8;
+                    let before = field.get(sel.body_proportions);
+                    field.set(&mut sel.body_proportions, value);
+                    changed_look |= before != field.get(sel.body_proportions);
+                }
+            }
         }
     }
 
@@ -458,7 +556,10 @@ fn create_input(
     if do_create && !sel.creating {
         sel.creating = true;
         sounds.write(GlueSound("gsCharacterCreationCreateChar"));
-        let _ = pick.0.send(CharRequest::Create(sel.request()));
+        let _ = pick.0.send(CharRequest::Create {
+            request: sel.request(),
+            body_proportions: sel.body_proportions,
+        });
     }
     if changed_look {
         preview.scene = Some(crate::portrait::GlueScene::Race(sel.race));
@@ -726,7 +827,7 @@ mod tests {
     #[test]
     fn the_chosen_icons_are_lock_highlighted() {
         use crate::glue::art::GlueArt;
-        use crate::glue::widgets::{LockHighlight, icon_button};
+        use crate::glue::widgets::{icon_button, LockHighlight};
 
         fn spawn_icons(mut commands: Commands, art: Res<GlueArt>) {
             let font = Handle::<Font>::default();

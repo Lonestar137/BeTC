@@ -259,24 +259,19 @@ pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
         })?,
     )?;
 
-    // UseAction(action [, checkCursor [, onSelf]]): a nonzero `checkCursor` while the cursor holds
-    // a payload places it, as `PlaceAction` does; otherwise the press is queued with `onSelf`, the
-    // self-cast flag. FrameXML passes 1 from a click and 0 from a keybind; the binding's own test
-    // of it is untraced, and place-on-click is the reading that split implies.
+    // UseAction(slot [, target [, button]]): the secure action button hands the resolved cast
+    // target as `target` ("player" on a self-cast modifier press, else nil) and the mouse-button
+    // name as `button`, which is unused here. TBC dropped the 1.12 `checkCursor` place-on-click
+    // leg (`PlaceAction` does that), so this queues the press with the self-cast flag.
     g.set(
         "UseAction",
         lua.create_function(|lua, (action, rest): (u32, MultiValue)| {
             let mut model = lua.app_data_mut::<Model>().expect("model app_data");
             let mut rest = rest.iter();
-            let check_cursor = rest.next().is_some_and(truthy_nonzero);
-            let on_self = rest.next().is_some_and(truthy_nonzero);
-            if check_cursor && model.cursor.is_some() {
-                super::cursor::place_action(&mut model, action);
-            } else {
-                model
-                    .script_calls
-                    .push(super::ScriptCall::UseAction(ActionUse { action, on_self }));
-            }
+            let on_self = super::binding_abi::unit_is_self(rest.next());
+            model
+                .script_calls
+                .push(super::ScriptCall::UseAction(ActionUse { action, on_self }));
             Ok(())
         })?,
     )?;
@@ -503,19 +498,20 @@ mod tests {
             .collect()
     }
 
-    /// The numeric test: `0` is not the modifier, though Lua would call it true.
+    /// The target unit token: only `"player"` is the self-cast; `button` is dropped.
     #[test]
-    fn use_actions_third_argument_is_the_self_cast_modifier() {
+    fn use_action_reads_the_target_unit() {
         let mut s = UiScript::new().unwrap();
         s.run("UseAction(1)").unwrap();
-        s.run("UseAction(2, 0)").unwrap();
-        s.run("UseAction(3, 0, 0)").unwrap();
-        s.run("UseAction(4, 0, 1)").unwrap();
-        s.run("UseAction(5, nil, 1)").unwrap();
+        s.run("UseAction(2, nil)").unwrap();
+        s.run("UseAction(3, 'target')").unwrap();
+        s.run("UseAction(4, 'player')").unwrap();
+        s.run("UseAction(5, 'PLAYER')").unwrap();
+        s.run("UseAction(6, 'mouseover', 'LeftButton')").unwrap();
         assert_eq!(
             uses(&mut s),
-            vec![(1, false), (2, false), (3, false), (4, true), (5, true)],
-            "only a numeric-nonzero third argument is the modifier"
+            vec![(1, false), (2, false), (3, false), (4, true), (5, true), (6, false)],
+            "only a 'player' target token is the self-cast"
         );
     }
 
@@ -565,7 +561,7 @@ mod tests {
         assert_eq!(s.eval::<i64>("return GetBonusBarOffset()").unwrap(), 1);
 
         s.run("UseAction(73)").unwrap();
-        s.run("UseAction(74, 0, 1)").unwrap();
+        s.run("UseAction(74, \"player\")").unwrap();
         assert_eq!(uses(&mut s), vec![(73, false), (74, true)]);
         assert!(s.take_action_uses().is_empty());
 
@@ -588,32 +584,6 @@ mod tests {
             }),
         );
         assert_eq!(s.eval::<i64>("return GetActionCount(5)").unwrap(), 4);
-    }
-
-    /// A place needs a nonzero `checkCursor` and a held payload; a keybind's `0` queues the use.
-    #[test]
-    fn use_action_check_cursor_routes_to_place_or_use() {
-        use crate::script::cursor::{CursorAction, CursorPayload};
-
-        let mut s = UiScript::new().unwrap();
-        s.set_cursor_for_test(CursorPayload::Action(CursorAction {
-            src_slot: 1,
-            kind: 0x00,
-            action: 111,
-            texture: Some("Interface\\Icons\\Spell_A".into()),
-        }));
-
-        s.run("UseAction(9, 0)").unwrap();
-        assert_eq!(uses(&mut s), vec![(9, false)]);
-        assert!(s.cursor_payload().is_some(), "checkCursor 0 never places");
-
-        s.run("UseAction(9, 1)").unwrap();
-        assert!(s.take_action_uses().is_empty(), "routed to place, not use");
-        assert!(s.cursor_payload().is_none(), "empty destination clears");
-        assert_eq!(s.take_action_sets(), vec![(9, 111)]);
-
-        s.run("UseAction(10, 1)").unwrap();
-        assert_eq!(uses(&mut s), vec![(10, false)]);
     }
 
     // ── `GetActionText` (`0x4e7050`) ──

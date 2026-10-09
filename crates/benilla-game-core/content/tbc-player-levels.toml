@@ -1,0 +1,281 @@
+schema_version = 1
+source = "https://github.com/cmangos/tbc-db"
+revision = "866723612d93791e442fb1b18d642118fa682edd"
+license = "GPL-3.0"
+extraction_command = "python3 scripts/import-tbc-player-levels.py <TBC-DB full SQL dump> crates/benilla-game-core/content/tbc-player-levels.toml"
+
+[[level_xp]]
+level = 1
+xp_to_next = 400
+
+[[level_xp]]
+level = 2
+xp_to_next = 900
+
+[[level_xp]]
+level = 3
+xp_to_next = 1400
+
+[[level_xp]]
+level = 4
+xp_to_next = 2100
+
+[[level_xp]]
+level = 5
+xp_to_next = 2800
+
+[[level_xp]]
+level = 6
+xp_to_next = 3600
+
+[[level_xp]]
+level = 7
+xp_to_next = 4500
+
+[[level_xp]]
+level = 8
+xp_to_next = 5400
+
+[[level_xp]]
+level = 9
+xp_to_next = 6500
+
+[[level_xp]]
+level = 10
+xp_to_next = 7600
+
+[[level_xp]]
+level = 11
+xp_to_next = 8700
+
+[[level_xp]]
+level = 12
+xp_to_next = 9800
+
+[[level_xp]]
+level = 13
+xp_to_next = 11000
+
+[[level_xp]]
+level = 14
+xp_to_next = 12300
+
+[[level_xp]]
+level = 15
+xp_to_next = 13600
+
+[[level_xp]]
+level = 16
+xp_to_next = 15000
+
+[[level_xp]]
+level = 17
+xp_to_next = 16400
+
+[[level_xp]]
+level = 18
+xp_to_next = 17800
+
+[[level_xp]]
+level = 19
+xp_to_next = 19300
+
+[[level_xp]]
+level = 20
+xp_to_next = 20800
+
+[[level_xp]]
+level = 21
+xp_to_next = 22400
+
+[[level_xp]]
+level = 22
+xp_to_next = 24000
+
+[[level_xp]]
+level = 23
+xp_to_next = 25500
+
+[[level_xp]]
+level = 24
+xp_to_next = 27200
+
+[[level_xp]]
+level = 25
+xp_to_next = 28900
+
+[[level_xp]]
+level = 26
+xp_to_next = 30500
+
+[[level_xp]]
+level = 27
+xp_to_next = 32200
+
+[[level_xp]]
+level = 28
+xp_to_next = 33900
+
+[[level_xp]]
+level = 29
+xp_to_next = 36300
+
+[[level_xp]]
+level = 30
+xp_to_next = 38800
+
+[[level_xp]]
+level = 31
+xp_to_next = 41600
+
+[[level_xp]]
+level = 32
+xp_to_next = 44600
+
+[[level_xp]]
+level = 33
+xp_to_next = 48000
+
+[[level_xp]]
+level = 34
+xp_to_next = 51400
+
+[[level_xp]]
+level = 35
+xp_to_next = 55000
+
+[[level_xp]]
+level = 36
+xp_to_next = 58700
+
+[[level_xp]]
+level = 37
+xp_to_next = 62400
+
+[[level_xp]]
+level = 38
+xp_to_next = 66200
+
+[[level_xp]]
+level = 39
+xp_to_next = 70200
+
+[[level_xp]]
+level = 40
+xp_to_next = 74300
+
+[[level_xp]]
+level = 41
+xp_to_next = 78500
+
+[[level_xp]]
+level = 42
+xp_to_next = 82800
+
+[[level_xp]]
+level = 43
+xp_to_next = 87100
+
+[[level_xp]]
+level = 44
+xp_to_next = 91600
+
+[[level_xp]]
+level = 45
+xp_to_next = 96300
+
+[[level_xp]]
+level = 46
+xp_to_next = 101000
+
+[[level_xp]]
+level = 47
+xp_to_next = 105800
+
+[[level_xp]]
+level = 48
+xp_to_next = 110700
+
+[[level_xp]]
+level = 49
+xp_to_next = 115700
+
+[[level_xp]]
+level = 50
+xp_to_next = 120900
+
+[[level_xp]]
+level = 51
+xp_to_next = 126100
+
+[[level_xp]]
+level = 52
+xp_to_next = 131500
+
+[[level_xp]]
+level = 53
+xp_to_next = 137000
+
+[[level_xp]]
+level = 54
+xp_to_next = 142500
+
+[[level_xp]]
+level = 55
+xp_to_next = 148200
+
+[[level_xp]]
+level = 56
+xp_to_next = 154000
+
+[[level_xp]]
+level = 57
+xp_to_next = 159900
+
+[[level_xp]]
+level = 58
+xp_to_next = 165800
+
+[[level_xp]]
+level = 59
+xp_to_next = 172000
+
+[[level_xp]]
+level = 60
+xp_to_next = 494000
+
+[[level_xp]]
+level = 61
+xp_to_next = 574700
+
+[[level_xp]]
+level = 62
+xp_to_next = 614400
+
+[[level_xp]]
+level = 63
+xp_to_next = 650300
+
+[[level_xp]]
+level = 64
+xp_to_next = 682300
+
+[[level_xp]]
+level = 65
+xp_to_next = 710200
+
+[[level_xp]]
+level = 66
+xp_to_next = 734100
+
+[[level_xp]]
+level = 67
+xp_to_next = 753700
+
+[[level_xp]]
+level = 68
+xp_to_next = 768900
+
+[[level_xp]]
+level = 69
+xp_to_next = 779700

@@ -1,0 +1,155 @@
+schema_version = 1
+source = "https://github.com/cmangos/tbc-db"
+revision = "866723612d93791e442fb1b18d642118fa682edd"
+license = "GPL-3.0"
+extraction_command = "python3 scripts/import-tbc-spell-conditions.py <TBC-DB full SQL dump> crates/benilla-game-core/content/tbc-spell-conditions.toml crates/benilla-game-core/content/tbc-progression.toml"
+
+[[condition]]
+id = 3
+kind = 6
+value1 = 67
+value2 = 0
+value3 = 0
+value4 = 0
+flags = 0
+comment = "Horde Player"
+
+[[condition]]
+id = 4
+kind = 6
+value1 = 469
+value2 = 0
+value3 = 0
+value4 = 0
+flags = 0
+comment = "Alliance Player"
+
+[[condition]]
+id = 293
+kind = 14
+value1 = 1
+value2 = 0
+value3 = 0
+value4 = 0
+flags = 0
+comment = "Player RaceMask: 1"
+
+[[condition]]
+id = 295
+kind = 14
+value1 = 4
+value2 = 0
+value3 = 0
+value4 = 0
+flags = 0
+comment = "Player RaceMask: 4"
+
+[[condition]]
+id = 296
+kind = 14
+value1 = 8
+value2 = 0
+value3 = 0
+value4 = 0
+flags = 0
+comment = "Player RaceMask: 8"
+
+[[condition]]
+id = 297
+kind = 14
+value1 = 16
+value2 = 0
+value3 = 0
+value4 = 0
+flags = 0
+comment = "Player RaceMask: 16"
+
+[[condition]]
+id = 300
+kind = 14
+value1 = 128
+value2 = 0
+value3 = 0
+value4 = 0
+flags = 0
+comment = "Player RaceMask: 128"
+
+[[condition]]
+id = 301
+kind = 14
+value1 = 512
+value2 = 0
+value3 = 0
+value4 = 0
+flags = 0
+comment = "Player RaceMask: 512"
+
+[[condition]]
+id = 302
+kind = 14
+value1 = 1024
+value2 = 0
+value3 = 0
+value4 = 0
+flags = 0
+comment = "Player RaceMask: 1024"
+
+[[condition]]
+id = 498
+kind = -2
+value1 = 293
+value2 = 295
+value3 = 0
+value4 = 0
+flags = 0
+comment = "(Player RaceMask: 1 OR Player RaceMask: 4)"
+
+[[condition]]
+id = 499
+kind = -2
+value1 = 297
+value2 = 301
+value3 = 0
+value4 = 0
+flags = 0
+comment = "(Player RaceMask: 16 OR Player RaceMask: 512)"
+
+[[condition]]
+id = 500
+kind = -2
+value1 = 295
+value2 = 302
+value3 = 0
+value4 = 0
+flags = 0
+comment = "(Player RaceMask: 4 OR Player RaceMask: 1024)"
+
+[[condition]]
+id = 10101
+kind = 17
+value1 = 27090
+value2 = 0
+value3 = 0
+value4 = 0
+flags = 0
+comment = "Player Has Learned Spell: 27090"
+
+[[condition]]
+id = 10102
+kind = 17
+value1 = 33717
+value2 = 0
+value3 = 0
+value4 = 0
+flags = 0
+comment = "Player Has Learned Spell: 33717"
+
+[[condition]]
+id = 10103
+kind = -1
+value1 = 10101
+value2 = 10102
+value3 = 0
+value4 = 0
+flags = 0
+comment = "(Player Has Learned Spell: 27090 AND Player Has Learned Spell: 33717)"

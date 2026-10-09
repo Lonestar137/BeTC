@@ -411,7 +411,10 @@ pub(crate) enum CharRequest {
     /// Log in as this character (`CMSG_PLAYER_LOGIN`).
     Enter(u64),
     /// Create a character (`CMSG_CHAR_CREATE`), then stay parked at select with the fresh roster.
-    Create(benilla_protocol::CharCreateReq),
+    Create {
+        request: benilla_protocol::CharCreateReq,
+        body_proportions: crate::body_shape::BodyProportions,
+    },
     /// Delete a character by guid (`CMSG_CHAR_DELETE`), then stay parked at select.
     Delete(u64),
     /// Select's Back: drop the session and return to the pre-logon park.

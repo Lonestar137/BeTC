@@ -265,6 +265,20 @@ The character-select screen stays a normal, multi-character roster:
 - A selected character enters its saved position, or the Blood Elf start
   position for a new character.
 
+### Optional Player-Model Proportions
+
+- Proportion controls are an offline-only, explicit opt-in on character creation. With the feature
+  off, the stock TBC character model, dimensions, and appearance values remain unchanged.
+- A profile is saved per character. Height is bounded from -10% to +35%; shoulder, arm, waist, hip,
+  and bust controls are bounded to +/-20%, and the seat control to -20% to +40%. Female models
+  additionally expose a bust control. Head size is not adjustable, and the supported ranges must
+  not permit collapsed or extreme body regions.
+- Height uses the model's normal instance scale. Shoulder, arm, waist, hip, bust, and seat changes
+  are cosmetic skinned-model deformations based on installed M2 bounds, with race-specific vertical
+  anchors for the pelvis, chest, and seat; they do not change combat stats or edit client assets.
+- Existing characters and profiles without the opt-in settings migrate to the stock, unmodified
+  proportions.
+
 ## Target Slice
 
 ### Geography
@@ -522,6 +536,45 @@ Acceptance:
 
 - Each migrated system has the same instrumented behavior before and after.
 - The slice stays playable at every step.
+
+### Phase 7: Complete TBC Player Spell Coverage (Post-Slice Expansion)
+
+The first playable slice only needs one starting class and a small number of abilities. The product
+scope now also requires complete build-8606 player-spell acquisition and behavior across classes;
+this is a post-slice expansion, not a claim that the initial quest loop already supports every
+spell.
+
+Tasks:
+
+- Inventory every player-acquisition source represented by TBC 2.4.3: race/class starting spells,
+  class and profession trainers, talents, racial abilities, and other learn/quest/item sources that
+  the game models. Exclude NPC-only and internal spells unless a player can acquire them.
+- Validate rank chains and source gates (race, class, level, prerequisites, skill, condition,
+  trainer, talent choice, and mutually exclusive selections) against build-8606-compatible source
+  data. An unavailable source condition must be modeled or reported as an explicit unsupported
+  blocker, never silently opened or silently omitted.
+- Implement player resource pools, cast validation and timing, cooldowns, target rules, and effect
+  resolution from the build-8606 spell tables. Cover direct and periodic damage/healing, auras and
+  dispels, resource/stat/armor/resistance changes, control/movement effects, summons, and
+  class-specific mechanics used by player-acquirable spells. Document any intentionally unsupported
+  effect before marking an individual spell unavailable.
+- Add a generated/data-gated coverage audit joining every player-acquirable spell to its rank,
+  source, required client data, and runtime effect handler. No player-facing spell may fall through
+  to a fixed Fireball implementation or appear usable without its effect being simulated.
+- Keep simulation deterministic and save/load all persistent spell state, including active effects
+  and any RNG state needed to reproduce combat outcomes.
+
+Acceptance:
+
+- Coverage tests enumerate player-acquirable spells by class/source and find no missing rank,
+  availability rule, or runtime effect handler for the supported TBC source set.
+- Tests verify representative spells from every class and acquisition source for actual damage,
+  healing, buffs/debuffs, resource cost, cast/cooldown/range/target rules, aura expiry, interruption,
+  and save/re-entry behavior against build-8606 data.
+- Trainer, talent, and other stock UI paths expose only choices permitted by the character's class,
+  race, level, prerequisites, skill, and source conditions.
+- A bounded offline run exercises each class and effect family. Unsupported player-acquirable spells
+  are reported explicitly and prevent phase acceptance.
 
 ## Testing Strategy
 

@@ -580,7 +580,11 @@ fn run(
                     Ok(CharRequest::Enter(guid)) => Parked::Play(guid),
                     // Select's Back: drop the parked session, return to the login park.
                     Ok(CharRequest::Abandon) => Parked::Repark,
-                    Ok(CharRequest::Create(create)) => {
+                    Ok(CharRequest::Create {
+                        request: create,
+                        body_proportions,
+                    }) => {
+                        let _ = body_proportions; // The frozen network protocol has no shape fields.
                         Parked::Acted(CharAction::Create, session.create_character(&create)?)
                     }
                     Ok(CharRequest::Delete(target)) => {

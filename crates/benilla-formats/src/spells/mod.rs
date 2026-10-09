@@ -225,6 +225,10 @@ const ATTR_EX_EXCLUDE_CASTER: u32 = 0x0008_0000;
 
 /// `SPELL_EFFECT_ATTACK`: only 6603 "Attack" has it, but the client tests the effect, not the id.
 const SPELL_EFFECT_ATTACK: u32 = 78;
+/// `SPELL_EFFECT_SCHOOL_DAMAGE`, a direct school-damage effect.
+pub const SPELL_EFFECT_SCHOOL_DAMAGE: u32 = 2;
+/// `SPELL_EFFECT_HEAL`, a direct health restore.
+pub const SPELL_EFFECT_HEAL: u32 = 10;
 
 /// The tracking aura types, which no aura display shows (`IsAuraDisplayable` `0x519860`).
 const TRACKING_AURA_TYPES: [u32; 3] = [44, 45, 151];
@@ -440,6 +444,8 @@ fn spell_column(column: usize, tbc: bool) -> usize {
     if !tbc {
         return column;
     }
+    // Build 8606 inserts the EffectMiscValueB block before the trigger array; the later visual and
+    // icon columns therefore sit seven columns after the build-5875 indices.
     match column {
         0 => 0,
         COL_SCHOOL => 215,
@@ -459,8 +465,12 @@ fn spell_column(column: usize, tbc: bool) -> usize {
         COL_REQUIRES_SPELL_FOCUS => 13,
         COL_CASTER_AURA_STATE => 14,
         COL_TARGET_AURA_STATE => 15,
-        18..=111 => column + 4,
-        112..=119 => column + 7,
+        18..=108 => column + 4,
+        // Build 8606 inserts the EffectMiscValueB block (three columns) before the trigger array,
+        // so everything from the trigger array onward shifts 4+3=7. Measured against the 8606
+        // file: `EffectTriggerSpell` at 116..=118 (2,957 rows carry a valid spell id), combo points
+        // at 119..=121, `SpellVisual` at 122 (Fireball's is 67), `SpellIconID` at 124.
+        109..=118 => column + 7,
         COL_NAME_ENUS => 127,
         COL_NAME_SUBTEXT_ENUS => 144,
         COL_DESCRIPTION_ENUS => 161,

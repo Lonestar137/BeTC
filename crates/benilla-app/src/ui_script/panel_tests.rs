@@ -216,11 +216,13 @@ fn shipped_gossip_frame_renders_quest_rows_above_options() {
                 title: "Report to Goldshire".into(),
                 level: 5,
                 active: true,
+                trivial: false,
             },
             GossipQuestRow {
                 title: "A Threat Within".into(),
                 level: 7,
                 active: false,
+                trivial: false,
             },
         ],
         options: vec![GossipOptionView {

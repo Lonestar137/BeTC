@@ -12,6 +12,8 @@ for client behavior and data. State project-owned gameplay decisions explicitly 
 content schema. Keep the install read-only and external, keep the executable offline, and run the
 appropriate gates. The plan's phase acceptance criteria determine when a phase is complete.
 
+Unless otherwise stated, consult the WoW data folder(./WoW) as a source of truth to make sure we are correctly porting a change.
+
 ### Fidelity default
 
 Unless this project explicitly records a different offline gameplay rule, reproduce TBC 2.4.3

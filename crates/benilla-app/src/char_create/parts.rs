@@ -7,6 +7,78 @@ use bevy::prelude::*;
 pub(super) struct CharCreateUi {
     pub(super) s: f32,
 }
+#[derive(Component)]
+pub(super) struct InfoPanel;
+#[derive(Component)]
+pub(super) struct BodyOptionsPanel;
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(super) enum BodyShapeField {
+    Height,
+    Shoulders,
+    Arms,
+    Waist,
+    Hips,
+    Bust,
+    Seat,
+}
+
+impl BodyShapeField {
+    pub(super) fn label(self) -> &'static str {
+        match self {
+            Self::Height => "Height",
+            Self::Shoulders => "Shoulders",
+            Self::Arms => "Arms",
+            Self::Waist => "Waist",
+            Self::Hips => "Hips",
+            Self::Bust => "Bust",
+            Self::Seat => "Buttocks",
+        }
+    }
+
+    pub(super) fn range(self) -> (i8, i8) {
+        match self {
+            Self::Height => (-10, 35),
+            Self::Seat => (-20, 40),
+            _ => (-20, 20),
+        }
+    }
+
+    pub(super) fn get(self, p: crate::body_shape::BodyProportions) -> i8 {
+        match self {
+            Self::Height => p.height,
+            Self::Shoulders => p.shoulders,
+            Self::Arms => p.arms,
+            Self::Waist => p.waist,
+            Self::Hips => p.hips,
+            Self::Bust => p.bust,
+            Self::Seat => p.seat,
+        }
+    }
+
+    pub(super) fn set(self, p: &mut crate::body_shape::BodyProportions, value: i8) {
+        let (min, max) = self.range();
+        let value = value.clamp(min, max);
+        match self {
+            Self::Height => p.height = value,
+            Self::Shoulders => p.shoulders = value,
+            Self::Arms => p.arms = value,
+            Self::Waist => p.waist = value,
+            Self::Hips => p.hips = value,
+            Self::Bust => p.bust = value,
+            Self::Seat => p.seat = value,
+        }
+    }
+}
+
+#[derive(Component)]
+pub(super) struct BodyShapeRow(pub(super) BodyShapeField);
+#[derive(Component)]
+pub(super) struct BodySlider(pub(super) BodyShapeField);
+#[derive(Component)]
+pub(super) struct BodySliderKnob(pub(super) BodyShapeField);
+#[derive(Component)]
+pub(super) struct BodySliderValue(pub(super) BodyShapeField);
 /// The status line.
 #[derive(Component)]
 pub(super) struct StatusLine;
@@ -40,6 +112,7 @@ pub(super) enum DynText {
     /// The race panel's ability lines, the reference's separate gold
     /// `CharacterCreateRaceAbilityText`.
     InfoAbilities,
+    BodyShapeStatus,
     /// A class slot's hover label.
     ClassSlotLabel(u8),
 }
@@ -79,4 +152,21 @@ pub(super) struct ScrollThumb {
 #[derive(Component)]
 pub(super) struct ScrollHides {
     pub(super) scroll: Entity,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn seat_slider_reaches_forty_percent_but_other_shape_sliders_stop_at_twenty() {
+        assert_eq!(BodyShapeField::Seat.range(), (-20, 40));
+        assert_eq!(BodyShapeField::Hips.range(), (-20, 20));
+
+        let mut proportions = crate::body_shape::BodyProportions::default();
+        BodyShapeField::Seat.set(&mut proportions, 50);
+        assert_eq!(proportions.seat, 40);
+        BodyShapeField::Hips.set(&mut proportions, 50);
+        assert_eq!(proportions.hips, 20);
+    }
 }

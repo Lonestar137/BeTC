@@ -5,8 +5,8 @@
 //! [`GLUE_SLOT`].
 
 use benilla_assets::M2Model;
-use bevy::camera::visibility::RenderLayers;
 use bevy::camera::PerspectiveProjection;
+use bevy::camera::visibility::RenderLayers;
 use bevy::prelude::*;
 use bevy::render::render_resource::Extent3d;
 use bevy::window::PrimaryWindow;
@@ -16,13 +16,13 @@ use benilla_assets::m2_url;
 use benilla_assets::materials::WowModelMaterial;
 
 use super::framing::{
-    attachment_point, diag_to_vert, glue_box_aspect, glue_box_physical, glue_scene_framing,
-    ArtExtent, GLUE_AUTHORED_ASPECT, PORTRAIT_ASPECT,
+    ArtExtent, GLUE_AUTHORED_ASPECT, PORTRAIT_ASPECT, attachment_point, diag_to_vert,
+    glue_box_aspect, glue_box_physical, glue_scene_framing,
 };
 use super::{
-    aim, body_frame, new_target_image, spawn_booth_effects, spawn_booth_model, Booth,
-    BoothBillboardSpec, BoothCam, BoothEffects, BoothInstance, BoothLight, BoothMotion, BoothPart,
-    BoothRider, BoothTwins, Booths, PortraitImages, PortraitSource, VariantLane, GLUE_LAYER,
+    Booth, BoothBillboardSpec, BoothCam, BoothEffects, BoothInstance, BoothLight, BoothMotion,
+    BoothPart, BoothRider, BoothTwins, Booths, GLUE_LAYER, PortraitImages, PortraitSource,
+    VariantLane, aim, body_frame, new_target_image, spawn_booth_effects, spawn_booth_model,
 };
 
 /// The glue booth slot token (its key in [`super::PortraitImages`] / [`Booths`]).
@@ -44,6 +44,7 @@ pub(crate) struct CreateLook {
     pub(crate) hair_style: u8,
     pub(crate) hair_color: u8,
     pub(crate) facial_hair: u8,
+    pub(crate) body_proportions: crate::body_shape::BodyProportions,
 }
 
 /// The select screen's look: the roster entry's appearance and equipment, off `SMSG_CHAR_ENUM`.
@@ -56,6 +57,7 @@ pub(crate) struct SelectLook {
     pub(crate) hair_style: u8,
     pub(crate) hair_color: u8,
     pub(crate) facial_hair: u8,
+    pub(crate) body_proportions: crate::body_shape::BodyProportions,
     /// `CHARACTER_FLAG_*` bits; the builder honours hide-helm and hide-cloak.
     pub(crate) flags: u32,
     pub(crate) equipment: [benilla_protocol::CharEnumItem; 19],
@@ -85,12 +87,23 @@ impl From<&benilla_protocol::Character> for SelectLook {
             hair_style: c.hair_style,
             hair_color: c.hair_color,
             facial_hair: c.facial_hair,
+            body_proportions: crate::body_shape::BodyProportions::default(),
             flags: c.flags,
             equipment: c.equipment,
             pet_display_id: c.pet_display_id,
             pet_level: c.pet_level,
             pet_family: c.pet_family,
         }
+    }
+}
+
+impl SelectLook {
+    pub(crate) fn with_body_proportions(
+        mut self,
+        body_proportions: crate::body_shape::BodyProportions,
+    ) -> Self {
+        self.body_proportions = body_proportions;
+        self
     }
 }
 
@@ -349,6 +362,8 @@ pub(crate) struct PreviewPart {
     pub(crate) static_mesh: Handle<Mesh>,
     pub(crate) skinned_mesh: Option<Handle<Mesh>>,
     pub(crate) material: Handle<WowModelMaterial>,
+    /// Whether this batch belongs to the body/clothing instead of hair or an object-textured prop.
+    pub(crate) shape_body: bool,
     /// The batch's animated material alpha: `None` from the character assembly, set for a pet.
     pub(crate) alpha_anim: Option<std::sync::Arc<benilla_formats::AlphaAnim>>,
     /// Translucency twins ([`BoothTwins`]), drawn when the bake's instance alpha is below 1.
@@ -954,12 +969,22 @@ pub(super) fn sync_glue_scene(
             .unwrap_or(4.0 / 3.0);
         let fwd = (cam.target - cam.eye).normalize_or_zero();
         let up = Quat::from_axis_angle(fwd, cam.roll) * Vec3::Y;
+        let proportions = match preview.look {
+            Some(GlueLook::Create(look)) => look.body_proportions,
+            Some(GlueLook::Select(look)) => look.body_proportions,
+            None => crate::body_shape::BodyProportions::default(),
+        };
+        let height_scale = crate::body_shape::height_scale(proportions);
+        // The scene camera is authored for stock silhouettes; a small backoff keeps tall models
+        // fully framed without cancelling the visible scale change in the preview.
+        let camera_fit_scale = 1.0 + (height_scale - 1.0) * 0.3;
+        let eye = cam.target + (cam.eye - cam.target) * camera_fit_scale;
         // The record fov is diagonal; [`glue_scene_framing`] holds the authored 4:3 view box
         // where the reference converts at the display's aspect (the Deviation is stated there).
         // Far is kept generous (27.8 authored on Orc).
         let vert_fov = glue_scene_framing(cam.fov, aspect, scene.art);
         let rig = (
-            Transform::from_translation(cam.eye).looking_at(cam.target, up),
+            Transform::from_translation(eye).looking_at(cam.target, up),
             Projection::from(PerspectiveProjection {
                 fov: vert_fov,
                 near: cam.near,
@@ -1064,6 +1089,11 @@ pub(super) fn sync_glue_booth(
         .is_none_or(|s| s.token == preview.scene.map(scene_token));
     let rebake = staged && (last_rev != bake.revision || last_scene != scene_rev);
     let reyaw = last_yaw != preview.yaw;
+    let proportions = match bake.look {
+        Some(GlueLook::Create(look)) => look.body_proportions,
+        Some(GlueLook::Select(look)) => look.body_proportions,
+        None => crate::body_shape::BodyProportions::default(),
+    };
     if !rebake && !reyaw {
         return;
     }
@@ -1140,13 +1170,60 @@ pub(super) fn sync_glue_booth(
                     .map(|m| relight(m, scene, booth_light, materials)),
             }
         };
+        let gender = match bake.look {
+            Some(GlueLook::Create(look)) => look.sex,
+            Some(GlueLook::Select(look)) => look.sex,
+            None => 0,
+        };
+        let race = match bake.look {
+            Some(GlueLook::Create(look)) => look.race,
+            Some(GlueLook::Select(look)) => look.race,
+            None => 0,
+        };
+        let shape_bounds = creatures.body_shape_bounds(bake.display_id);
         let mut booth_parts = Vec::with_capacity(bake.parts.len());
         for p in &bake.parts {
+            let material = relight(&p.material, &mut scene, &mut booth_light, &mut materials);
+            let material = if p.shape_body {
+                crate::body_shape::shape_material(
+                    &mut materials,
+                    &material,
+                    proportions,
+                    race,
+                    gender,
+                    shape_bounds,
+                )
+            } else {
+                material
+            };
+            let mut twins = relight_twins(&p.twins, &mut scene, &mut booth_light, &mut materials);
+            if p.shape_body {
+                twins.blend = twins.blend.clone().map(|material| {
+                    crate::body_shape::shape_material(
+                        &mut materials,
+                        &material,
+                        proportions,
+                        race,
+                        gender,
+                        shape_bounds,
+                    )
+                });
+                twins.zfill = twins.zfill.clone().map(|material| {
+                    crate::body_shape::shape_material(
+                        &mut materials,
+                        &material,
+                        proportions,
+                        race,
+                        gender,
+                        shape_bounds,
+                    )
+                });
+            }
             booth_parts.push(BoothPart {
                 skinned: p.skinned_mesh.clone(),
                 static_mesh: p.static_mesh.clone(),
-                material: relight(&p.material, &mut scene, &mut booth_light, &mut materials),
-                twins: relight_twins(&p.twins, &mut scene, &mut booth_light, &mut materials),
+                material,
+                twins,
                 // `None`: the character assembly does not carry its alpha loops.
                 alpha_anim: None,
                 mat_anim: false,
@@ -1184,7 +1261,11 @@ pub(super) fn sync_glue_booth(
                 bake.parts.len(),
                 bake.riders.len(),
                 bake.revision,
-                if last_rev != bake.revision { "look" } else { "scene" },
+                if last_rev != bake.revision {
+                    "look"
+                } else {
+                    "scene"
+                },
             );
         }
         commands.entity(booth.root).despawn_related::<Children>();
@@ -1244,7 +1325,7 @@ pub(super) fn sync_glue_booth(
         booth.parked = false;
         // The fallback framing with no scene up: the model's `<PlayerModel>` pane camera, at the
         // bake's aspect, as it shows only for the frames before the scene's camera takes over.
-        let (t, _) = body_frame(&anchors, 1.0);
+        let (t, _) = body_frame(&anchors, crate::body_shape::height_scale(proportions));
         let record_fov = anchors
             .pane_camera
             .map_or(super::framing::PANE_FIXED_FOV, |c| c.fov);
@@ -1269,7 +1350,7 @@ pub(super) fn sync_glue_booth(
         booth.root,
         spot,
         stage,
-        stage_scale,
+        stage_scale * crate::body_shape::height_scale(proportions),
         preview.yaw,
     );
     // A yaw-only pass must not record revisions it did not commit, or a held pair never retries.
@@ -1496,6 +1577,7 @@ pub(super) fn drive_create_test(
         hair_style: next(0),
         hair_color: next(0),
         facial_hair: next(0),
+        body_proportions: crate::body_shape::BodyProportions::default(),
     };
     info!(
         "create-test: race {} sex {} class {} — skin {} face {} hair {} hairColor {} facial {}",
@@ -1588,6 +1670,7 @@ mod tests {
             hair_style: 0,
             hair_color: 0,
             facial_hair: 0,
+            body_proportions: crate::body_shape::BodyProportions::default(),
         });
         assert_eq!(create.pet(), None);
     }
