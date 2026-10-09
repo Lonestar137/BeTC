@@ -16,11 +16,15 @@ build 8606 before expanding their content. Saved character positions always take
 
 ## Sunstrider First Encounter
 
-- Sunstrider Isle uses its converted source population at source spawn positions. The legacy Warden
-  Elari and Dawnpath Stalker combat harness is retained only outside map 530 until combat is
-  generalized to imported creature identities.
+- Sunstrider Isle uses its converted source population at source spawn positions. Basic combat state
+  is created only for imported creatures whose build-8606 `FactionTemplate.dbc` row reacts hostile
+  toward the Blood Elf player template 1610. In the checked-in map-530 pack those rows are faction
+  templates 12, 14, 16, 38, 91 and 114. Neutral and friendly imported units are not combat targets,
+  even though they share the same client unit presentation. The legacy practice combat harness is
+  used only outside map 530.
 - Imported visuals use display IDs resolved against the installed build-8606 creature catalog.
-- Each hostile has 60 health and respawns 30,000 simulation milliseconds after death.
+- Each imported hostile has 60 health and respawns 30,000 simulation milliseconds after death;
+  combat state and updates retain its converted `source_guid` identity.
 - Every character knows the common Attack action (client spell ID 6603), placed in action-bar slot
   1. Mage characters also know Fireball (client spell ID 133), placed in slot 2. Other classes do
   not receive a fabricated class spell.
@@ -29,7 +33,7 @@ build 8606 before expanding their content. Saved character positions always take
   toggled off, the target dies, or the target leaves range.
 - Fireball is limited to a living hostile within 35 yards, uses the client's 1,500 ms cast time and
   30-mana cost, and deals a fixed 30 damage. The new Mage has 100 mana and no regen yet; two
-  successful casts defeat one Dawnpath Stalker. Mana is charged when the cast starts and is not
+  successful casts defeat one 60-health hostile. Mana is charged when the cast starts and is not
   refunded on interruption.
 - Cooldown lockout is 1,500 simulation milliseconds, beginning when the cast starts. Combat uses
   injected elapsed time; no wall clock or random roll affects the outcome.
@@ -41,9 +45,10 @@ build 8606 before expanding their content. Saved character positions always take
   point. These local spline legs currently use a project-owned walk speed of 2.5 yards per second.
 - Imported creature addon stand state, NPC emote state and sheath state are applied when the unit
   enters the world.
-- Movement type 0 stays at its spawn position. Random-radius movement type 1, waypoint ScriptId
-  actions, addon auras/mounts, and combat AI are not implemented yet; they are not substituted with
-  invented behaviors.
+- Waypoint movement type 2 follows its source path. Other source movement types, including type 4
+  present in this pack, currently stay at their spawn position. Random-radius movement type 1,
+  non-waypoint movement types, waypoint ScriptId actions, addon auras/mounts, and combat AI are not
+  implemented yet; they are not substituted with invented behaviors.
 
 The cast damage, hostile health, encounter placement, and respawn time are project decisions. The
 quest contact establishes the next incremental slice; quest state, loot, XP, and rewards are not
