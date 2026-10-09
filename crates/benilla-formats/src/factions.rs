@@ -695,6 +695,26 @@ mod tests {
     }
 
     #[test]
+    fn build_8606_mana_wyrm_template_is_neutral_to_a_blood_elf() {
+        let data = crate::wow_data_or_skip!();
+        let mut chain = crate::open_chain(&data).expect("open chain");
+        let cat = load_faction_catalog(&mut chain).expect("load factions");
+        let blood_elf = cat.template(1610).expect("Blood Elf player template");
+        let mana_wyrm = cat.template(7).expect("Mana Wyrm faction template");
+
+        assert_eq!(
+            blood_elf.reaction_toward(mana_wyrm),
+            Reaction::Neutral,
+            "the TBC faction table marks the Mana Wyrm neutral before combat"
+        );
+        assert_eq!(
+            mana_wyrm.reaction_toward(blood_elf),
+            Reaction::Neutral,
+            "the TBC faction table marks the Mana Wyrm neutral in both directions"
+        );
+    }
+
+    #[test]
     fn real_faction_group_names_by_mask() {
         let data = crate::wow_data_or_skip!();
         let mut chain = crate::open_chain(&data).expect("open chain");

@@ -989,6 +989,26 @@ mod tests {
             "a neutral critter still takes the sword — the comparator, not at-war"
         );
         assert!(!interactable(&chicken, &quiet));
+
+        // The shipped Sunstrider Mana Wyrm uses faction template 7: neutral in both directions,
+        // but attackable through CanAttack's player-controlled-vs-NPC branch.
+        let blood_elf = ObjectStore(ObjectFields::from_pairs(&[
+            (35, 1610),
+            (46, UNIT_FLAG_PVP_ATTACKABLE),
+        ]));
+        let wyrm = npc(7, 0);
+        assert_eq!(
+            ring_reaction(Some(&factions), &quiet, Some(&wyrm), Some(&blood_elf)),
+            3,
+            "the build-8606 faction comparator leaves Mana Wyrm neutral"
+        );
+        assert!(can_attack_from_player(
+            Some(&factions),
+            &quiet,
+            Some(&wyrm),
+            Some(&blood_elf),
+            false,
+        ));
     }
 
     /// A player is friendly only if `CanCooperate`, faction-group-mask equality (`0x606ba0`), also

@@ -388,6 +388,7 @@ fn emit_world_entry(
         (22, 100),                                // UNIT_FIELD_HEALTH
         (28, 100),                                // UNIT_FIELD_MAXHEALTH
         (34, u32::from(snapshot.level)),          // UNIT_FIELD_LEVEL
+        (46, 0x8),                                // UNIT_FLAG_PLAYER_CONTROLLED
         (36, race_class_gender),                  // UNIT_FIELD_BYTES_0
         (193, player_bytes),                      // PLAYER_BYTES
         (194, u32::from(appearance.facial_hair)), // PLAYER_BYTES_2
@@ -1239,6 +1240,11 @@ mod tests {
         assert_eq!(
             player.unwrap().object_type(),
             Some(benilla_protocol::messages::ObjectType::Player)
+        );
+        assert_eq!(
+            player.unwrap().unit_flags(),
+            0x8,
+            "the offline player carries UNIT_FLAG_PLAYER_CONTROLLED for TBC attack rules"
         );
         assert_eq!(
             entry_events
