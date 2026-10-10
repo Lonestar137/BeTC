@@ -76,6 +76,14 @@ pub(super) fn query_statuses(
     mut state: Local<QueryState>,
 ) {
     let Some(store) = self_q.iter().next() else {
+        // No player object: logged out or between characters. Whatever was asked and answered
+        // belonged to the character that left, and a unit that respawns under the same guid for
+        // the next one would otherwise keep the old status (a `?` for a quest only the previous
+        // character accepted) and never be re-asked, its ask key unchanged.
+        if !state.asked.is_empty() || !quest.statuses().is_empty() {
+            *state = QueryState::default();
+            quest.retain_statuses(|_| false);
+        }
         return;
     };
     // The descriptor walk runs only when our store changed; the epoch is a plain counter.
@@ -255,6 +263,27 @@ pub(super) struct QueryState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn leaving_the_world_drops_the_statuses_the_previous_character_was_told() {
+        const NPC: u64 = 0xdead_beef;
+        let (tx, _rx) = crossbeam_channel::unbounded();
+        let mut app = App::new();
+        app.insert_resource(NetCommands(tx))
+            .init_resource::<GuidIndex>()
+            .init_resource::<QuestGiver>()
+            .init_resource::<crate::net::Reputations>()
+            .add_systems(Update, query_statuses);
+        // A status from the last character's session, with no player object in the world.
+        app.world_mut()
+            .resource_mut::<QuestGiver>()
+            .set_status(NPC, 3);
+        app.update();
+        assert!(
+            app.world().resource::<QuestGiver>().status(NPC).is_none(),
+            "a stale `?` must not carry over to the next character"
+        );
+    }
 
     #[test]
     fn the_status_is_re_asked_on_a_ding_on_re_entry_and_dropped_with_the_flag() {

@@ -18,12 +18,21 @@ const LANGUAGES: &str = "DBFilesClient\\Languages.dbc";
 const CHR_RACES: &str = "DBFilesClient\\ChrRaces.dbc";
 const LANGUAGE_WORDS: &str = "DBFilesClient\\LanguageWords.dbc";
 
-/// Locale columns in a 5875 `Name_lang` block.
-const LOCALES: usize = 8;
+/// Locale columns an array always holds: build 5875 fills 8, build 8606 16 ([`locale_count`]).
+const MAX_LOCALES: usize = 16;
+
+/// Locale columns in a `Name_lang` block for the client build: 8 in 5875, 16 in 8606.
+fn locale_count(tbc: bool) -> usize {
+    if tbc {
+        16
+    } else {
+        8
+    }
+}
 
 /// Race id to its base language's name, per locale column.
 #[derive(Debug, Default, Clone)]
-pub struct DefaultLanguages(HashMap<u32, [Option<String>; LOCALES]>);
+pub struct DefaultLanguages(HashMap<u32, [Option<String>; MAX_LOCALES]>);
 
 impl DefaultLanguages {
     /// The race's default language name in `locale`'s column. `None` is the reference's answer at
@@ -40,21 +49,21 @@ impl DefaultLanguages {
     }
 }
 
-fn languages_schema() -> Schema {
+fn languages_schema(tbc: bool) -> Schema {
     let mut s = Schema::new("Languages");
     s.add_field(SchemaField::new("ID", FieldType::UInt32));
-    for i in 0..LOCALES {
+    for i in 0..locale_count(tbc) {
         s.add_field(SchemaField::new(format!("Name{i}"), FieldType::String));
     }
     s.add_field(SchemaField::new("NameFlags", FieldType::UInt32));
     s
 }
 
-/// `ChrRaces.dbc`, 29 fields in 5875, all read as dwords: only the count must match the header,
-/// and only field 8 is used.
-fn chr_races_schema() -> Schema {
+/// `ChrRaces.dbc`, 29 fields in 5875, 69 in 8606, all read as dwords: only the count must match the
+/// header, and only field 8 is used.
+fn chr_races_schema(tbc: bool) -> Schema {
     let mut s = Schema::new("ChrRaces");
-    for i in 0..29 {
+    for i in 0..if tbc { 69 } else { 29 } {
         s.add_field(SchemaField::new(format!("f{i}"), FieldType::UInt32));
     }
     s
@@ -66,7 +75,7 @@ const CHR_RACES_BASE_LANGUAGE: usize = 8;
 /// `Languages.dbc` in row order, the order `GetNumLanguages` and `GetLanguageByIndex` count in
 /// (`0x49fb30`, `0x49fbe0`).
 #[derive(Debug, Default, Clone)]
-pub struct Languages(Vec<(u32, [Option<String>; LOCALES])>);
+pub struct Languages(Vec<(u32, [Option<String>; MAX_LOCALES])>);
 
 impl Languages {
     /// `(id, name)` per row for `locale`. A row with no name there is skipped, where the binding
@@ -89,7 +98,7 @@ impl Languages {
         Self(
             rows.iter()
                 .map(|(id, name)| {
-                    let mut names: [Option<String>; LOCALES] = Default::default();
+                    let mut names: [Option<String>; MAX_LOCALES] = Default::default();
                     names[0] = Some((*name).to_string());
                     (*id, names)
                 })
@@ -99,15 +108,16 @@ impl Languages {
 }
 
 pub fn load_languages(chain: &mut Chain) -> Result<Languages> {
+    let tbc = chain.client_build() == Some(8606);
     let bytes = chain
         .read_file(LANGUAGES)
         .with_context(|| format!("reading {LANGUAGES}"))?;
-    let langs = parse(&bytes, languages_schema(), "Languages.dbc")?;
+    let langs = parse(&bytes, languages_schema(tbc), "Languages.dbc")?;
     let mut rows = Vec::with_capacity(langs.records().len());
     for r in langs.records() {
         let Some(id) = u32_at(r, 0) else { continue };
-        let mut names: [Option<String>; LOCALES] = Default::default();
-        for (locale, slot) in names.iter_mut().enumerate() {
+        let mut names: [Option<String>; MAX_LOCALES] = Default::default();
+        for (locale, slot) in names.iter_mut().enumerate().take(locale_count(tbc)) {
             *slot = str_at(&langs, r, 1 + locale);
         }
         rows.push((id, names));
@@ -117,15 +127,16 @@ pub fn load_languages(chain: &mut Chain) -> Result<Languages> {
 
 /// Load and join both tables into the race-to-language-name map.
 pub fn load_default_languages(chain: &mut Chain) -> Result<DefaultLanguages> {
+    let tbc = chain.client_build() == Some(8606);
     let lang_bytes = chain
         .read_file(LANGUAGES)
         .with_context(|| format!("reading {LANGUAGES}"))?;
-    let langs = parse(&lang_bytes, languages_schema(), "Languages.dbc")?;
-    let mut by_id: HashMap<u32, [Option<String>; LOCALES]> = HashMap::new();
+    let langs = parse(&lang_bytes, languages_schema(tbc), "Languages.dbc")?;
+    let mut by_id: HashMap<u32, [Option<String>; MAX_LOCALES]> = HashMap::new();
     for r in langs.records() {
         let Some(id) = u32_at(r, 0) else { continue };
-        let mut names: [Option<String>; LOCALES] = Default::default();
-        for (locale, slot) in names.iter_mut().enumerate() {
+        let mut names: [Option<String>; MAX_LOCALES] = Default::default();
+        for (locale, slot) in names.iter_mut().enumerate().take(locale_count(tbc)) {
             *slot = str_at(&langs, r, 1 + locale);
         }
         by_id.insert(id, names);
@@ -134,7 +145,7 @@ pub fn load_default_languages(chain: &mut Chain) -> Result<DefaultLanguages> {
     let race_bytes = chain
         .read_file(CHR_RACES)
         .with_context(|| format!("reading {CHR_RACES}"))?;
-    let races = parse(&race_bytes, chr_races_schema(), "ChrRaces.dbc")?;
+    let races = parse(&race_bytes, chr_races_schema(tbc), "ChrRaces.dbc")?;
     let mut out = HashMap::new();
     for r in races.records() {
         let (Some(race), Some(lang)) = (u32_at(r, 0), u32_at(r, CHR_RACES_BASE_LANGUAGE)) else {
@@ -264,15 +275,18 @@ mod tests {
         let mut chain = Chain::open(&data).expect("open patch chain");
         let langs = load_default_languages(&mut chain).expect("load");
 
-        // All nine `ChrRaces` rows resolve: the eight playable races and the Goblin.
-        assert_eq!(langs.len(), 9, "one entry per ChrRaces row");
+        // All sixteen `ChrRaces` rows resolve: the playable races plus the NPC/goblin races.
+        assert_eq!(langs.len(), 16, "one entry per ChrRaces row");
         // Alliance speaks Common, Horde Orcish; the racial language would give Darnassian.
-        for race in [1, 3, 4, 7] {
+        for race in [1, 3, 4, 7, 9, 11, 12, 13, 14, 15, 18] {
             assert_eq!(langs.name(race, 0), Some("Common"), "race {race}");
         }
-        for race in [2, 5, 6, 8] {
+        for race in [2, 5, 6, 8, 10] {
             assert_eq!(langs.name(race, 0), Some("Orcish"), "race {race}");
         }
+        // The 8606 additions: Blood Elf (10) is Horde, Draenei (11) Alliance.
+        assert_eq!(langs.name(10, 0), Some("Orcish"));
+        assert_eq!(langs.name(11, 0), Some("Common"));
         // No such race: the reference's no-record edge.
         assert_eq!(langs.name(99, 0), None);
         // An enUS install fills only column 0; another is empty, not a panic.
@@ -285,11 +299,11 @@ mod tests {
         let mut chain = Chain::open(&data).expect("open patch chain");
         let words = load_language_words(&mut chain).expect("load");
 
-        // One pool per `Languages.dbc` row, so no spoken language lacks one.
-        assert_eq!(words.len(), 13, "one pool per language");
+        // One pool per `Languages.dbc` row, so no language lacks one.
+        assert_eq!(words.len(), 17, "one pool per language");
         let langs = load_default_languages(&mut chain).expect("load languages");
         let _ = &langs; // the join test asserts this table
-        for id in [1, 2, 3, 6, 7, 8, 9, 10, 11, 12, 13, 14, 33] {
+        for id in [1, 2, 3, 6, 7, 8, 9, 10, 11, 12, 13, 14, 33, 35, 36, 37, 38] {
             assert!(words.pool(id).is_some(), "language {id} has no word pool");
         }
         // Universal (0) has no pool: it is never garbled.
@@ -308,15 +322,21 @@ mod tests {
         assert_eq!(orcish.count_of_len(0), 0);
         assert_eq!(orcish.count_of_len(99), 0);
 
-        // Every pool holds at least 79 words, all of them in its length index.
+        // Every spoken language holds at least 79 words, all in its length index; the three
+        // "binary" languages ship deliberately thin pools.
         let mut total = 0;
-        for id in [1, 2, 3, 6, 7, 8, 9, 10, 11, 12, 13, 14, 33] {
+        for id in [1, 2, 3, 6, 7, 8, 9, 10, 11, 12, 13, 14, 33, 35] {
             let p = words.pool(id).expect("pool");
             assert!(p.words().len() >= 79, "language {id} pool is thin");
             let indexed: usize = (0..=p.max_len()).map(|n| p.count_of_len(n)).sum();
             assert_eq!(indexed, p.words().len(), "language {id} length index");
             total += p.words().len();
         }
-        assert_eq!(total, 1481, "every LanguageWords row landed in a pool");
+        for (id, count) in [(36, 9), (37, 25), (38, 22)] {
+            let p = words.pool(id).expect("binary pool");
+            assert_eq!(p.words().len(), count, "binary language {id} pool");
+            total += p.words().len();
+        }
+        assert_eq!(total, 1663, "every LanguageWords row landed in a pool");
     }
 }

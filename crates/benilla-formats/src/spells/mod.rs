@@ -148,6 +148,22 @@ const COL_SPELL_LEVEL: usize = 29;
 const COL_EFFECT_APPLY_AURA_1: usize = 91;
 /// `SPELL_AURA_MOD_SHAPESHIFT`: its `EffectMiscValue` is the `SpellShapeshiftForm.dbc` id.
 const SPELL_AURA_MOD_SHAPESHIFT: u32 = 36;
+/// `SPELL_AURA_PERIODIC_DAMAGE`: a damage-over-time aura (Immolate, Corruption).
+pub const SPELL_AURA_PERIODIC_DAMAGE: u32 = 3;
+/// `SPELL_AURA_PERIODIC_HEAL`: a heal-over-time aura (Renew, Rejuvenation).
+pub const SPELL_AURA_PERIODIC_HEAL: u32 = 8;
+/// `SPELL_AURA_MOD_STAT`: a stat buff/debuff (Power Word: Fortitude, Sunder Armor).
+pub const SPELL_AURA_MOD_STAT: u32 = 21;
+/// `SPELL_AURA_MOD_RESISTANCE`: a resistance buff/debuff (Frost Armor, Mark of the Wild).
+pub const SPELL_AURA_MOD_RESISTANCE: u32 = 22;
+/// `SPELL_AURA_MOD_DECREASE_SPEED`: a movement slow (Frostbolt, Hamstring).
+pub const SPELL_AURA_MOD_DECREASE_SPEED: u32 = 33;
+/// `SPELL_AURA_MOD_INCREASE_SPEED`: a movement speed buff (Aspect of the Cheetah).
+pub const SPELL_AURA_MOD_INCREASE_SPEED: u32 = 29;
+/// `SPELL_AURA_MOD_DAMAGE_DONE`: a damage buff/debuff (Demon Skin, Battle Shout).
+pub const SPELL_AURA_MOD_DAMAGE_DONE: u32 = 13;
+/// `SPELL_AURA_SCHOOL_ABSORB`: a damage absorption shield (Power Word: Shield).
+pub const SPELL_AURA_SCHOOL_ABSORB: u32 = 69;
 const COL_ICON_ID: usize = 117;
 /// `ActiveIconID` (`+0x1d8`, read at `0x4b4754`): druid forms carry 122, the dismiss paw.
 const COL_ACTIVE_ICON_ID: usize = 118;
@@ -229,6 +245,14 @@ const SPELL_EFFECT_ATTACK: u32 = 78;
 pub const SPELL_EFFECT_SCHOOL_DAMAGE: u32 = 2;
 /// `SPELL_EFFECT_HEAL`, a direct health restore.
 pub const SPELL_EFFECT_HEAL: u32 = 10;
+/// `SPELL_EFFECT_WEAPON_DAMAGE`: melee weapon-damage abilities (Heroic Strike, Sinister Strike).
+pub const SPELL_EFFECT_WEAPON_DAMAGE: u32 = 62;
+/// `SPELL_EFFECT_WEAPON_PERCENT_DAMAGE`: percentage weapon-damage abilities (Mortal Strike).
+pub const SPELL_EFFECT_WEAPON_PERCENT_DAMAGE: u32 = 64;
+/// `SPELL_EFFECT_NORMALIZED_WEAPON_DMG`: normalized weapon-damage abilities (Backstab).
+pub const SPELL_EFFECT_NORMALIZED_WEAPON_DMG: u32 = 121;
+/// `SPELL_EFFECT_ENERGIZE`: restores a power resource (mana, rage, energy).
+pub const SPELL_EFFECT_ENERGIZE: u32 = 30;
 
 /// The tracking aura types, which no aura display shows (`IsAuraDisplayable` `0x519860`).
 const TRACKING_AURA_TYPES: [u32; 3] = [44, 45, 151];

@@ -690,12 +690,13 @@ pub(crate) struct Model {
     pub(crate) pending_equip_answers: Vec<bind_confirm::PendingEquipAnswer>,
     pub(crate) bind_on_use_confirms: u32,
 
-    /// The open loot, the row clicks and whether `CloseLoot` ran. A click is the reference's take
-    /// `0x4c2790` with flag 0, raising `LOOT_BIND` for a bind-on-pickup row (a `LootButton`'s own
-    /// click, `0x4c1820`); `LootSlot` passes 1 (`0x4c2e70`), taking it after the confirm.
+    /// The open loot, the row clicks and whether `CloseLoot` ran. A pick is the take `0x4c2790`
+    /// with flag 0, raised by a `CLootButton`'s own click (`0x4c1820`) and by TBC's `LootSlot`
+    /// (`LootFrame.lua:191`), and the app raises `LOOT_BIND` for a bind-on-pickup row.
     pub(crate) loot: Option<loot::LootState>,
     pub(crate) loot_picks: Vec<u32>,
-    /// `LootSlot(slot)` rows, 1-based, apart from clicks for the reference's pending-slot gate.
+    /// `ConfirmLootSlot(slot)` rows, 1-based, the flag-1 completion `0x4c2e70` took in 1.12;
+    /// gated on the reference's pending-slot `[0x847cec]`.
     pub(crate) loot_confirms: Vec<u32>,
     pub(crate) loot_close: bool,
     /// `GiveMasterLoot(slot, candidateIndex)`, both 1-based display positions the app translates.

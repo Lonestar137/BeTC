@@ -97,7 +97,7 @@ pub struct QuestItemTemplate {
     pub stackable: u32,
     pub armor: u32,
     pub bonding: u32,
-    pub material: u32,
+    pub material: i32,
     pub max_durability: u32,
 }
 
@@ -165,6 +165,8 @@ pub struct QuestReward {
     pub levels_gained: u8,
     /// Remaining XP within the resulting level.
     pub experience_in_level: u32,
+    pub health_gained: u32,
+    pub mana_gained: u32,
     pub experience: u32,
     pub money_copper: u32,
     pub choice_index: u32,
@@ -265,6 +267,7 @@ pub fn item_template(entry: u32) -> Option<&'static QuestItemTemplate> {
         .item_template
         .iter()
         .chain(starting_gear_pack().item_template.iter())
+        .chain(crate::loot::loot_data().item_template.iter())
         .find(|item| item.entry == entry)
 }
 

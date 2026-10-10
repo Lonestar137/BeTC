@@ -210,11 +210,17 @@ pub use spells::{
     ATTR_CASTABLE_WHILE_DEAD, ATTR_NOT_IN_COMBAT, ATTR_ONLY_STEALTHED, COMBAT_REACH_ADD,
     CcExemption, FormRefusal, LearnAnnouncement, LearnEffect, MELEE_RANGE_FLOOR,
     MOVING_BONUS_FLAGS, MOVING_RANGE_BONUS, ON_NEXT_SWING_RANGE, OpenLock, RangeTargets, RangeUnit,
-    SPELL_ATTR_IS_TRADESKILL, SPELL_EFFECT_CREATE_ITEM, SPELL_EFFECT_ENCHANT_ITEM,
-    SPELL_EFFECT_ENCHANT_ITEM_TEMPORARY, SPELL_EFFECT_HEAL, SPELL_EFFECT_LEARN_PET_SPELL,
+    SPELL_ATTR_IS_TRADESKILL, SPELL_AURA_MOD_DAMAGE_DONE, SPELL_AURA_MOD_DECREASE_SPEED,
+    SPELL_AURA_MOD_INCREASE_SPEED, SPELL_AURA_MOD_RESISTANCE, SPELL_AURA_MOD_STAT,
+    SPELL_AURA_PERIODIC_DAMAGE, SPELL_AURA_PERIODIC_HEAL, SPELL_AURA_SCHOOL_ABSORB,
+    SPELL_EFFECT_CREATE_ITEM, SPELL_EFFECT_ENCHANT_ITEM,
+    SPELL_EFFECT_ENCHANT_ITEM_TEMPORARY, SPELL_EFFECT_ENERGIZE, SPELL_EFFECT_HEAL,
+    SPELL_EFFECT_LEARN_PET_SPELL,
     SPELL_EFFECT_LEARN_SPELL,
+    SPELL_EFFECT_NORMALIZED_WEAPON_DMG,
     SPELL_EFFECT_PROSPECTING, SPELL_EFFECT_SKILL_STEP, SPELL_EFFECT_SKINNING,
-    SPELL_EFFECT_SCHOOL_DAMAGE, SPELL_EFFECT_TRADE_SKILL, ShapeshiftForm, SpellCastTime,
+    SPELL_EFFECT_SCHOOL_DAMAGE, SPELL_EFFECT_TRADE_SKILL, SPELL_EFFECT_WEAPON_DAMAGE,
+    SPELL_EFFECT_WEAPON_PERCENT_DAMAGE, ShapeshiftForm, SpellCastTime,
     SpellCastTimeCatalog, SpellCatalog,
     SpellDispelTypes, SpellDisplay, SpellDuration, SpellDurationCatalog, SpellMods, SpellRadius,
     SpellRadiusCatalog, SpellRange, SpellRangeCatalog, TokenContext, TokenNumber, UnitMotion,
@@ -797,9 +803,18 @@ pub fn dbc_to_csv(dbc_bytes: &[u8], dbc_name: &str, out: &Path) -> Result<(u32, 
         )
     })?;
 
-    let parser = parser
-        .with_schema(schema)
-        .map_err(|e| anyhow::anyhow!("applying schema (field count mismatch?): {e}"))?;
+    let parser = match parser.with_schema(schema) {
+        Ok(parser) => parser,
+        // The dump registry is build 5875 (1.12) only. Name the mismatch instead of emitting a
+        // wrong dump when the file's field count announces a different client build.
+        Err(benilla_dbc::Error::SchemaFieldMismatch { schema, file }) => {
+            return Err(anyhow::anyhow!(
+                "'{dbc_name}' has {file} fields; the dump schema is build 5875 ({schema} fields). \
+                 This table is not converted to build 8606, so `dbc` refuses to dump it."
+            ));
+        }
+        Err(e) => return Err(anyhow::anyhow!("applying schema: {e}")),
+    };
     let record_set = parser
         .parse_records()
         .map_err(|e| anyhow::anyhow!("parsing DBC records: {e}"))?;
@@ -930,6 +945,31 @@ mod tests {
         let mut chain = open_chain(&data).expect("open chain");
         let out =
             std::env::temp_dir().join(format!("benilla-schema-reg-{}.csv", std::process::id()));
+
+        // The dump registry is build 5875 only. On an 8606 install a table whose dump schema has
+        // not been widened must fail with the named version mismatch, never dump wrong columns.
+        if chain.client_build() == Some(8606) {
+            for table in [
+                "CreatureDisplayInfo",
+                "ItemDisplayInfo",
+                "AreaTable",
+                "GameObjectDisplayInfo",
+            ] {
+                let path = format!("DBFilesClient\\{table}.dbc");
+                let bytes = chain
+                    .read_file(&path)
+                    .unwrap_or_else(|e| panic!("{path}: {e}"));
+                let err = dbc_to_csv(&bytes, &path, &out)
+                    .err()
+                    .unwrap_or_else(|| panic!("{table} must refuse to dump on build 8606"));
+                assert!(
+                    err.to_string().contains("not converted to build 8606"),
+                    "{table} refusal is not the named version mismatch: {err}"
+                );
+            }
+            return;
+        }
+
         for table in [
             "CreatureDisplayInfo",
             "CreatureDisplayInfoExtra",

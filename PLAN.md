@@ -97,11 +97,16 @@ capture fixtures. Facts that shape this plan:
 - **M2** accepts versions 256–263 and reads embedded views (correct for TBC:
   `.skin` files arrive in Wrath). Particle emitters and ribbons are read at
   fixed v256 offsets and strides with no version check.
-- **The UI VM is Lua 5.1.5 patched back to 5.0**: `...` as an expression, `#`
-  and `%` are removed, varargs use `arg`, handlers receive `this`/`event`/
-  `arg1..N` as globals, and the addon gate is pinned to interface `11200`.
-  TBC 2.4.3 FrameXML is stock Lua 5.1, passes `self, event, ...`, and depends
-  on secure templates and protected functions.
+- **The UI VM mixes 5.1 grammar with a 5.0 surface.** The vendored Lua 5.1.5
+  grammar already accepts `...`, `#` and `%` (`third_party/lua-src`,
+  `lparser.c:764,796,808`), and handlers already receive positional
+  `(self, event, ...)` (`script/event.rs:260`). Still 5.0: the compat hunks
+  (table-`for` rewrite in `lvm.c:681-730`, `LUA_COMPAT_LSTR`, constructor `;`,
+  `recfield`, `LUA_QL`, `LUA_COMPAT_VARARG`) and the Rust library layer
+  `script/lua50.rs` + `script/lua50/table_size.rs`. The `this`/`event`/
+  `arg1..N` globals are still set alongside the positional path. The addon gate
+  is pinned to interface `11200` (`script/addon_gate.rs:14`). TBC 2.4.3 FrameXML
+  is stock Lua 5.1 and depends on secure templates and protected functions.
 - **Per-character local state is keyed `<realm>-<character name>`** in
   `local_state.rs` (macros, bindings, saved variables, camera, chat, layout
   cache), with a per-realm name cache.
@@ -124,6 +129,101 @@ Data/enGB/patch-enGB-2.MPQ
 ```
 
 This is a repack: it may contain non-stock archives or modified stock ones.
+
+## Migration Audit: Vanilla Systems To Update And TBC Systems To Create
+
+This audit is the concrete, code-derived inventory behind the phases below; task-level tracking
+stays in `TASKBOARD.md` and the phase order stays the sequencing authority. It separates what
+already branches on build 8606 from what must be updated, and what TBC adds that 1.12.1 never had.
+Line references are current sites and will move.
+
+### Already TBC-aware
+
+Do not rebuild these; extend them.
+
+- **Archive chain.** `benilla-formats/src/chain.rs` has `tbc_mount_order` (:68), `Chain::open_tbc`
+  (:182) and `is_tbc_data_dir` (`install.rs:81`); the locale is discovered, not assumed.
+- **DBC adapters with 8606 branches.** `Map` (125 fields), `Spell` (216), `Faction`/`FactionGroup`/
+  `ChrRaces` (16 locales), `CreatureModelData`/`CreatureDisplayInfo`/`CreatureDisplayInfoExtra`,
+  `ItemDisplayInfo`, `SkillLine`, `Talent`/`TalentTab`, `SpellShapeshiftForm`/`SpellDispelType`/
+  `SpellRange`.
+- **M2.** `benilla-m2` accepts v256–263 with versioned bone (v260 stride 112) and skin batch
+  (≥260 stride 48) layouts.
+- **Game authority.** `benilla-game-core` (no `benilla-protocol` dependency) owns roster, saves
+  (schema 7), combat, the one-quest loop and converted TBC content packs;
+  `crates/benilla-app/src/offline.rs` is the working Stage A adapter.
+- **Offline compile-out.** `benilla-offline` builds `benilla-app` with
+  `default-features = false, features = ["offline"]`; `scripts/offline-deps.sh` asserts no SRP or
+  network feature resolves.
+- **Some 2.4.3 UI globals** already exist (`IsPassiveSpell`, `GetCursorInfo`,
+  `SetBagPortraitTexture`, `GetContainerNumFreeSlots`).
+
+### Vanilla systems that must be updated
+
+| System | 1.12.1 assumption | Current site | TBC 2.4.3 change |
+| --- | --- | --- | --- |
+| DBC localized tables | ~13 tables hardcode 8 locales with no `tbc` branch; `benilla-dbc` rejects any field-count mismatch | `benilla-formats/src/{auction_house,itembagfamily,itemclass,item_random_properties,item_visuals,exhaustion,gm_ticket_category,cfg_categories,creature_types,emote_text,languages,game_tips,server_messages,chat_channels}.rs`; `lib.rs:628` | Widen to 16 locales + flags; make `schema_for` (`lib.rs:676`) build-aware or mark it 1.12-only |
+| ADT liquid | `MCLQ` only | `benilla-adt/src/lib.rs:115-546`; `benilla-formats/src/liquid.rs`; `terrain.rs:15-70` | Read `MH2O` (see creations) |
+| WDT | `WowVersion` is `Classic` only; unknown chunks dropped | `benilla-wdt/src/lib.rs:10-19,193-195` | Add a TBC variant; read `MFBO` |
+| M2 emitters and ribbons | Fixed v256 stride and offsets, unversioned | `benilla-formats/src/{particles,ribbons}.rs` | Read v260–263 records; fail loudly on an unknown version |
+| MPQ reader | zlib-only codec; v0/v1 header; encrypted rejected; locale defaults to 0 | `benilla-mpq/src/lib.rs:144-171,266-268,692-708` | Implement only what the install corpus uses: bzip2/PKWARE/multi-codec, single-unit, encrypted, the locale word; report per-feature counts |
+| Descriptor layout | 1.12 `ObjectFields` table: `FIELD_UNIT_HEALTH=22`, `UNIT_END=188`, `PLAYER_END=1282`, plus hardcoded indices | `benilla-protocol/src/messages/update_object/fields/mod.rs:346-371`; `benilla-app/src/offline.rs:495-511,966-972`; `net.rs` | Retarget to the 2.4.3 field table, or execute Phase 6 typed components |
+| Wire event surface | `SessionEvent` (~275 variants) and `ClientCommand` (~252) are pure Vanilla concepts | `benilla-protocol/src/events.rs:112`; `benilla-app/src/net.rs` | Narrow to the UI-consumed subset in Stage A; delete translations in Stage B |
+| Lua VM surface | 5.0-restoring compat hunks and the `lua50` library | `third_party/lua-src/BENILLA.md`; `benilla-ui/src/script/lua50.rs`, `script/lua50/table_size.rs` | Go to the stock 5.1 library (see creations) |
+| Handler globals | `this`/`event`/`arg1..N` set beside the positional args | `benilla-ui/src/script/event.rs:218-276` | Keep positional `(self, event, ...)`; drop globals except measured 2.4.3 reads |
+| Interface gate | `CLIENT_INTERFACE = 11200` | `benilla-ui/src/script/addon_gate.rs:14` | `20400` |
+| Catalogues and surface gates | All `reference/1.12-*.tsv` plus six gates | `reference/`; `benilla-ui/src/script/tests/{reference_surface,widget_surface}.rs`; `benilla-app/src/ui_script/{surface,shape,event_shape,verb_event}_gate.rs`; `scripts/api-coverage.sh` | Generate 2.4.3 catalogues; repoint every gate |
+| Glue presentation | Hand-built Bevy UI that parses `GlueStrings` in Rust | `benilla-app/src/glue/`, `glue_strings.rs` | Replace with stock GlueXML execution |
+| Combat rules | Fireball-hardcoded fallback; auras stored but never apply; no world query | `benilla-game-core/src/lib.rs:26-38,1654-1807`; `offline.rs:1677-1696` | Generalize effects; implement `WorldQuery` (see creations) |
+| Resources | Mana only; flat pool and regen | `benilla-game-core/src/lib.rs:48-55,2749-2753` | Model rage/energy/focus |
+
+### TBC systems that must be created
+
+These have no 1.12.1 counterpart.
+
+**Formats and data**
+
+- `MH2O` terrain-liquid reader (TBC replaces `MCLQ`).
+- `MFBO` flight-bounds chunk handling in WDT.
+- M2 v260–263 particle-emitter and ribbon records.
+- The TBC descriptor field table and TBC-only unit/player fields.
+- TBC DBC tables and content absent from 1.12.1: Blood Elf and Draenei races, map 530
+  (`Expansion01`) assets, 2.0 talents, socketed gems, arenas, jewelcrafting. The slice scope above
+  bounds which are required.
+- 2.4.3 reference catalogues (globals, events, widget shapes, message strings).
+
+**UI runtime**
+
+- Stock Lua 5.1 library layer: `coroutine`, `_VERSION`, `print`, the 5.1 string metatable,
+  `table.maxn`, `math.fmod`/`modf`/`huge`.
+- Secure-template and protected-function model: `SecureActionButtonTemplate`, `SecureHandler*`,
+  `InCombatLockdown`, and attribute-driven action semantics (today `issecure`/`securecall`/
+  `hooksecurefunc` are no-ops at `script/stdlib.rs:95-97,353-385`).
+- GlueXML `.toc` loader and executor for the stock 2.4.3 glue scenes.
+
+**Gameplay**
+
+- Player spell effect families: periodic healing, drain/leech, stat/resource/armor/resistance
+  auras, shields/absorb, dispels, control/movement, summons/guardians/totems, and class mechanics.
+- Acquisition sources and gating: skill, profession, quest/item learn, racial,
+  mutually-exclusive talents; persisted rank chains; and an explicit effect-coverage audit.
+- Non-mana resources (rage, energy, focus) and their generation.
+- `WorldQuery` (ground height, ray/segment collision, liquid at point) over
+  `benilla_world::collision`, with a stub for tests.
+- The gameplay rules and formulas for the expanded effects (per `RULES.md`, currently one slice).
+
+### Corrections to the inherited picture
+
+- Protocol coupling has grown: 282 of 693 `benilla-app` files reference `benilla_protocol`, 212
+  touch `ObjectStore`/`ObjectFields`, and 134 touch `ClientCommand`.
+- The Stage A adapter exists in substance as `crates/benilla-app/src/offline.rs`
+  (`OfflineGamePlugin`, feature-gated `offline`) and translates `GameCore` directly to
+  `SessionEvent`/`ClientCommand`. There is no `GameEvent`/`GameCommand` type or `adapter` module;
+  the plan names the target shape, the code currently uses a direct form.
+- `benilla-game-core` exists and does not depend on `benilla-protocol`.
+- `WorldQuery` is described in this plan and in `RULES.md` but is implemented nowhere.
+- The UI VM line under Starting Point is corrected above: `#`, `%` and `...` are already enabled;
+  the 5.0 work is the library layer and the compat hunks.
 
 ## Product Decisions
 

@@ -411,6 +411,10 @@ pub(crate) fn restore_chat_looks(world: &mut World, script: &mut UiScript) {
         .map(|r| (r.shortcut.clone(), r.id))
         .collect();
     let commands = world.get_resource::<NetCommands>().map(|c| c.0.clone());
+    let show_chat = world
+        .get_resource::<crate::cvars::Cvars>()
+        .and_then(|cvars| cvars.get("showChat"))
+        == Some("1");
     // The DBC seed: every `ChatChannels.dbc` row the client joins by itself (`flags & 1`).
     let seed_mask = auto_rows.iter().fold(0, |m, (_, id)| m | zone_bit(*id));
     // Scoped, so `ChannelState` can take the mask afterwards.
@@ -478,6 +482,7 @@ pub(crate) fn restore_chat_looks(world: &mut World, script: &mut UiScript) {
             *file.dirty.get(script) = true;
             info!("chat cache: repaired an unmarked file's zone channels for {who}");
         }
+        apply_chat_console_visibility(&mut parsed.looks, show_chat);
     }
     // The durable mask: the file's word, else the DBC seed; confirmed joins OR into it after.
     let mask = parsed.zone_mask.unwrap_or(seed_mask);
@@ -514,6 +519,13 @@ pub(crate) fn restore_chat_looks(world: &mut World, script: &mut UiScript) {
                 password: String::new(),
             });
         }
+    }
+}
+
+/// `showChat` is the explicit local-console opt-in; a stale window `SHOWN` bit must not defeat it.
+fn apply_chat_console_visibility(looks: &mut [(usize, ChatWindowLook)], show_chat: bool) {
+    if let Some((_, main)) = looks.iter_mut().find(|(window, _)| *window == 0) {
+        main.shown = show_chat;
     }
 }
 
@@ -660,13 +672,13 @@ mod tests {
         }
     }
 
-    /// A subset of `ChatChannels.dbc` as [`parse`] takes it, with the three `INITIAL` rows.
+    /// A subset of build-8606 `ChatChannels.dbc` as [`parse`] takes it, including LFG's `INITIAL` row.
     fn rows() -> Vec<(u32, String)> {
         vec![
             (1, "General".to_string()),
             (2, "Trade".to_string()),
             (22, "LocalDefense".to_string()),
-            (24, "LookingForGroup".to_string()),
+            (26, "LookingForGroup".to_string()),
         ]
     }
 
@@ -677,6 +689,26 @@ mod tests {
                 rgb: *rgb,
             })
             .collect()
+    }
+
+    #[test]
+    fn show_chat_overrides_a_stale_hidden_window_cache() {
+        let mut looks = vec![(0, ChatWindowLook::stock(0)), (1, ChatWindowLook::stock(1))];
+        looks[0].1.shown = false;
+        looks[1].1.shown = false;
+
+        apply_chat_console_visibility(&mut looks, true);
+
+        assert!(looks[0].1.shown, "the opted-in console is visible");
+        assert!(
+            !looks[1].1.shown,
+            "the combat log keeps its own cached state"
+        );
+        apply_chat_console_visibility(&mut looks, false);
+        assert!(
+            !looks[0].1.shown,
+            "turning the option off hides the main console"
+        );
     }
 
     #[test]
@@ -908,11 +940,11 @@ mod tests {
     #[test]
     fn a_stock_reference_file_parses() {
         let text = "VERSION 2\n\nADDEDVERSION 2\n\nOPTION_GUILD_RECRUITMENT_CHANNEL AUTO\n\n\
-                    CHANNELS\nMyGuildChat\nEND\n\nZONECHANNELS 8388611\n\n\
+                    CHANNELS\nMyGuildChat\nEND\n\nZONECHANNELS 33554435\n\n\
                     COLORS\nSAY 255 255 255\nSYSTEM 200 200 0\nEND\n\n\
                     WINDOW 1\nSIZE 0\nCOLOR 0 0 0 0\nLOCKED 1\nDOCKED 1\nSHOWN 1\n\n\
                     MESSAGES\nSYSTEM\nSAY\nEND\n\nCHANNELS\nMyGuildChat\nEND\n\n\
-                    ZONECHANNELS 8388611\n\nEND\n\n\
+                    ZONECHANNELS 33554435\n\nEND\n\n\
                     WINDOW 2\nNAME Combat Log\nSIZE 0\nCOLOR 0 0 0 0\nLOCKED 1\nDOCKED 2\nSHOWN 0\n\n\
                     MESSAGES\nCOMBAT_XP_GAIN\nEND\n\nCHANNELS\nEND\n\nZONECHANNELS 0\n\nEND\n";
         let got = parse(text, &rows());
@@ -935,9 +967,9 @@ mod tests {
                 ("MyGuildChat".to_string(), 0),
                 ("General".to_string(), 1),
                 ("Trade".to_string(), 2),
-                ("LookingForGroup".to_string(), 24),
+                ("LookingForGroup".to_string(), 26),
             ],
-            "bits 0, 1 and 23 of 8388611 — the shortcut rows, in DBC order"
+            "build 8606 LFG is channel 26; the cache mask uses 1-based channel bits"
         );
         let (_, w2) = &got.looks[1];
         assert!(!w2.shown);

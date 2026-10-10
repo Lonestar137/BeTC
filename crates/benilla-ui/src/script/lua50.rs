@@ -536,6 +536,18 @@ mod tests {
                 "TBC FrameXML uses {expr}"
             );
         }
+        assert_eq!(
+            s.eval::<String>(r#"return strmatch("/say hello", "^/(%a+)")"#)
+                .unwrap(),
+            "say",
+            "TBC ChatFrame.lua calls the bare strmatch alias"
+        );
+        assert_eq!(
+            s.eval::<String>(r#"return strtrim(" \thello world\r\n ")"#)
+                .unwrap(),
+            "hello world",
+            "TBC ChatFrame.lua trims submitted input before parsing it"
+        );
         for expr in [
             "string.reverse",
             "table.maxn",

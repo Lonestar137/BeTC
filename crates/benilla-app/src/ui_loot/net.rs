@@ -80,6 +80,7 @@ fn on_error(
 
 fn on_removed(In(ev): In<SessionEvent>, mut loot: ResMut<LootState>) {
     if let SessionEvent::LootRemoved { slot } = ev {
+        info!("net: loot server removed slot {slot}");
         loot_removed(slot, &mut loot);
     }
 }

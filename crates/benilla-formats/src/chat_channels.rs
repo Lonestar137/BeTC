@@ -12,7 +12,8 @@ const CHAT_CHANNELS: &str = "DBFilesClient\\ChatChannels.dbc";
 
 /// `ChatChannels.dbc` flag bits, named as vmangos's `ChannelDBCFlags` (`Chat/Channel.h:107-116`).
 pub mod flags {
-    /// The client joins it on its own: General (1), Trade (2) and LocalDefense (22).
+    /// The client joins it on its own: General (1), Trade (2), LocalDefense (22), and build-8606
+    /// LookingForGroup (26).
     pub const INITIAL: u32 = 0x00001;
     /// The name carries a `%s` filled per zone, so the channel is re-joined on a zone change.
     pub const ZONE_DEP: u32 = 0x00002;
@@ -132,24 +133,31 @@ impl ChatChannelsCatalog {
     }
 }
 
-fn schema() -> Schema {
+/// `ChatChannels.dbc`: 21 fields in 5875 and 37 in build 8606.
+fn schema(tbc: bool) -> Schema {
     let mut s = Schema::new("ChatChannels");
     s.add_field(SchemaField::new("ChannelID", FieldType::UInt32));
     s.add_field(SchemaField::new("Flags", FieldType::UInt32));
     s.add_field(SchemaField::new("FactionGroup", FieldType::UInt32));
-    s.add_field(SchemaField::new_array("Name", FieldType::String, 8));
+    let locales = if tbc { 16 } else { 8 };
+    s.add_field(SchemaField::new_array("Name", FieldType::String, locales));
     s.add_field(SchemaField::new("NameMask", FieldType::UInt32));
-    s.add_field(SchemaField::new_array("Shortcut", FieldType::String, 8));
+    s.add_field(SchemaField::new_array(
+        "Shortcut",
+        FieldType::String,
+        locales,
+    ));
     s.add_field(SchemaField::new("ShortcutMask", FieldType::UInt32));
     s.set_key_field("ChannelID");
     s
 }
 
 pub fn load_chat_channels_catalog(chain: &mut Chain) -> Result<ChatChannelsCatalog> {
+    let tbc = chain.client_build() == Some(8606);
     let bytes = chain
         .read_file(CHAT_CHANNELS)
         .context("reading ChatChannels.dbc")?;
-    let rs = parse(&bytes, schema(), "ChatChannels")?;
+    let rs = parse(&bytes, schema(tbc), "ChatChannels")?;
     let mut rows = Vec::with_capacity(rs.records().len());
     for r in rs.records() {
         let (Some(id), Some(flags), Some(pattern)) =
@@ -161,7 +169,7 @@ pub fn load_chat_channels_catalog(chain: &mut Chain) -> Result<ChatChannelsCatal
             id,
             flags,
             pattern,
-            shortcut: str_at(&rs, r, 12).unwrap_or_default(),
+            shortcut: str_at(&rs, r, if tbc { 20 } else { 12 }).unwrap_or_default(),
         });
     }
     Ok(ChatChannelsCatalog { rows })
@@ -170,6 +178,25 @@ pub fn load_chat_channels_catalog(chain: &mut Chain) -> Result<ChatChannelsCatal
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn empty_dbc(field_count: u32) -> Vec<u8> {
+        let mut bytes = b"WDBC".to_vec();
+        for value in [0, field_count, field_count * 4, 1] {
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
+        bytes.push(0);
+        bytes
+    }
+
+    #[test]
+    fn schema_tracks_classic_and_tbc_locale_widths() {
+        for (tbc, fields) in [(false, 21), (true, 37)] {
+            let bytes = empty_dbc(fields);
+            parse(&bytes, schema(tbc), "ChatChannels fixture").unwrap_or_else(|error| {
+                panic!("build TBC={tbc} schema should accept {fields} fields: {error}")
+            });
+        }
+    }
 
     #[test]
     fn the_real_table_is_the_six_documented_rows() {
@@ -182,8 +209,16 @@ mod tests {
             .iter()
             .map(|r| (r.id, r.flags, r.pattern.as_str(), r.shortcut.as_str()))
             .collect();
-        assert_eq!(
-            got,
+        let expected = if chain.client_build() == Some(8606) {
+            vec![
+                (1, 0x00003, "General - %s", "General"),
+                (2, 0x0003B, "Trade - %s", "Trade"),
+                (22, 0x10003, "LocalDefense - %s", "LocalDefense"),
+                (23, 0x10004, "WorldDefense", "WorldDefense"),
+                (25, 0x20032, "GuildRecruitment - %s", "GuildRecruitment"),
+                (26, 0x40001, "LookingForGroup", "LookingForGroup"),
+            ]
+        } else {
             vec![
                 (1, 0x00003, "General - %s", "General"),
                 (2, 0x0003B, "Trade - %s", "Trade"),
@@ -192,11 +227,17 @@ mod tests {
                 (24, 0x00000, "LookingForGroup", "LookingForGroup"),
                 (25, 0x20032, "GuildRecruitment - %s", "GuildRecruitment"),
             ]
-        );
+        };
+        assert_eq!(got, expected);
 
-        // The auto-join set is the reference's `chat-cache.txt` `ZONECHANNELS` mask.
+        // The classic mask comes from `chat-cache.txt`; build 8606 also marks LFG for auto-join.
         let mask: u32 = cat.auto_join_rows().map(|r| 1 << (r.id - 1)).sum();
-        assert_eq!(mask, 0x0020_0003, "General + Trade + LocalDefense");
+        let expected_mask = if chain.client_build() == Some(8606) {
+            0x0220_0003
+        } else {
+            0x0020_0003
+        };
+        assert_eq!(mask, expected_mask);
     }
 
     #[test]

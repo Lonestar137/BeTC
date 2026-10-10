@@ -42,15 +42,15 @@ fn a_modelless_head_display_is_not_a_worn_helm() {
         "a modelled helm keeps its vis pair"
     );
 
-    // Of the 1314 rows with a vis pair, 12 leave the left model slot empty.
+    // Of the 2380 rows with a vis pair, 21 leave the left model slot empty.
     let masked = items.iter().filter(|(_, d)| d.helmet_vis != [0, 0]).count();
     let masked_modelless = items
         .iter()
         .filter(|(_, d)| d.helmet_vis != [0, 0] && d.model[0].is_none())
         .count();
-    assert_eq!((masked, masked_modelless), (1314, 12));
+    assert_eq!((masked, masked_modelless), (2380, 21));
 
-    // The reference gates on `ModelName[0]` alone (`0x4799c1`); the 41 rows that fill only the
+    // The reference gates on `ModelName[0]` alone (`0x4799c1`); the 75 rows that fill only the
     // right slot carry no vis pair.
     let right_only = items
         .iter()
@@ -60,7 +60,7 @@ fn a_modelless_head_display_is_not_a_worn_helm() {
         .iter()
         .filter(|(_, d)| d.model[0].is_none() && d.model[1].is_some() && d.helmet_vis != [0, 0])
         .count();
-    assert_eq!((right_only, right_only_masked), (41, 0));
+    assert_eq!((right_only, right_only_masked), (75, 0));
 }
 
 #[test]

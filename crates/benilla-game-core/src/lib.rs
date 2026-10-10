@@ -1,6 +1,7 @@
 //! Engine-free authority for local characters and their saved world state.
 
 pub mod content;
+pub mod loot;
 pub mod progression;
 pub mod quest;
 
@@ -11,8 +12,9 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 const PROFILE_VERSION: u32 = 1;
-const SNAPSHOT_VERSION: u32 = 7;
+const SNAPSHOT_VERSION: u32 = 8;
 const PREVIOUS_SNAPSHOT_VERSION: u32 = 6;
+const BODY_PROPORTIONS_SNAPSHOT_VERSION: u32 = 7;
 const EQUIPMENT_SNAPSHOT_VERSION: u32 = 5;
 const POWER_SNAPSHOT_VERSION: u32 = 4;
 const QUEST_SNAPSHOT_VERSION: u32 = 3;
@@ -249,6 +251,18 @@ pub enum DirectSpellEffect {
         periodic: Option<PeriodicDamage>,
     },
     Heal { min: u32, max: u32 },
+    /// Weapon-damage abilities: deal weapon damage plus a flat bonus (Heroic Strike, Sinister Strike).
+    WeaponDamage {
+        min: u32,
+        max: u32,
+        school: u32,
+        periodic: Option<PeriodicDamage>,
+    },
+    /// Aura-only abilities: apply a buff/debuff with no direct damage (Battle Shout, Power Word: Fortitude).
+    Aura {
+        school: u32,
+        periodic: Option<PeriodicDamage>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -319,6 +333,16 @@ pub enum CombatUpdate {
     MeleeImpact(CastImpact),
     /// A Fireball burn tick (periodic damage) on a living hostile.
     DotImpact(CastImpact),
+    Experience {
+        spawn_id: u32,
+        amount: u32,
+        level: u8,
+        levels_gained: u8,
+        experience_in_level: u32,
+        health_gained: u32,
+        mana_gained: u32,
+    },
+    LootReady { spawn_id: u32, has_loot: bool },
     QuestObjective(quest::QuestObjectiveUpdate),
     Respawned { spawn_id: u32 },
 }
@@ -375,6 +399,9 @@ pub struct CharacterSnapshot {
     /// Worn equipment, slot 0..18 (head through tabard). Additive on schema 5.
     #[serde(default)]
     pub equipment: Vec<quest::InventoryItem>,
+    /// Saved death timer and rolled loot for imported creature corpses. Added on schema 8.
+    #[serde(default)]
+    pub corpse_loot: Vec<loot::CorpseLoot>,
     pub quest_journal: quest::QuestJournal,
     pub health: u32,
     pub mana: u32,
@@ -575,6 +602,7 @@ pub struct GameCore {
     active: Option<CharacterId>,
     minute_remainder_ms: u64,
     hostiles: Vec<HostileState>,
+    open_loot_spawn_id: Option<u32>,
     cast_remaining_ms: u32,
     cooldown_remaining_ms: u32,
     spell_cooldowns: BTreeMap<u32, u32>,
@@ -883,15 +911,27 @@ impl GameCore {
         Ok(())
     }
 
-    /// Credit only kills of imported creatures; presentation never submits objective counts.
-    fn record_creature_kill(&mut self, creature_entry: u32) -> Vec<quest::QuestObjectiveUpdate> {
+    /// Credit imported-creature XP and quest objectives; presentation never submits either value.
+    fn record_creature_kill(&mut self, spawn_id: u32, creature_entry: u32) -> Vec<CombatUpdate> {
+        let mut updates = Vec::new();
+        if let Some(creature_level) = content::starting_zone_content()
+            .template(creature_entry)
+            .map(|template| template.level)
+        {
+            if let Some(update) = self.roll_creature_loot(spawn_id, creature_entry) {
+                updates.push(update);
+            }
+            if let Some(update) = self.award_creature_kill_xp(spawn_id, creature_level) {
+                updates.push(update);
+            }
+        }
         let Some(id) = self.active.clone() else {
-            return Vec::new();
+            return updates;
         };
         let Some(snapshot) = self.snapshots.get_mut(&id) else {
-            return Vec::new();
+            return updates;
         };
-        let mut updates = Vec::new();
+        let mut objectives = Vec::new();
         for progress in &mut snapshot.quest_journal.entries {
             if progress.reward_choice.is_some() {
                 continue;
@@ -908,7 +948,7 @@ impl GameCore {
                 }
                 progress.objective_counts[index] += 1;
                 let count = progress.objective_counts[index];
-                updates.push(quest::QuestObjectiveUpdate {
+                objectives.push(quest::QuestObjectiveUpdate {
                     quest_id: progress.quest_id,
                     creature_entry,
                     count,
@@ -917,7 +957,76 @@ impl GameCore {
                 });
             }
         }
+        updates.extend(objectives.into_iter().map(CombatUpdate::QuestObjective));
         updates
+    }
+
+    fn roll_creature_loot(
+        &mut self,
+        spawn_id: u32,
+        creature_entry: u32,
+    ) -> Option<CombatUpdate> {
+        let id = self.active.clone()?;
+        let hostile = self.hostile(spawn_id)?;
+        let remaining_ms = hostile.respawn_remaining_ms?;
+        let snapshot = self.snapshots.get_mut(&id)?;
+        let rolled = loot::roll(
+            creature_entry,
+            || next_random(snapshot),
+            |_| false,
+        )?;
+        let has_loot = rolled.gold > 0 || !rolled.items.is_empty();
+        let corpse = loot::CorpseLoot {
+            spawn_id,
+            respawn_remaining_ms: remaining_ms,
+            looted_items: vec![false; rolled.items.len()],
+            money_looted: false,
+            loot: rolled,
+        };
+        snapshot
+            .corpse_loot
+            .retain(|existing| existing.spawn_id != spawn_id);
+        let index = snapshot
+            .corpse_loot
+            .binary_search_by_key(&spawn_id, |existing| existing.spawn_id)
+            .unwrap_or_else(|index| index);
+        snapshot.corpse_loot.insert(index, corpse);
+        Some(CombatUpdate::LootReady { spawn_id, has_loot })
+    }
+
+    fn award_creature_kill_xp(
+        &mut self,
+        spawn_id: u32,
+        creature_level: u8,
+    ) -> Option<CombatUpdate> {
+        let id = self.active.clone()?;
+        let snapshot = self.snapshots.get_mut(&id)?;
+        let amount = progression::creature_kill_xp(snapshot.level, creature_level);
+        if amount == 0 {
+            return None;
+        }
+        let old_level = snapshot.level;
+        let total = snapshot.experience.checked_add(amount)?;
+        let (level, experience) = apply_experience(snapshot.level, total);
+        snapshot.level = level;
+        snapshot.experience = experience;
+        let (health_gained, mana_gained) = if level > old_level {
+            let gains = refill_level_vitals(snapshot, self.active_health, self.active_mana);
+            self.active_health = snapshot.health;
+            self.active_mana = snapshot.mana;
+            gains
+        } else {
+            (0, 0)
+        };
+        Some(CombatUpdate::Experience {
+            spawn_id,
+            amount,
+            level,
+            levels_gained: level - old_level,
+            experience_in_level: experience,
+            health_gained,
+            mana_gained,
+        })
     }
 
     pub fn turn_in_quest(
@@ -940,6 +1049,8 @@ impl GameCore {
             .as_ref()
             .ok_or(quest::QuestError::NoActiveCharacter)?
             .clone();
+        let previous_health = self.active_health;
+        let previous_mana = self.active_mana;
         let snapshot = self
             .snapshots
             .get_mut(&id)
@@ -992,18 +1103,27 @@ impl GameCore {
             return Err(quest::QuestError::AlreadyRewarded);
         }
 
+        let (health_gained, mana_gained) = if level > old_level {
+            refill_level_vitals(snapshot, previous_health, previous_mana)
+        } else {
+            (0, 0)
+        };
         snapshot.money_copper = money_copper;
         snapshot.level = level;
         snapshot.experience = experience;
         snapshot.inventory.push(item);
         snapshot.inventory.sort_by_key(|item| item.slot);
         snapshot.quest_journal.entries[progress_index].reward_choice = Some(choice);
+        self.active_health = snapshot.health;
+        self.active_mana = snapshot.mana;
         Ok(quest::QuestReward {
             quest_id,
             experience: definition.project_reward_xp,
             level,
             levels_gained: level - old_level,
             experience_in_level: experience,
+            health_gained,
+            mana_gained,
             money_copper: reward_money,
             choice_index: choice,
             item,
@@ -1305,6 +1425,7 @@ impl GameCore {
                     experience: 0,
                     inventory: Vec::new(),
                     equipment: Vec::new(),
+                    corpse_loot: Vec::new(),
                     quest_journal: quest::QuestJournal::default(),
                     health: PLAYER_MAX_HEALTH,
                     mana: maximum_mana(appearance.class),
@@ -1443,6 +1564,17 @@ impl GameCore {
         self.mana_regen_remainder_ms = 0;
         self.active_health = snapshot.health;
         self.active_mana = snapshot.mana;
+        self.open_loot_spawn_id = None;
+        for corpse in &snapshot.corpse_loot {
+            if let Some(hostile) = self
+                .hostiles
+                .iter_mut()
+                .find(|hostile| hostile.spawn_id == corpse.spawn_id)
+            {
+                hostile.health = 0;
+                hostile.respawn_remaining_ms = Some(corpse.respawn_remaining_ms);
+            }
+        }
         Ok(snapshot)
     }
 
@@ -1455,6 +1587,145 @@ impl GameCore {
             .iter()
             .find(|hostile| hostile.spawn_id == spawn_id)
             .copied()
+    }
+
+    pub fn open_corpse_loot(
+        &mut self,
+        spawn_id: u32,
+    ) -> Result<loot::LootWindow, loot::LootError> {
+        let id = self
+            .active
+            .as_ref()
+            .ok_or(loot::LootError::NoActiveCharacter)?;
+        let hostile = self
+            .hostile(spawn_id)
+            .filter(|hostile| hostile.health == 0 && hostile.respawn_remaining_ms.is_some())
+            .ok_or(loot::LootError::NotLootable)?;
+        let corpse = self
+            .snapshots
+            .get(id)
+            .and_then(|snapshot| {
+                snapshot
+                    .corpse_loot
+                    .iter()
+                    .find(|corpse| corpse.spawn_id == hostile.spawn_id)
+            })
+            .ok_or(loot::LootError::NotLootable)?;
+        self.open_loot_spawn_id = Some(spawn_id);
+        Ok(loot::LootWindow {
+            gold: if corpse.money_looted { 0 } else { corpse.loot.gold },
+            items: corpse
+                .loot
+                .items
+                .iter()
+                .enumerate()
+                .filter(|(slot, _)| !corpse.looted_items[*slot])
+                .map(|(slot, item)| (slot as u8, item.clone()))
+                .collect(),
+        })
+    }
+
+    pub fn take_corpse_loot(&mut self, slot: u8) -> Result<quest::InventoryItem, loot::LootError> {
+        let id = self
+            .active
+            .as_ref()
+            .cloned()
+            .ok_or(loot::LootError::NoActiveCharacter)?;
+        let spawn_id = self
+            .open_loot_spawn_id
+            .ok_or(loot::LootError::NotLootable)?;
+        let snapshot = self
+            .snapshots
+            .get_mut(&id)
+            .ok_or(loot::LootError::NoActiveCharacter)?;
+        let corpse_index = snapshot
+            .corpse_loot
+            .iter()
+            .position(|corpse| corpse.spawn_id == spawn_id)
+            .ok_or(loot::LootError::NotLootable)?;
+        let index = usize::from(slot);
+        let corpse = &snapshot.corpse_loot[corpse_index];
+        let item = corpse
+            .loot
+            .items
+            .get(index)
+            .filter(|_| !corpse.looted_items.get(index).copied().unwrap_or(true))
+            .ok_or(loot::LootError::InvalidSlot)?
+            .clone();
+        let backpack_slot = (0..quest::BACKPACK_SLOTS)
+            .find(|slot| !snapshot.inventory.iter().any(|existing| existing.slot == *slot))
+            .ok_or(loot::LootError::BackpackFull)?;
+        let instance_id = next_instance_id(snapshot).ok_or(loot::LootError::BackpackFull)?;
+        let item = quest::InventoryItem {
+            instance_id,
+            entry: item.entry,
+            count: item.count,
+            slot: backpack_slot,
+        };
+        snapshot.inventory.push(item);
+        snapshot.inventory.sort_by_key(|item| item.slot);
+        snapshot.corpse_loot[corpse_index].looted_items[index] = true;
+        Ok(item)
+    }
+
+    pub fn take_corpse_money(&mut self) -> Result<u32, loot::LootError> {
+        let id = self
+            .active
+            .as_ref()
+            .cloned()
+            .ok_or(loot::LootError::NoActiveCharacter)?;
+        let spawn_id = self
+            .open_loot_spawn_id
+            .ok_or(loot::LootError::NotLootable)?;
+        let snapshot = self
+            .snapshots
+            .get_mut(&id)
+            .ok_or(loot::LootError::NoActiveCharacter)?;
+        let corpse = snapshot
+            .corpse_loot
+            .iter_mut()
+            .find(|corpse| corpse.spawn_id == spawn_id)
+            .ok_or(loot::LootError::NotLootable)?;
+        if corpse.money_looted {
+            return Ok(0);
+        }
+        let total = snapshot
+            .money_copper
+            .checked_add(corpse.loot.gold)
+            .ok_or(loot::LootError::MoneyOverflow)?;
+        let amount = corpse.loot.gold;
+        snapshot.money_copper = total;
+        corpse.money_looted = true;
+        Ok(amount)
+    }
+
+    pub fn close_corpse_loot(&mut self) {
+        self.open_loot_spawn_id = None;
+    }
+
+    pub fn open_loot_spawn_id(&self) -> Option<u32> {
+        self.open_loot_spawn_id
+    }
+
+    pub fn corpse_has_loot(&self, spawn_id: u32) -> bool {
+        self.active
+            .as_ref()
+            .and_then(|id| self.snapshots.get(id))
+            .and_then(|snapshot| {
+                snapshot
+                    .corpse_loot
+                    .iter()
+                    .find(|corpse| corpse.spawn_id == spawn_id)
+            })
+            .is_some_and(|corpse| {
+                (!corpse.money_looted && corpse.loot.gold > 0)
+                    || corpse
+                        .loot
+                        .items
+                        .iter()
+                        .zip(&corpse.looted_items)
+                        .any(|(_, looted)| !looted)
+            })
     }
 
     pub fn active_mana(&self) -> u32 {
@@ -1706,9 +1977,32 @@ impl GameCore {
                 },
                 SpellTarget::Hostile(spawn_id),
             ) => (min, max, Some(spawn_id), false, school, periodic),
+            (
+                DirectSpellEffect::WeaponDamage {
+                    min,
+                    max,
+                    school,
+                    periodic,
+                },
+                SpellTarget::Hostile(spawn_id),
+            ) => (min, max, Some(spawn_id), false, school, periodic),
             (DirectSpellEffect::Heal { min, max }, SpellTarget::SelfCharacter) => {
                 (min, max, None, true, 0, None)
             }
+            (
+                DirectSpellEffect::Aura {
+                    school,
+                    periodic: _,
+                },
+                SpellTarget::SelfCharacter,
+            ) => (0, 0, None, true, school, None),
+            (
+                DirectSpellEffect::Aura {
+                    school,
+                    periodic: _,
+                },
+                SpellTarget::Hostile(spawn_id),
+            ) => (0, 0, Some(spawn_id), false, school, None),
             _ => return Err(CoreError::UnsupportedSpellEffect),
         };
         if min > max || !range_yards.is_finite() || range_yards < 0.0 {
@@ -1861,6 +2155,7 @@ impl GameCore {
                 }
             }
         }
+        self.sync_corpse_respawns();
         if self.active_health == 0 {
             self.cast_remaining_ms = 0;
             self.cast_target_spawn_id = None;
@@ -1958,11 +2253,7 @@ impl GameCore {
                             }
                         });
                         if let Some(entry) = killed_entry {
-                            updates.extend(
-                                self.record_creature_kill(entry)
-                                    .into_iter()
-                                    .map(CombatUpdate::QuestObjective),
-                            );
+                            updates.extend(self.record_creature_kill(spawn_id, entry));
                         }
                     }
                 }
@@ -2020,11 +2311,7 @@ impl GameCore {
             }));
             if killed {
                 self.stop_auto_attack();
-                updates.extend(
-                    self.record_creature_kill(creature_entry)
-                        .into_iter()
-                        .map(CombatUpdate::QuestObjective),
-                );
+                updates.extend(self.record_creature_kill(spawn_id, creature_entry));
             } else {
                 self.melee_remaining_ms = MELEE_SWING_MS;
             }
@@ -2038,10 +2325,13 @@ impl GameCore {
             let effect_elapsed_ms = new_periodic
                 .filter(|(spawn_id, _)| *spawn_id == hostile.spawn_id)
                 .map_or(elapsed_ms, |(_, elapsed)| elapsed);
-            hostile.burn_tick_remaining_ms = hostile
-                .burn_tick_remaining_ms
-                .saturating_sub(effect_elapsed_ms);
-            while hostile.burn_tick_remaining_ms == 0 && hostile.burn_remaining_ms > 0 {
+            let mut elapsed_ms = effect_elapsed_ms;
+            while hostile.burn_remaining_ms > 0 {
+                if elapsed_ms < hostile.burn_tick_remaining_ms {
+                    hostile.burn_tick_remaining_ms -= elapsed_ms;
+                    break;
+                }
+                elapsed_ms -= hostile.burn_tick_remaining_ms;
                 let damage = hostile.burn_damage;
                 let spell_id = hostile.burn_spell_id;
                 let school = hostile.burn_school;
@@ -2058,7 +2348,7 @@ impl GameCore {
                     hostile.burn_school = 0;
                     hostile.burn_tick_ms = 0;
                     hostile.burn_level = 0;
-                    killed_entries.push(hostile.creature_entry);
+                    killed_entries.push((hostile.spawn_id, hostile.creature_entry));
                 } else if hostile.burn_remaining_ms > 0 {
                     hostile.burn_tick_remaining_ms = tick_ms;
                 } else {
@@ -2084,16 +2374,45 @@ impl GameCore {
                         impact,
                     }
                 });
+                if killed || hostile.burn_remaining_ms == 0 {
+                    break;
+                }
             }
         }
-        for entry in killed_entries {
-            updates.extend(
-                self.record_creature_kill(entry)
-                    .into_iter()
-                    .map(CombatUpdate::QuestObjective),
-            );
+        for (spawn_id, entry) in killed_entries {
+            updates.extend(self.record_creature_kill(spawn_id, entry));
         }
         updates
+    }
+
+    fn sync_corpse_respawns(&mut self) {
+        let state_by_spawn: BTreeMap<_, _> = self
+            .hostiles
+            .iter()
+            .map(|hostile| (hostile.spawn_id, hostile.respawn_remaining_ms))
+            .collect();
+        let Some(id) = self.active.clone() else {
+            return;
+        };
+        let Some(snapshot) = self.snapshots.get_mut(&id) else {
+            return;
+        };
+        snapshot.corpse_loot.retain_mut(|corpse| {
+            match state_by_spawn.get(&corpse.spawn_id) {
+                Some(Some(remaining_ms)) => {
+                    corpse.respawn_remaining_ms = *remaining_ms;
+                    true
+                }
+                Some(None) => false,
+                None => true,
+            }
+        });
+        if self
+            .open_loot_spawn_id
+            .is_some_and(|spawn_id| !snapshot.corpse_loot.iter().any(|corpse| corpse.spawn_id == spawn_id))
+        {
+            self.open_loot_spawn_id = None;
+        }
     }
 
     /// Advance hostile acquisition, direct pursuit, melee swings, and leash return using injected
@@ -2264,6 +2583,7 @@ impl GameCore {
         self.persist_active_vitals();
         let id = self.active.take().ok_or(CoreError::NoCharacterSelected)?;
         self.hostiles.clear();
+        self.open_loot_spawn_id = None;
         self.active_health = 0;
         self.cast_remaining_ms = 0;
         self.cooldown_remaining_ms = 0;
@@ -2315,6 +2635,7 @@ impl GameCore {
                 || !valid_inventory(&snapshot.inventory)
                 || !valid_equipment(&snapshot.equipment)
                 || !distinct_instance_ids(&snapshot.inventory, &snapshot.equipment)
+                || !valid_corpse_loot(&snapshot.corpse_loot)
                 || !quest::valid_journal(&snapshot.quest_journal)
                 || !valid_vitals(&snapshot)
                 || presentation_ids.contains(&presentation_id)
@@ -2353,6 +2674,7 @@ impl GameCore {
             active: None,
             minute_remainder_ms: 0,
             hostiles: Vec::new(),
+            open_loot_spawn_id: None,
             cast_remaining_ms: 0,
             cooldown_remaining_ms: 0,
             spell_cooldowns: BTreeMap::new(),
@@ -2575,6 +2897,18 @@ fn valid_inventory(items: &[quest::InventoryItem]) -> bool {
         })
 }
 
+fn valid_corpse_loot(corpses: &[loot::CorpseLoot]) -> bool {
+    corpses.windows(2).all(|pair| pair[0].spawn_id < pair[1].spawn_id)
+        && corpses.iter().all(|corpse| {
+            corpse.spawn_id != 0
+                && corpse.respawn_remaining_ms != 0
+                && corpse.looted_items.len() == corpse.loot.items.len()
+                && corpse.loot.items.iter().all(|item| {
+                    item.count != 0 && quest::item_template(item.entry).is_some()
+                })
+        })
+}
+
 fn valid_equipment(items: &[quest::InventoryItem]) -> bool {
     items.len() <= usize::from(quest::EQUIPMENT_SLOTS)
         && items.iter().all(|item| {
@@ -2750,6 +3084,20 @@ fn maximum_mana(class: u8) -> u32 {
     matches!(class, 2 | 3 | 5 | 7 | 8 | 9 | 11)
         .then_some(PLAYER_MAX_MANA)
         .unwrap_or(0)
+}
+
+fn refill_level_vitals(
+    snapshot: &mut CharacterSnapshot,
+    previous_health: u32,
+    previous_mana: u32,
+) -> (u32, u32) {
+    let max_mana = maximum_mana(snapshot.appearance.class);
+    snapshot.health = PLAYER_MAX_HEALTH;
+    snapshot.mana = max_mana;
+    (
+        PLAYER_MAX_HEALTH.saturating_sub(previous_health),
+        max_mana.saturating_sub(previous_mana),
+    )
 }
 
 fn apply_experience(mut level: u8, mut experience: u32) -> (u8, u32) {
@@ -3012,6 +3360,7 @@ pub fn decode_snapshot(source: &str) -> Result<CharacterSnapshot, SaveError> {
             | POWER_SNAPSHOT_VERSION
             | EQUIPMENT_SNAPSHOT_VERSION
             | PREVIOUS_SNAPSHOT_VERSION
+            | BODY_PROPORTIONS_SNAPSHOT_VERSION
             | SNAPSHOT_VERSION
     ) {
         return Err(SaveError::UnsupportedVersion(document.schema_version));
@@ -3037,6 +3386,7 @@ pub fn decode_snapshot(source: &str) -> Result<CharacterSnapshot, SaveError> {
                 experience: 0,
                 inventory: Vec::new(),
                 equipment: Vec::new(),
+                corpse_loot: Vec::new(),
                 quest_journal: quest::QuestJournal::default(),
                 health: PLAYER_MAX_HEALTH,
                 mana: maximum_mana(legacy.appearance.class),
@@ -3071,6 +3421,7 @@ pub fn decode_snapshot(source: &str) -> Result<CharacterSnapshot, SaveError> {
                 experience: 0,
                 inventory: Vec::new(),
                 equipment: Vec::new(),
+                corpse_loot: Vec::new(),
                 quest_journal: quest::QuestJournal::default(),
                 health: PLAYER_MAX_HEALTH,
                 mana: maximum_mana(legacy.appearance.class),
@@ -3100,6 +3451,7 @@ pub fn decode_snapshot(source: &str) -> Result<CharacterSnapshot, SaveError> {
                 experience: legacy.experience,
                 inventory: legacy.inventory,
                 equipment: Vec::new(),
+                corpse_loot: Vec::new(),
                 quest_journal: legacy.quest_journal,
                 health: PLAYER_MAX_HEALTH,
                 mana: maximum_mana(legacy.appearance.class),
@@ -3140,6 +3492,16 @@ pub fn decode_snapshot(source: &str) -> Result<CharacterSnapshot, SaveError> {
             snapshot.body_proportions = BodyProportions::default();
             snapshot
         }
+        BODY_PROPORTIONS_SNAPSHOT_VERSION => {
+            let mut snapshot: CharacterSnapshot = toml::from_str(&document.payload)
+                .map_err(|error| SaveError::InvalidToml(error.to_string()))?;
+            if snapshot.schema_version != BODY_PROPORTIONS_SNAPSHOT_VERSION {
+                return Err(SaveError::InvalidSnapshot);
+            }
+            snapshot.schema_version = SNAPSHOT_VERSION;
+            snapshot.corpse_loot.clear();
+            snapshot
+        }
         SNAPSHOT_VERSION => {
             let snapshot: CharacterSnapshot = toml::from_str(&document.payload)
                 .map_err(|error| SaveError::InvalidToml(error.to_string()))?;
@@ -3162,6 +3524,7 @@ pub fn decode_snapshot(source: &str) -> Result<CharacterSnapshot, SaveError> {
         || !valid_inventory(&snapshot.inventory)
         || !valid_equipment(&snapshot.equipment)
         || !distinct_instance_ids(&snapshot.inventory, &snapshot.equipment)
+        || !valid_corpse_loot(&snapshot.corpse_loot)
         || !quest::valid_journal(&snapshot.quest_journal)
         || !valid_vitals(&snapshot)
         || normalize_name(&snapshot.name).as_deref() != Some(snapshot.name.as_str())
@@ -4178,6 +4541,77 @@ mod tests {
     }
 
     #[test]
+    fn weapon_damage_abilities_resolve_like_direct_damage() {
+        let (mut core, id, _) = practice_core_with_two();
+        {
+            let snapshot = core.snapshots.get_mut(&id).unwrap();
+            snapshot.known_spell_ids.push(900_020);
+            snapshot.known_spell_ids.sort_unstable();
+        }
+        core.enter_world().unwrap();
+        let target_spawn_id = core.hostile(HOSTILE_SPAWN_ID).unwrap().spawn_id;
+
+        core.begin_direct_spell(
+            900_020,
+            SpellTarget::Hostile(target_spawn_id),
+            10,
+            0,
+            1_500,
+            0,
+            35.0,
+            DirectSpellEffect::WeaponDamage {
+                min: 10,
+                max: 20,
+                school: 1,
+                periodic: None,
+            },
+        )
+        .unwrap();
+        let updates = core.advance_combat(0);
+        let [CombatUpdate::SpellImpact {
+            spell_id,
+            school,
+            impact,
+        }] = updates.as_slice()
+        else {
+            panic!("weapon damage resolves as a spell impact");
+        };
+        assert_eq!(*spell_id, 900_020);
+        assert_eq!(*school, 1);
+        assert!((10..=20).contains(&impact.damage));
+    }
+
+    #[test]
+    fn aura_only_spells_apply_without_direct_damage() {
+        let (mut core, id, _) = practice_core_with_two();
+        {
+            let snapshot = core.snapshots.get_mut(&id).unwrap();
+            snapshot.known_spell_ids.push(900_030);
+            snapshot.known_spell_ids.sort_unstable();
+        }
+        core.enter_world().unwrap();
+        let target_spawn_id = core.hostile(HOSTILE_SPAWN_ID).unwrap().spawn_id;
+
+        core.begin_direct_spell(
+            900_030,
+            SpellTarget::SelfCharacter,
+            5,
+            0,
+            0,
+            0,
+            0.0,
+            DirectSpellEffect::Aura {
+                school: 1,
+                periodic: None,
+            },
+        )
+        .unwrap();
+        let updates = core.advance_combat(0);
+        // Aura-only spells on self resolve as a heal with 0 amount (no-op).
+        assert!(updates.is_empty() || updates.iter().all(|u| matches!(u, CombatUpdate::SpellHeal { amount: 0, .. })));
+    }
+
+    #[test]
     fn talent_learning_enforces_points_tiers_and_rank_progression() {
         let (mut core, id) = core_for(10, 8);
         core.snapshots.get_mut(&id).unwrap().level = 10;
@@ -4377,15 +4811,23 @@ mod tests {
                 30,
             )
             .unwrap();
+            let updates = core.advance_combat(FIREBALL_CAST_MS);
             assert_eq!(
-                core.advance_combat(FIREBALL_CAST_MS),
-                vec![CombatUpdate::Impact(CastImpact {
+                updates[0],
+                CombatUpdate::Impact(CastImpact {
                     spawn_id: hostile_spawn.source_guid,
                     damage: 30,
                     remaining_health,
                     killed,
-                })]
+                })
             );
+            if killed {
+                assert!(updates.iter().any(|update| matches!(
+                    update,
+                    CombatUpdate::Experience { spawn_id, amount, .. }
+                        if *spawn_id == hostile_spawn.source_guid && *amount > 0
+                )));
+            }
         }
         assert_eq!(core.hostile(hostile_spawn.source_guid).unwrap().health, 0);
         assert_eq!(
@@ -4424,6 +4866,13 @@ mod tests {
             .find(|target| target.creature_entry == 15274)
             .copied()
             .expect("nearby neutral Mana Wyrm is an attackable source spawn");
+        core.active_health = 40;
+        core.active_mana = 25;
+        {
+            let snapshot = core.snapshots.get_mut(&id).unwrap();
+            snapshot.health = 40;
+            snapshot.mana = 25;
+        }
         for expected_count in 1..=8 {
             let updates = kill_with_auto_attack(&mut core, mana_wyrm.spawn_id);
             assert!(updates.iter().any(|update| matches!(
@@ -4436,6 +4885,20 @@ mod tests {
                     complete,
                 }) if *count == expected_count && *complete == (expected_count == 8)
             )));
+            if expected_count == 8 {
+                assert!(updates.iter().any(|update| matches!(
+                    update,
+                    CombatUpdate::Experience {
+                        level: 2,
+                        levels_gained: 1,
+                        health_gained: 60,
+                        mana_gained: 75,
+                        ..
+                    }
+                )));
+                assert_eq!(core.active_health(), PLAYER_MAX_HEALTH);
+                assert_eq!(core.active_mana(), PLAYER_MAX_MANA);
+            }
             if expected_count < 8 {
                 assert_eq!(core.hostile(mana_wyrm.spawn_id).unwrap().health, 0);
                 core.advance_combat(HOSTILE_RESPAWN_MS);
@@ -4460,11 +4923,10 @@ mod tests {
         assert_eq!(reward.item.entry, 20998);
         assert_eq!(reward.item.count, 1);
         let snapshot = core.snapshot(&id).unwrap();
-        assert_eq!(
-            snapshot.level, 1,
-            "this quest does not reach the level-2 threshold"
-        );
+        assert_eq!(snapshot.level, 2, "kill XP plus the quest reward levels up");
         assert_eq!(snapshot.experience, 50);
+        assert_eq!(snapshot.health, PLAYER_MAX_HEALTH);
+        assert_eq!(snapshot.mana, PLAYER_MAX_MANA);
         assert_eq!(snapshot.money_copper, 30);
         assert_eq!(snapshot.inventory, [reward.item.clone()]);
         assert_eq!(
@@ -4511,13 +4973,22 @@ mod tests {
                 core.advance_combat(HOSTILE_RESPAWN_MS);
             }
         }
-        core.snapshots.get_mut(&id).unwrap().experience = 350;
+        let snapshot = core.snapshots.get_mut(&id).unwrap();
+        snapshot.level = 1;
+        snapshot.experience = 350;
+        snapshot.health = 40;
+        snapshot.mana = 25;
+        core.active_health = 40;
+        core.active_mana = 25;
 
         let reward = core.turn_in_quest(15278, 8325, 0).unwrap();
         assert_eq!((reward.level, reward.levels_gained), (2, 1));
         assert_eq!(reward.experience_in_level, 0);
+        assert_eq!((reward.health_gained, reward.mana_gained), (60, 75));
         assert_eq!(core.snapshot(&id).unwrap().level, 2);
         assert_eq!(core.snapshot(&id).unwrap().experience, 0);
+        assert_eq!(core.active_health(), PLAYER_MAX_HEALTH);
+        assert_eq!(core.active_mana(), PLAYER_MAX_MANA);
     }
 
     #[test]
@@ -4586,14 +5057,14 @@ mod tests {
             })
             .collect();
         assert_eq!(snapshot.money_copper, 0);
-        assert_eq!(snapshot.experience, 0);
+        assert_eq!((snapshot.level, snapshot.experience), (2, 0));
         assert_eq!(
             core.turn_in_quest(15278, 8325, 0),
             Err(quest::QuestError::InventoryFull)
         );
         let snapshot = core.snapshot(&id).unwrap();
         assert_eq!(snapshot.money_copper, 0);
-        assert_eq!(snapshot.experience, 0);
+        assert_eq!((snapshot.level, snapshot.experience), (2, 0));
         assert!(snapshot
             .quest_journal
             .progress(8325)
@@ -4888,6 +5359,144 @@ mod tests {
             core.advance_combat(FIREBALL_BURN_TICK_MS).is_empty(),
             "the burn is spent"
         );
+    }
+
+    #[test]
+    fn periodic_killing_blow_awards_imported_creature_xp_once() {
+        let (mut core, id) = core_for(10, 8);
+        core.enter_world().unwrap();
+        let wyrm = core
+            .hostiles()
+            .iter()
+            .find(|hostile| hostile.creature_entry == 15_274)
+            .copied()
+            .expect("nearby Mana Wyrm");
+        core.update_active(wyrm.position, 0).unwrap();
+        core.begin_fireball(
+            FIREBALL_SPELL_ID,
+            wyrm.spawn_id,
+            FIREBALL_MANA_COST,
+            FIREBALL_CAST_MS,
+            FIREBALL_CAST_MS,
+            FIREBALL_RANGE_YARDS,
+            HOSTILE_MAX_HEALTH - FIREBALL_BURN_DAMAGE,
+            HOSTILE_MAX_HEALTH - FIREBALL_BURN_DAMAGE,
+        )
+        .unwrap();
+        assert!(matches!(
+            core.advance_combat(FIREBALL_CAST_MS).as_slice(),
+            [CombatUpdate::Impact(CastImpact { killed: false, remaining_health: 1, .. })]
+        ));
+
+        let updates = core.advance_combat(FIREBALL_BURN_TICK_MS);
+        assert!(matches!(
+            updates.first(),
+            Some(CombatUpdate::DotImpact(CastImpact { killed: true, .. }))
+        ));
+        assert!(updates.iter().any(|update| matches!(
+            update,
+            CombatUpdate::Experience { amount: 50, .. }
+        )));
+        assert_eq!(core.snapshot(&id).unwrap().experience, 50);
+        assert!(core
+            .advance_combat(HOSTILE_RESPAWN_MS)
+            .iter()
+            .all(|update| !matches!(update, CombatUpdate::Experience { .. })));
+    }
+
+    #[test]
+    fn schema_seven_migrates_without_a_corpse_loot_field() {
+        let (core, id) = core_for(10, 8);
+        let mut snapshot = core.snapshot(&id).unwrap().clone();
+        snapshot.schema_version = BODY_PROPORTIONS_SNAPSHOT_VERSION;
+        snapshot.body_proportions.height = 5;
+        let payload = toml::to_string(&snapshot)
+            .unwrap()
+            .replace("corpse_loot = []\n", "");
+        assert!(!payload.contains("corpse_loot"));
+        let encoded = toml::to_string(&CheckedDocument {
+            schema_version: BODY_PROPORTIONS_SNAPSHOT_VERSION,
+            sha1: sha1_hex(payload.as_bytes()),
+            payload,
+        })
+        .unwrap();
+
+        let migrated = decode_snapshot(&encoded).unwrap();
+        assert_eq!(migrated.schema_version, SNAPSHOT_VERSION);
+        assert_eq!(migrated.body_proportions.height, 5);
+        assert!(migrated.corpse_loot.is_empty());
+    }
+
+    #[test]
+    fn creature_corpse_loot_survives_reload_and_can_be_taken_only_once() {
+        let (mut core, id) = core_for(10, 8);
+        core.enter_world().unwrap();
+        let wyrm = core
+            .hostiles()
+            .iter()
+            .find(|hostile| hostile.creature_entry == 15_274)
+            .copied()
+            .expect("nearby Mana Wyrm");
+        let updates = kill_with_auto_attack(&mut core, wyrm.spawn_id);
+        assert!(updates.iter().any(|update| matches!(
+            update,
+            CombatUpdate::LootReady { spawn_id, .. } if *spawn_id == wyrm.spawn_id
+        )));
+
+        let corpse = core
+            .snapshots
+            .get_mut(&id)
+            .unwrap()
+            .corpse_loot
+            .iter_mut()
+            .find(|corpse| corpse.spawn_id == wyrm.spawn_id)
+            .expect("kill stores a corpse loot record");
+        corpse.loot = loot::LootRoll {
+            gold: 17,
+            items: vec![loot::LootItem {
+                entry: 20_845,
+                count: 2,
+            }],
+        };
+        corpse.looted_items = vec![false];
+
+        core.leave_world().unwrap();
+        let profile = decode_profile(&core.encode_profile().unwrap()).unwrap();
+        let snapshot = decode_snapshot(&core.encode_snapshot(&id).unwrap()).unwrap();
+        let mut restored = GameCore::restore(profile, [snapshot]).unwrap();
+        restored.enter_world().unwrap();
+        let dead = restored.hostile(wyrm.spawn_id).unwrap();
+        assert_eq!(dead.health, 0);
+        assert!(dead.respawn_remaining_ms.is_some());
+
+        let window = restored.open_corpse_loot(wyrm.spawn_id).unwrap();
+        assert_eq!(window.gold, 17);
+        assert_eq!(window.items, [(0, loot::LootItem { entry: 20_845, count: 2 })]);
+        let item = restored.take_corpse_loot(0).unwrap();
+        assert_eq!((item.entry, item.count, item.slot), (20_845, 2, 0));
+        assert_eq!(restored.take_corpse_money(), Ok(17));
+        assert_eq!(restored.take_corpse_money(), Ok(0));
+        assert_eq!(
+            restored.open_corpse_loot(wyrm.spawn_id).unwrap(),
+            loot::LootWindow {
+                gold: 0,
+                items: Vec::new(),
+            }
+        );
+        assert_eq!(
+            restored.take_corpse_loot(0),
+            Err(loot::LootError::InvalidSlot)
+        );
+        assert_eq!(restored.active_money_copper(), Some(17));
+
+        restored.advance_combat(HOSTILE_RESPAWN_MS);
+        assert_eq!(restored.hostile(wyrm.spawn_id).unwrap().health, HOSTILE_MAX_HEALTH);
+        assert!(restored
+            .snapshot(&id)
+            .unwrap()
+            .corpse_loot
+            .iter()
+            .all(|corpse| corpse.spawn_id != wyrm.spawn_id));
     }
 
     #[test]

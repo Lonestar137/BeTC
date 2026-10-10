@@ -57,9 +57,9 @@ fn stdlib_aliases_and_helpers() {
         tremove(t, 1)
         assert(t[1] == 20)
 
-        -- and the six 2.0 names that are NOT here
+        -- and the five remaining 2.0 names that are NOT here
         assert(wipe == nil and tostringall == nil)
-        assert(strsplit == nil and strjoin == nil and strconcat == nil and strtrim == nil)
+        assert(strsplit == nil and strjoin == nil and strconcat == nil)
     "#,
     )
     .unwrap();
@@ -256,9 +256,9 @@ fn the_rest_of_the_bare_globals() {
         -- string family
         assert(strbyte("A") == 65 and strchar(65) == "A")
 
-        -- and the Era-only names are NOT here either: the 5.0 client has no
-        -- string.match/gmatch, and claiming otherwise misleads an addon that feature-detects.
-        assert(strmatch == nil and gmatch == nil and strrev == nil)
+        -- Later-client names remain absent; TBC's required bare `strmatch` is covered with its
+        -- string.match implementation in lua50's TBC test.
+        assert(gmatch == nil and strrev == nil)
         assert(strlenutf8 == nil and strcmputf8i == nil)
         assert(securecall ~= nil and hooksecurefunc ~= nil and issecure())
 

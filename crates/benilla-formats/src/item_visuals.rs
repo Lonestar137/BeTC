@@ -150,10 +150,15 @@ pub(crate) fn item_visual_effects_schema() -> Schema {
     s
 }
 
-/// `SpellItemEnchantment.dbc`: 24 fields, 96-byte records. The reference reads the enUS name at
-/// `+0x34` (field 13, `0x4960d0`), the visual at `+0x58` (field 22, `0x5d9be1`) and `Flags` at
-/// `+0x5c` (field 23).
+/// `SpellItemEnchantment.dbc`: 24 fields, 96-byte records in 5875; 34 fields in 8606 (16 locales
+/// and trailing `SrcItemID`/`ConditionId`). The reference reads the enUS name at `+0x34` (field 13,
+/// unchanged in 8606), the visual at `+0x58` (field 22) and `Flags` at `+0x5c` (field 23) in 5875,
+/// shifting to 30/31 in 8606.
 pub(crate) fn spell_item_enchantment_schema() -> Schema {
+    spell_item_enchantment_schema_for(false)
+}
+
+fn spell_item_enchantment_schema_for(tbc: bool) -> Schema {
     let mut s = Schema::new("SpellItemEnchantment");
     s.add_field(SchemaField::new("ID", FieldType::UInt32));
     for group in ["Effect", "EffectPointsMin", "EffectPointsMax", "EffectArg"] {
@@ -161,13 +166,29 @@ pub(crate) fn spell_item_enchantment_schema() -> Schema {
             s.add_field(SchemaField::new(format!("{group}{i}"), FieldType::UInt32));
         }
     }
-    for i in 0..8 {
+    for i in 0..if tbc { 16 } else { 8 } {
         s.add_field(SchemaField::new(format!("Name{i}"), FieldType::String));
     }
     s.add_field(SchemaField::new("NameFlags", FieldType::UInt32));
-    s.add_field(SchemaField::new("ItemVisual", FieldType::UInt32));
-    s.add_field(SchemaField::new("Flags", FieldType::UInt32));
+    // The visual and flags columns shift with the wider locale block in 8606.
+    for (name, column) in enchant_tail(tbc) {
+        s.add_field(SchemaField::new(name, column));
+    }
     s
+}
+
+/// `SpellItemEnchantment.dbc`'s trailing columns: build 5875 ends at `ItemVisual` + `Flags`; build
+/// 8606 appends `SrcItemID` and `ConditionId`.
+fn enchant_tail(tbc: bool) -> Vec<(&'static str, FieldType)> {
+    let mut tail = vec![
+        ("ItemVisual", FieldType::UInt32),
+        ("Flags", FieldType::UInt32),
+    ];
+    if tbc {
+        tail.push(("SrcItemID", FieldType::UInt32));
+        tail.push(("ConditionId", FieldType::UInt32));
+    }
+    tail
 }
 
 /// Load and join `ItemVisuals.dbc` and `ItemVisualEffects.dbc`, applying the reference's skips.
@@ -205,26 +226,28 @@ pub fn load_item_visual_catalog(chain: &mut Chain) -> Result<ItemVisualCatalog> 
 
 /// Load the [`EnchantCatalog`] from `SpellItemEnchantment.dbc`.
 pub fn load_enchant_catalog(chain: &mut Chain) -> Result<EnchantCatalog> {
+    let tbc = chain.client_build() == Some(8606);
     let bytes = chain
         .read_file(SPELL_ITEM_ENCHANTMENT)
         .with_context(|| format!("reading {SPELL_ITEM_ENCHANTMENT}"))?;
     let rs = parse(
         &bytes,
-        spell_item_enchantment_schema(),
+        spell_item_enchantment_schema_for(tbc),
         "SpellItemEnchantment",
     )?;
+    let (visual_col, flags_col) = if tbc { (30, 31) } else { (22, 23) };
     let mut visuals = HashMap::new();
     let mut names = HashMap::new();
     let mut flags = HashMap::with_capacity(rs.records().len());
     for r in rs.records() {
         let Some(id) = u32_at(r, 0) else { continue };
         // Every row, `Flags == 0` included: the keys are the row set.
-        flags.insert(id, u32_at(r, 23).unwrap_or(0));
-        let visual = u32_at(r, 22).unwrap_or(0) as i32;
+        flags.insert(id, u32_at(r, flags_col).unwrap_or(0));
+        let visual = u32_at(r, visual_col).unwrap_or(0) as i32;
         if visual != 0 {
             visuals.insert(id, visual);
         }
-        // `str_at` drops an empty name.
+        // `str_at` drops an empty name; the enUS name stays at column 13 in both builds.
         if let Some(name) = str_at(&rs, r, 13) {
             names.insert(id, name);
         }
@@ -245,7 +268,7 @@ mod tests {
         let data = crate::wow_data_or_skip!();
         let mut chain = crate::open_chain(&data).expect("open chain");
         let cat = load_item_visual_catalog(&mut chain).expect("load ItemVisuals");
-        assert_eq!(cat.len(), 34, "34 ItemVisuals rows in build 5875");
+        assert_eq!(cat.len(), 64, "64 ItemVisuals rows in build 8606");
 
         let all_blue = ["Spells\\Enchantments\\BlueGlow_Med.mdx"; ITEM_VISUAL_SLOTS];
         let got = cat.effects(2).expect("visual 2");
@@ -255,14 +278,14 @@ mod tests {
             "visual 2 glows on every slot"
         );
 
-        let one = cat.effects(1).expect("visual 1");
+        let one = cat.effects(161).expect("visual 161");
         assert_eq!(
-            one[3].as_deref(),
+            one[4].as_deref(),
             Some("Spells\\Enchantments\\SkullBalls.mdx")
         );
         assert!(
-            [0, 1, 2, 4].iter().all(|&i| one[i].is_none()),
-            "visual 1 authors only slot 3"
+            [0, 1, 2, 3].iter().all(|&i| one[i].is_none()),
+            "visual 161 authors only slot 4"
         );
 
         // A mixed row: slot 0 differs from the other four.
@@ -321,11 +344,11 @@ mod tests {
                 ),
             }
         }
-        assert_eq!(carried, 365, "displays carrying a nonzero ItemVisuals id");
-        assert_eq!(minus_one, 5, "…of which five are the skipped -1");
-        assert_eq!(resolved, 360);
+        assert_eq!(carried, 921, "displays carrying a nonzero ItemVisuals id");
+        assert_eq!(minus_one, 7, "…of which seven are the skipped -1");
+        assert_eq!(resolved, 914);
         assert_eq!(
-            models, 1588,
+            models, 3972,
             "glow-model instances the shipped displays add up to"
         );
     }
@@ -337,13 +360,13 @@ mod tests {
         let mut chain = crate::open_chain(&data).expect("open chain");
         let visuals = load_item_visual_catalog(&mut chain).expect("load ItemVisuals");
         let enchants = load_enchant_catalog(&mut chain).expect("load SpellItemEnchantment");
-        assert_eq!(enchants.visual_count(), 102, "enchants carrying a visual");
+        assert_eq!(enchants.visual_count(), 163, "enchants carrying a visual");
 
         let resolved = enchants
             .iter_visuals()
             .filter(|(_, v)| visuals.effects(*v).is_some())
             .count();
-        assert_eq!(resolved, 101, "…all but the one -1 row resolve to a row");
+        assert_eq!(resolved, 162, "…all but the one -1 row resolve to a row");
 
         // Rockbiter 3 (enchant 1) → visual 61 → the slot-3 rock glow.
         let rockbiter = visuals
@@ -374,11 +397,11 @@ mod tests {
         let enchants = load_enchant_catalog(&mut chain).expect("load SpellItemEnchantment");
 
         // 2564, a permanent weapon enchant: a name and a visual (125, GreenGlow_Low) on one row.
-        assert_eq!(enchants.name(2564), Some("Agility +15"));
+        assert_eq!(enchants.name(2564), Some("+15 Agility"));
         assert_eq!(enchants.visual(2564), Some(125));
         // Named, no glow: the +stat family.
-        assert_eq!(enchants.name(241), Some("Weapon Damage +2"));
-        assert_eq!(enchants.name(929), Some("Stamina +7"));
+        assert_eq!(enchants.name(241), Some("+2 Weapon Damage"));
+        assert_eq!(enchants.name(929), Some("+7 Stamina"));
         assert_eq!(enchants.name(1900), Some("Crusader"));
         assert_eq!(enchants.name(999_999), None);
         assert!(
@@ -394,7 +417,7 @@ mod tests {
         let mut chain = crate::open_chain(&data).expect("open chain");
         let e = load_enchant_catalog(&mut chain).expect("load SpellItemEnchantment");
 
-        // Bit 0, the bind confirm's gate, on 86 rows: the shaman imbues, the rogue poisons,
+        // Bit 0, the bind confirm's gate, on 175 rows: the shaman imbues, the rogue poisons,
         // Firestone and the Zul'Gurub and Ahn'Qiraj head and leg enchants.
         for (id, name) in [
             (1u32, "Rockbiter 3"),
@@ -420,17 +443,19 @@ mod tests {
             );
         }
 
-        // Bit 1, the tooltip line suppression: exactly twelve rows.
+        // Bit 1, the tooltip line suppression: seventeen rows.
         let hidden: std::collections::BTreeSet<u32> =
-            (0..3000).filter(|&id| e.tooltip_hides_name(id)).collect();
+            (0..4000).filter(|&id| e.tooltip_hides_name(id)).collect();
         assert_eq!(
             hidden,
             [
-                124, 285, 303, 543, 563, 564, 1683, 1783, 1803, 1823, 1824, 1825
+                124, 285, 303, 543, 563, 564, 1683, 1783, 1803, 1823, 1824, 1825, 2637, 2638, 2639,
+                2645, 3014,
             ]
             .into_iter()
             .collect(),
-            "the totem-granted imbues (Flametongue/Windfury Totem), Orb of Fire and Firestone 1-4"
+            "the totem-granted imbues (Flametongue/Windfury Totem), Orb of Fire, Firestone 1-4 \
+             and the 2.4.3 additions"
         );
         // The name stays, for the replace confirm.
         assert_eq!(e.name(124), Some("Flametongue Totem 1"));

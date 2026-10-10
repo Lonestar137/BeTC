@@ -109,6 +109,7 @@ const MASTER_LOOT_CANDIDATE_SLOTS: usize = 40;
 const MEMBERS_PER_RAID_GROUP: usize = 5;
 
 /// A clicked row resolved: the coin pile, or an item at its wire loot slot.
+#[derive(Debug)]
 enum LootAction {
     Money,
     Item {
@@ -741,10 +742,7 @@ fn feed_loot(
                                     continue;
                                 }
                                 loot.pending_bind_confirm = Some(index);
-                                script.fire_event(
-                                    "LOOT_BIND_CONFIRM",
-                                    vec![ScriptValue::Int(i64::from(index))],
-                                );
+                                show_bind_confirm(&mut script, index);
                                 bind_confirm_fired = true;
                                 continue;
                             }
@@ -791,12 +789,26 @@ fn feed_loot(
     *last = fresh;
 }
 
-/// Whether a take must raise `LOOT_BIND_CONFIRM` first (`0x4c28f2`/`0x4c28fb`): bind on pickup
+/// Whether a take must raise the bind-on-pickup ask first (`0x4c28f2`/`0x4c28fb`): bind on pickup
 /// and uncommon or better. An unresolved template answers false, as the reference's cache peek.
 fn bind_confirm_required(items: &Items, commands: &NetCommands, item_id: u32) -> bool {
     items
         .template(item_id, 0, commands)
         .is_some_and(|t| t.bonding == BIND_WHEN_PICKED_UP && t.quality >= BIND_CONFIRM_MIN_QUALITY)
+}
+
+/// The bind-on-pickup ask. TBC's engine raises `StaticPopup_Show("LOOT_BIND", nil, nil, slot)`
+/// (`StaticPopup.lua:1103`), whose `OnAccept` calls `ConfirmLootSlot(slot)`; `LOOT_BIND_CONFIRM`
+/// stays as benilla's own signal for tests and addons. The popup guard keeps a script harness that
+/// loads no `StaticPopup.lua` from raising.
+fn show_bind_confirm(script: &mut UiScript, index: u32) {
+    script.fire_event(
+        "LOOT_BIND_CONFIRM",
+        vec![ScriptValue::Int(i64::from(index))],
+    );
+    let _ = script.run(&format!(
+        "if StaticPopup_Show then StaticPopup_Show(\"LOOT_BIND\", nil, nil, {index}) end"
+    ));
 }
 
 /// `CloseInteraction 0x48f200` past its early returns, the one close every loot close shares: the
@@ -907,7 +919,9 @@ fn drain_loot(
         return;
     };
     for index in script.take_loot_picks() {
-        match loot.action_at(index) {
+        let action = loot.action_at(index);
+        info!("ui_loot: row {index} clicked, resolved action {action:?}");
+        match action {
             Some(LootAction::Money) => {
                 // No sound here: the coinage watcher (`sound::money`) plays it as the purse rises.
                 debug!("ui_loot: loot coin (row {index})");
@@ -930,10 +944,7 @@ fn drain_loot(
                 if bind_confirm_required(&items, &commands, item_id) {
                     debug!("ui_loot: row {index} (wire {wire_slot}) binds on pickup — confirming");
                     loot.pending_bind_confirm = Some(index);
-                    script.fire_event(
-                        "LOOT_BIND_CONFIRM",
-                        vec![ScriptValue::Int(i64::from(index))],
-                    );
+                    show_bind_confirm(&mut script, index);
                     continue;
                 }
                 debug!("ui_loot: autostore row {index} (wire slot {wire_slot})");
@@ -1357,10 +1368,10 @@ mod tests {
         );
     }
 
-    /// The confirm arm (`0x4c27c0`).
+    /// The confirm arm (`0x4c27c0`), TBC's `ConfirmLootSlot` (`StaticPopup.lua:1108`).
     #[test]
     fn loot_slot_completes_the_pending_confirm_exactly_once() {
-        let (mut app, rx) = drain_with(0, vec![item(7, FELSTRIKER, 1)], &[1], "LootSlot(1)");
+        let (mut app, rx) = drain_with(0, vec![item(7, FELSTRIKER, 1)], &[1], "ConfirmLootSlot(1)");
         assert!(
             matches!(
                 sent(&rx)[..],
@@ -1373,25 +1384,37 @@ mod tests {
         // A second accept over the same dialog: nothing left to complete.
         app.world_mut()
             .non_send_resource_mut::<UiScript>()
-            .run("LootSlot(1)")
+            .run("ConfirmLootSlot(1)")
             .unwrap();
         app.world_mut().run_system_once(drain_loot).unwrap();
         assert!(sent(&rx).is_empty(), "a second accept sends nothing");
     }
 
-    /// The flag-1 arm opens with `cmp edi,[0x847cec]`, the pending row.
+    /// TBC's `LootSlot` is the take (`LootFrame.lua:191`), so an ordinary row goes straight out
+    /// and a bind-on-pickup one is deferred to the confirm, both through the same verb.
     #[test]
-    fn loot_slot_on_an_ordinary_row_sends_nothing() {
-        let (_app, rx) = drain_with(
+    fn loot_slot_is_the_take_verb_for_ordinary_and_bop_rows() {
+        let (app, rx) = drain_with(
             0,
             vec![item(0, TOUGH_JERKY, 1), item(1, FLURRY_AXE, 1)],
             &[],
             "LootSlot(1) LootSlot(2)",
         );
         assert!(
-            sent(&rx).is_empty(),
-            "no confirm is pending, so neither call reaches the wire"
+            matches!(
+                sent(&rx)[..],
+                [
+                    ClientCommand::AutostoreLootItem { slot: 0 },
+                    ClientCommand::AutostoreLootItem { slot: 1 }
+                ]
+            ),
+            "both are ordinary rows and take outright"
         );
+        assert_eq!(pending_confirm(&app), None);
+
+        let (app, rx) = drain_with(0, vec![item(7, FELSTRIKER, 1)], &[], "LootSlot(1)");
+        assert!(sent(&rx).is_empty(), "a BoP row defers to the ask");
+        assert_eq!(pending_confirm(&app), Some(1));
     }
 
     #[test]
@@ -1437,7 +1460,7 @@ mod tests {
         // The accept, with the same number, reaches the right wire slot.
         app.world_mut()
             .non_send_resource_mut::<UiScript>()
-            .run("LootSlot(2)")
+            .run("ConfirmLootSlot(2)")
             .unwrap();
         app.world_mut().run_system_once(drain_loot).unwrap();
         assert!(matches!(
@@ -1454,7 +1477,7 @@ mod tests {
 
         app.world_mut().resource_mut::<LootState>().remove_slot(2);
         let script = app.world_mut().non_send_resource_mut::<UiScript>();
-        script.run("LootSlot(1)").unwrap();
+        script.run("ConfirmLootSlot(1)").unwrap();
         app.world_mut().run_system_once(drain_loot).unwrap();
 
         assert!(

@@ -842,8 +842,6 @@ fn interact(dispatch: &mut Dispatch, press: &PressPick, mut select: Select) {
                 } else if dead_fork {
                     leg.tag()
                 } else {
-                    // The alive branch (`0x60c162`), not mounted-gated: a rider talks to a
-                    // flight master.
                     "service"
                 },
                 cursor.kind,

@@ -79,15 +79,34 @@ build 8606 before expanding their content. Saved character positions always take
   non-waypoint movement types, waypoint ScriptId actions, and addon auras/mounts are not implemented
   yet; they are not substituted with invented behaviors.
 
-Combat-target health, encounter placement, respawn time, and quest-8325 XP award are project
-decisions. Spell effect base points and dice come from build-8606 `Spell.dbc`; the seeded cast roll
-is deterministic. Quest 8325, “Reclaiming Sunstrider Isle,” is offered and turned in at Magistrix
-Erona (creature 15278); killing eight Mana Wyrms (creature 15274) completes it. The reward is 30
-  copper, 50 project XP, and a choice of one item (20997 or 20998). The source quest template has no
-  XP amount, so the value is recorded in the checked-in quest content. The new Mage needs 400 current-
-  level XP to level; quest 8325 does not level a new character. CMaNGOS's pinned XP thresholds are
-  converted through level 70. Level-ups update level, remaining XP, and talent points; class health,
-  mana, and primary-stat growth are still project-sized rather than the source's full stat curves.
+Combat-target health, encounter placement, respawn time, creature kill XP, and quest-8325 XP award
+are project decisions. Solo kill XP uses `(creature level * 5 + 45)` at equal or lower levels, scaled
+linearly toward zero at the player's gray-level threshold; creatures above the player grant an
+additional 5% per level above the player. Fractions truncate. Group and rested bonuses are not
+modeled. Creature levels and the current-level XP thresholds come from the pinned CMaNGOS TBC
+content source. XP is awarded once on the killing blow, including a periodic-damage killing blow,
+and stops at level 70. Spell effect base points and dice come from build-8606 `Spell.dbc`; the seeded
+cast roll is deterministic. Quest 8325, “Reclaiming Sunstrider Isle,” is offered and turned in at
+Magistrix Erona (creature 15278); killing eight Mana Wyrms (creature 15274) completes it. The reward
+is 30 copper, 50 project XP, and a choice of one item (20997 or 20998). The source quest template has
+no XP amount, so the value is recorded in the checked-in quest content. A level-1 Mana Wyrm awards
+50 XP; its eight kills plus the quest reward reach level 2 with 50 XP remaining. CMaNGOS's pinned XP
+thresholds are converted through level 70. Level-ups update level, remaining XP, and talent points;
+each gained level restores current health and the class's modeled mana pool to maximum. The current
+maximum pools remain project-sized constants; class health, mana, and primary-stat growth are not
+yet the source's full stat curves.
+
+## Creature Loot Data
+
+- Starting-zone creature loot tables, nested reference tables, gold ranges, and referenced item
+  templates are converted from the same pinned CMaNGOS TBC database revision into
+  `content/tbc-creature-loot.toml`; runtime never reads SQL.
+- Independent chances, exclusive loot groups, nested reference tables, and item-count ranges are
+  preserved by the deterministic loot roller. Rolls consume the character's persisted RNG stream.
+- Rows with source conditions are preserved but not rolled until those conditions are modeled.
+  Negative quest-item chances are preserved and require an explicit quest-need predicate; the
+  runtime does not silently treat them as ordinary drops. The current quest pack has no item
+  objectives, so those rows remain unavailable.
 
 ## Class Progression
 
@@ -109,8 +128,8 @@ Erona (creature 15278); killing eight Mana Wyrms (creature 15274) completes it. 
   items extend snapshot schema 3; schema-1 and schema-2 snapshots migrate with empty quest/inventory
   state and zero XP. Snapshot schema 4 adds health, mana, and active aura state; schema 5 adds worn
   equipment; schema 6 adds persisted deterministic RNG state; schema 7 adds project-only body
-  proportions. Older snapshots migrate explicitly, seeding RNG from the stable character ID. Client
-  Spell.dbc supplies spell metadata, including effect base points and dice, to the offline
-  simulation adapter.
+  proportions; schema 8 adds pending creature corpse loot and respawn timers. Older snapshots
+  migrate explicitly, seeding RNG from the stable character ID. Client Spell.dbc supplies spell
+  metadata, including effect base points and dice, to the offline simulation adapter.
 - The runtime consumes only the checked-in, versioned local content pack; conversion may read the
   pinned source database but the game never connects to it.

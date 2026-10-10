@@ -20,16 +20,15 @@ const EMOTES_TEXT_DATA: &str = "DBFilesClient\\EmotesTextData.dbc";
 /// `EmoteText[]`'s width, which the 4-bit selector indexes.
 const FORMS: usize = 16;
 
-/// Locale columns per `EmotesTextData.dbc` row: id, 8 strings and flags make the 10 fields the
-/// loader checks (`0x544579`); the client reads the slot named in `[0xc0e080]`.
-const LOCALES: usize = 8;
+/// Maximum locale columns per `EmotesTextData.dbc` row (8 in 5875, 16 in build 8606).
+const MAX_LOCALES: usize = 16;
 
 /// The joined text-emote sentence tables.
 #[derive(Debug, Default, Clone)]
 pub struct EmoteTextCatalog {
     /// `EmotesText.dbc` id to its 16 `EmoteText[]` columns, each an `EmotesTextData` id or 0.
     forms: HashMap<u32, [u32; FORMS]>,
-    data: HashMap<u32, [Option<String>; LOCALES]>,
+    data: HashMap<u32, [Option<String>; MAX_LOCALES]>,
 }
 
 /// The facts `0x49b200` branches on. A self-emote never names you as its target: the sending
@@ -105,7 +104,7 @@ impl EmoteTextCatalog {
         self.data.get(&data_id)?.get(locale)?.as_deref()
     }
 
-    /// `EmotesText.dbc` rows, 169 in 5875.
+    /// The `EmotesText.dbc` row count for build 5875.
     pub fn len(&self) -> usize {
         self.forms.len()
     }
@@ -143,12 +142,12 @@ fn emotes_text_schema() -> Schema {
     s
 }
 
-/// `EmotesTextData.dbc`: a 1.12 `LocalizedString` block, the 40-byte record the reader checks
-/// (`cmp eax,0x28`).
-fn emotes_text_data_schema() -> Schema {
+/// `EmotesTextData.dbc`: a localized-string block with 8 locales in 5875 and 16 in build 8606.
+fn emotes_text_data_schema(tbc: bool) -> Schema {
     let mut s = Schema::new("EmotesTextData");
     s.add_field(SchemaField::new("ID", FieldType::UInt32));
-    for i in 0..LOCALES {
+    let locales = if tbc { MAX_LOCALES } else { 8 };
+    for i in 0..locales {
         s.add_field(SchemaField::new(format!("Text{i}"), FieldType::String));
     }
     s.add_field(SchemaField::new("Flags", FieldType::UInt32));
@@ -174,12 +173,14 @@ pub fn load_emote_text_catalog(chain: &mut Chain) -> Result<EmoteTextCatalog> {
     let bytes = chain
         .read_file(EMOTES_TEXT_DATA)
         .with_context(|| format!("reading {EMOTES_TEXT_DATA}"))?;
-    let rs = parse(&bytes, emotes_text_data_schema(), "EmotesTextData.dbc")?;
+    let tbc = chain.client_build() == Some(8606);
+    let rs = parse(&bytes, emotes_text_data_schema(tbc), "EmotesTextData.dbc")?;
     let mut data = HashMap::with_capacity(rs.records().len());
     for r in rs.records() {
         let Some(id) = u32_at(r, 0) else { continue };
-        let mut texts: [Option<String>; LOCALES] = Default::default();
-        for (locale, slot) in texts.iter_mut().enumerate() {
+        let mut texts: [Option<String>; MAX_LOCALES] = Default::default();
+        let locales = if tbc { MAX_LOCALES } else { 8 };
+        for (locale, slot) in texts.iter_mut().take(locales).enumerate() {
             // `str_at` answers `None` for an empty string: the reference's blank-means-next-rung
             // test (`cmpb $0,(%edx)`).
             *slot = str_at(&rs, r, 1 + locale);
@@ -197,6 +198,15 @@ mod tests {
     /// WAVE: a column or locale slip shows as the wrong sentence, never a silent empty.
     const WAVE: u32 = 101;
 
+    fn empty_dbc(field_count: u32) -> Vec<u8> {
+        let mut bytes = b"WDBC".to_vec();
+        for value in [0, field_count, field_count * 4, 1] {
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
+        bytes.push(0);
+        bytes
+    }
+
     fn line<'a>(performer: &'a str, target: &'a str, you: &'a str) -> EmoteLine<'a> {
         EmoteLine {
             performer,
@@ -204,6 +214,21 @@ mod tests {
             performer_female: false,
             target,
             your_name: you,
+        }
+    }
+
+    #[test]
+    fn localized_data_schema_tracks_classic_and_tbc_widths() {
+        for (tbc, fields) in [(false, 10), (true, 18)] {
+            let bytes = empty_dbc(fields);
+            parse(
+                &bytes,
+                emotes_text_data_schema(tbc),
+                "EmotesTextData fixture",
+            )
+            .unwrap_or_else(|error| {
+                panic!("build TBC={tbc} schema should accept {fields} fields: {error}")
+            });
         }
     }
 
@@ -224,7 +249,16 @@ mod tests {
         let data = crate::wow_data_or_skip!();
         let mut chain = Chain::open(&data).expect("open patch chain");
         let cat = load_emote_text_catalog(&mut chain).expect("load");
-        assert_eq!(cat.len(), 169, "one form table per EmotesText row");
+        let expected_rows = if chain.client_build() == Some(8606) {
+            183
+        } else {
+            169
+        };
+        assert_eq!(
+            cat.len(),
+            expected_rows,
+            "one form table per EmotesText row"
+        );
 
         // ctx 0: someone else waves at someone else.
         assert_eq!(
@@ -307,11 +341,10 @@ mod tests {
         assert_eq!(cat.compose(9999, &line("Bob", "Jane", "Me"), 0), None);
     }
 
-    /// Three rows are silent as shipped: `SIT` (86) points columns 4 and 6 at `EmotesTextData`
-    /// rows 446 and 447, blank in every locale, and `STAND` (141) and `TRAIN` (264) have all
-    /// sixteen columns zero. Every other row composes a `%s`-free sentence in all five contexts.
+    /// Classic has three silent rows; build 8606 also has a silent row 366. Every other row
+    /// composes a `%s`-free sentence in all five contexts.
     #[test]
-    fn every_shipped_emote_composes_except_the_three_silent_rows() {
+    fn every_shipped_emote_composes_except_its_silent_rows() {
         let data = crate::wow_data_or_skip!();
         let mut chain = Chain::open(&data).expect("open patch chain");
         let cat = load_emote_text_catalog(&mut chain).expect("load");
@@ -351,6 +384,11 @@ mod tests {
             }
         }
         silent.dedup();
-        assert_eq!(silent, [86, 141, 264], "the silent set is SIT/STAND/TRAIN");
+        let expected_silent = if chain.client_build() == Some(8606) {
+            &[86, 141, 264, 366][..]
+        } else {
+            &[86, 141, 264][..]
+        };
+        assert_eq!(silent, expected_silent);
     }
 }

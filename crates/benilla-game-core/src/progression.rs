@@ -152,6 +152,33 @@ pub fn xp_to_next_level(level: u8) -> Option<u32> {
         .map(|entry| entry.xp_to_next)
 }
 
+/// Project-owned solo kill XP rule for the initial offline slice. The level and threshold inputs
+/// are converted from the pinned TBC content source; group and rested bonuses are not modeled.
+pub fn creature_kill_xp(player_level: u8, creature_level: u8) -> u32 {
+    if player_level == 0 || creature_level == 0 || player_level >= 70 {
+        return 0;
+    }
+
+    let gray_level = match player_level {
+        1..=5 => 0,
+        6..=49 => player_level - 5 - player_level / 10,
+        50..=59 => player_level - 1 - player_level / 5,
+        _ => player_level - 9,
+    };
+    if creature_level <= gray_level {
+        return 0;
+    }
+
+    let base = u32::from(creature_level) * 5 + 45;
+    if creature_level > player_level {
+        return base * (20 + u32::from(creature_level - player_level)) / 20;
+    }
+
+    let level_gap = u32::from(player_level - gray_level);
+    let effective_gap = u32::from(player_level - creature_level);
+    base * (level_gap - effective_gap) / level_gap
+}
+
 pub fn starter_spell_ids(race: u8, class: u8) -> Vec<u32> {
     progression_data()
         .starter_spell
@@ -253,5 +280,14 @@ mod tests {
         assert_eq!(xp_to_next_level(60), Some(494_000));
         assert_eq!(xp_to_next_level(69), Some(779_700));
         assert_eq!(xp_to_next_level(70), None);
+    }
+
+    #[test]
+    fn creature_kill_xp_uses_gray_level_and_level_difference_rules() {
+        assert_eq!(creature_kill_xp(1, 1), 50);
+        assert_eq!(creature_kill_xp(1, 3), 66);
+        assert_eq!(creature_kill_xp(10, 10), 95);
+        assert_eq!(creature_kill_xp(10, 4), 0);
+        assert_eq!(creature_kill_xp(70, 70), 0);
     }
 }

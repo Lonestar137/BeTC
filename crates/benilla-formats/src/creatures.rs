@@ -65,6 +65,7 @@ struct DisplayRow {
     /// `BloodLevel` (field 10), a per-display `UnitBloodLevels` override; 0 names no row.
     blood_level: u32,
     /// `SizeClass` (field 9, +0x24), the display's override, read signed: `−1` defers to the model.
+    /// Build 8606 has no display column, so every row reads `−1` there.
     size_class: i32,
     /// `CreatureModelAlpha` (field 5, +0x14), 0..=255: the `baseAlpha` of the reference's unit
     /// alpha product (`0x60d2d0`, × 1/255), which is a flat 1.0 for players.
@@ -351,18 +352,33 @@ fn creature_display_info_schema_for(tbc: bool) -> Schema {
         ("TextureVariation0", FieldType::String),
         ("TextureVariation1", FieldType::String),
         ("TextureVariation2", FieldType::String),
-        // Not `PortraitTextureName` (absent in 5875): a signed size class, tested for -1 at
-        // `0x625509`.
-        ("SizeClass", FieldType::UInt32),
-        ("BloodLevel", FieldType::UInt32),
-        // Some maps label this BloodID, but its 5875 values (33..188) are NPC sound ids.
-        ("NPCSoundID", FieldType::UInt32),
     ] {
         s.add_field(SchemaField::new(name, ty));
     }
     if tbc {
-        s.add_field(SchemaField::new("ParticleColorID", FieldType::UInt32));
-        s.add_field(SchemaField::new("Unused13", FieldType::UInt32));
+        // Build 8606 inserts `PortraitTextureName` at column 9, shifting the 5875 tail right: it
+        // has no `SizeClass` override (the model's row always wins) and carries both a `BloodLevel`
+        // and a `BloodID` before `NPCSoundID` and `ParticleColorID`.
+        for (name, ty) in [
+            ("PortraitTextureName", FieldType::String),
+            ("BloodLevel", FieldType::UInt32),
+            ("BloodID", FieldType::UInt32),
+            ("NPCSoundID", FieldType::UInt32),
+            ("ParticleColorID", FieldType::UInt32),
+        ] {
+            s.add_field(SchemaField::new(name, ty));
+        }
+    } else {
+        for (name, ty) in [
+            // Not `PortraitTextureName` (absent in 5875): a signed size class, tested for -1 at
+            // `0x625509`.
+            ("SizeClass", FieldType::UInt32),
+            ("BloodLevel", FieldType::UInt32),
+            // Some maps label this BloodID, but its 5875 values (33..188) are NPC sound ids.
+            ("NPCSoundID", FieldType::UInt32),
+        ] {
+            s.add_field(SchemaField::new(name, ty));
+        }
     }
     s
 }
@@ -456,7 +472,11 @@ pub fn load_creature_catalog(chain: &mut Chain) -> Result<CreatureCatalog> {
                         scale: f32_at(r, 4).unwrap_or(1.0),
                         textures: [str_at(&rs, r, 6), str_at(&rs, r, 7), str_at(&rs, r, 8)],
                         blood_level: u32_at(r, 10).unwrap_or(0),
-                        size_class: u32_at(r, 9).map_or(-1, |v| v as i32),
+                        size_class: if tbc {
+                            -1
+                        } else {
+                            u32_at(r, 9).map_or(-1, |v| v as i32)
+                        },
                         model_alpha: u32_at(r, 5).unwrap_or(255),
                     },
                 );
@@ -563,7 +583,7 @@ mod tests {
         );
     }
 
-    /// `BloodID = −1` is a tier-2 miss, so 595 displays reach tier 3 and bleed red.
+    /// `BloodID = −1` is a tier-2 miss, so 1046 displays reach tier 3 and bleed red.
     #[test]
     fn blood_row_tiers_over_the_shipped_displays() {
         let data = crate::wow_data_or_skip!();
@@ -592,8 +612,8 @@ mod tests {
         }
         assert_eq!(
             tiers,
-            [36, 9903, 595],
-            "tier 1 / tier 2 / tier 3 over the 10534 shipped displays"
+            [7156, 8799, 1046],
+            "tier 1 / tier 2 / tier 3 over the 17001 shipped displays"
         );
         assert_eq!(tiers.iter().sum::<usize>(), cat.display.len());
     }
@@ -608,12 +628,12 @@ mod tests {
 
         // Each has `BloodID = −1` and no display override: tier 3 alone resolves it.
         for path in [
-            r"Creature\Quillboar\QuillBoar.mdx",
-            r"Creature\Crocodile\Crocodile.mdx",
-            r"Creature\GnollMelee\GnollMelee.mdx",
-            r"Creature\MountainGiant\MountainGiant.mdx",
-            r"Creature\NagaFemale\Siren.mdx",
-            r"Creature\Troll\TrollMelee.mdx",
+            r"Creature\Frog\Frog.mdx",
+            r"Creature\Turtle\Turtle.mdx",
+            r"Creature\MechaStrider\MechaStrider.mdx",
+            r"Creature\Bear\PolarBearCub.mdx",
+            r"Creature\Fish\Fish.mdx",
+            r"Creature\CryptScarab\Crypt_Scarab.mdx",
         ] {
             let mut seen = 0usize;
             for &display_id in cat.display.keys() {
@@ -647,8 +667,8 @@ mod tests {
         }
     }
 
-    /// Nine models have two `CreatureModelData` rows that disagree about blood, eight with one side
-    /// `−1`: the value is unfilled, which tier 3 handles.
+    /// Twenty-six model families have two `CreatureModelData` rows that disagree about blood, most
+    /// with one side `−1`: the value is unfilled, which tier 3 handles.
     #[test]
     fn the_minus_one_blood_id_is_unfilled_data() {
         let data = crate::wow_data_or_skip!();
@@ -670,7 +690,7 @@ mod tests {
         split.sort_unstable();
         assert_eq!(
             split.len(),
-            8,
+            26,
             "models whose duplicate rows disagree about blood, one of them −1: {split:?}"
         );
         assert!(
@@ -782,29 +802,37 @@ mod tests {
         );
     }
 
-    /// The three arms of `0x625500`: an override, a `−1` deferral and an agreeing row.
+    /// The three arms of `0x625500` in 5875: an override, a `−1` deferral and an agreeing row. Build
+    /// 8606 has no display `SizeClass` column, so every row defers to its model.
     #[test]
     fn the_size_class_column_resolves_its_three_arms() {
         let data = crate::wow_data_or_skip!();
         let mut chain = crate::open_chain(&data).expect("open chain");
+        let tbc = chain.client_build() == Some(8606);
         let cat = load_creature_catalog(&mut chain).expect("load creature catalog");
 
-        assert_eq!(
-            cat.size_class(792),
-            Some(3),
-            "Gorilla display overrides to Giant"
-        );
-        assert_eq!(
-            cat.size_class(170),
-            Some(4),
-            "Sea Giant falls back to Colossal"
-        );
-        assert_eq!(
-            cat.size_class(1921),
-            Some(3),
-            "Ancient Protector agrees at Giant"
-        );
-        assert_eq!(cat.size_class(49), Some(1), "HumanMale is Medium");
+        if tbc {
+            assert_eq!(cat.size_class(49), Some(1), "HumanMale is Medium");
+            assert_eq!(cat.size_class(33), Some(3), "Ogre Mage is Giant");
+            assert_eq!(cat.size_class(170), Some(4), "Sea Giant is Colossal");
+        } else {
+            assert_eq!(
+                cat.size_class(792),
+                Some(3),
+                "Gorilla display overrides to Giant"
+            );
+            assert_eq!(
+                cat.size_class(170),
+                Some(4),
+                "Sea Giant falls back to Colossal"
+            );
+            assert_eq!(
+                cat.size_class(1921),
+                Some(3),
+                "Ancient Protector agrees at Giant"
+            );
+            assert_eq!(cat.size_class(49), Some(1), "HumanMale is Medium");
+        }
         assert_eq!(cat.size_class(0), None, "no such display");
 
         // Every display lands in `0..=4`, so the reference's unsigned `>= 5` gate never fires here.
@@ -819,10 +847,14 @@ mod tests {
             );
             n += 1;
         }
-        assert_eq!(n, 10_534, "the whole shipped display table");
+        assert_eq!(
+            n,
+            if tbc { 17_001 } else { 10_534 },
+            "the whole shipped display table"
+        );
     }
 
-    /// Fields 11 and 12 are `CameraShakes.dbc` ids; 25 models, all heavy, carry a footstep shake.
+    /// Fields 11 and 12 are `CameraShakes.dbc` ids; 38 models, all heavy, carry a footstep shake.
     #[test]
     fn the_footstep_shake_columns_are_the_thumping_giants() {
         let data = crate::wow_data_or_skip!();
@@ -863,7 +895,7 @@ mod tests {
                 assert!(shakes.get(thud).is_some(), "{path} thud {thud} dangles");
             }
         }
-        assert_eq!(footstep, 25, "the shipped footstep-shake census");
+        assert_eq!(footstep, 38, "the shipped footstep-shake census");
     }
 
     #[test]
@@ -893,8 +925,8 @@ mod tests {
 
         assert_eq!(
             cat.models.values().filter(|m| m.flags & 0x2 != 0).count(),
-            99,
-            "the shipped census: 99 of {} models suppress breath",
+            136,
+            "the shipped census: 136 of {} models suppress breath",
             cat.models.len()
         );
         for (display_id, label) in [
@@ -944,7 +976,7 @@ mod tests {
             .values()
             .filter(|m| m.footstep_shake != 0)
             .count();
-        assert_eq!(shakers, 25, "footstep-shake rows (schema alignment guard)");
+        assert_eq!(shakers, 38, "footstep-shake rows (schema alignment guard)");
     }
 
     #[test]
@@ -959,7 +991,7 @@ mod tests {
             (50, "HumanFemale", 1.913),
             (51, "OrcMale", 2.361),
             (52, "OrcFemale", 2.051),
-            (53, "DwarfMale", 1.667),
+            (53, "DwarfMale", 1.607),
             (54, "DwarfFemale", 1.528),
             (55, "NightElfMale", 2.438),
             (56, "NightElfFemale", 2.250),
@@ -970,7 +1002,7 @@ mod tests {
             (1563, "GnomeMale", 1.056),
             (1564, "GnomeFemale", 1.000),
             (1478, "TrollMale", 2.083),
-            (1479, "TrollFemale", 1.839),
+            (1479, "TrollFemale", 2.427),
         ];
         for &(display_id, label, expect) in races {
             let m = cat
@@ -1031,8 +1063,9 @@ mod tests {
     }
 
     /// The prism comes from `UNIT_FIELD_NATIVEDISPLAYID`, so a druid in form keeps the druid's
-    /// depth lines, where the form's row would move the swim line up to 0.72 yd. A form scales
-    /// `SCALE_X` by 1.0 or 0.80 (vmangos `GetShapeshiftDisplayInfo`).
+    /// depth lines, where the form's row would move the swim line by up to 0.4576 yd in the 8606
+    /// data (0.72 in 5875). A form scales `SCALE_X` by its display scale (vmangos
+    /// `GetShapeshiftDisplayInfo`).
     #[test]
     fn a_shapeshift_moves_the_collision_prism_and_the_native_row_is_what_stops_it() {
         let data = crate::wow_data_or_skip!();
@@ -1065,8 +1098,8 @@ mod tests {
             worst = worst.max(swim_delta.abs());
         }
         assert!(
-            (worst - 0.72).abs() < 0.02,
-            "worst swim-line divergence is {worst} yd, the doc says 0.72"
+            (worst - 0.4576).abs() < 0.02,
+            "worst swim-line divergence is {worst} yd, the doc says 0.4576"
         );
 
         // The sign flips with the form, so this is no constant offset.

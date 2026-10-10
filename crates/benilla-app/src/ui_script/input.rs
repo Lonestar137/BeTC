@@ -175,6 +175,20 @@ pub(super) fn feed_ui_input(
         }
         for (btn, name) in UI_MOUSE_BUTTONS {
             if buttons.just_pressed(btn) {
+                let hit = script.hit_test_name(x, y);
+                let loot_button_state = hit
+                    .as_deref()
+                    .filter(|name| name.starts_with("LootButton"))
+                    .and_then(|name| {
+                        script
+                            .eval::<(i64, String)>(&format!(
+                                "return {name}:IsEnabled(), {name}:GetButtonState()"
+                            ))
+                            .ok()
+                    });
+                info!(
+                    "ui pointer: {name} down at ({x:.1}, {y:.1}), hit={hit:?} loot_button={loot_button_state:?} modifiers=({shift},{ctrl},{alt})"
+                );
                 // A left press that would drop into the world (`world_drop_click`: any payload over
                 // terrain or nothing) is consumed now: the drop fires on the release, but the world
                 // click-pick and camera orbit act on the press. Over an object the reference runs
@@ -190,6 +204,20 @@ pub(super) fn feed_ui_input(
                 script.mouse_button(x, y, name, true);
             }
             if buttons.just_released(btn) {
+                let hit = script.hit_test_name(x, y);
+                let loot_button_state = hit
+                    .as_deref()
+                    .filter(|name| name.starts_with("LootButton"))
+                    .and_then(|name| {
+                        script
+                            .eval::<(i64, String)>(&format!(
+                                "return {name}:IsEnabled(), {name}:GetButtonState()"
+                            ))
+                            .ok()
+                    });
+                info!(
+                    "ui pointer: {name} up at ({x:.1}, {y:.1}), hit={hit:?} loot_button={loot_button_state:?} modifiers=({shift},{ctrl},{alt})"
+                );
                 script.mouse_button(x, y, name, false);
             }
         }

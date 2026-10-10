@@ -2,9 +2,14 @@
 //! first when there is gold, and the Lua verbs queue intents it drains. `slot` is 1-based; the app
 //! maps a row to the money intent or the item's wire slot, which Lua never sees.
 //!
-//! `LootSlot` is only the LOOT_BIND confirmation: `0x4c2e70` passes flag 1 to the take dispatcher
-//! `0x4c2790`, which then refuses every slot but the pending one. The take itself is flag 0, the
-//! row click of [`crate::widget::FrameKind::LootButton`]. Master loot's dropdown opens from the
+//! TBC 2.4.3's split, from the install's own `LootFrame.lua` and `StaticPopup.lua`: `LootSlot` is
+//! the ordinary take (`LootButton_OnClick` calls `LootSlot(this.slot)`), and `ConfirmLootSlot` is
+//! the bind-on-pickup completion (`StaticPopupDialogs["LOOT_BIND"].OnAccept` calls it). This is the
+//! reverse of 1.12, where `LootSlot` itself was only the LOOT_BIND continuation and the take rode
+//! the `CLootButton` widget's own click; the installed FrameXML is the fidelity authority, so the
+//! verbs follow it. A `CLootButton`'s engine-side take ([`crate::widget::FrameKind::LootButton`],
+//! `0x4c1820`) is kept for the 1.12 surface and is inert under TBC's `LootButtonTemplate`, which
+//! loads as a plain `Button` carrying `slot` as a Lua field. Master loot's dropdown opens from the
 //! app, on a picked row whose wire `slot_type` is `MASTER`, as the dispatcher branches on that byte
 //! before any Lua runs.
 
@@ -48,7 +53,8 @@ pub struct LootRow {
     pub quality: Option<u32>,
     /// The synthesized coin pile (`LootSlotIsCoin` true, `LootSlotIsItem` false).
     pub is_coin: bool,
-    /// The tooltip store's key, 0 for the coin row: `GetLootSlotInfo`'s fifth return, not 1.12's.
+    /// The tooltip store's key, 0 for the coin row: read from the row itself, never from Lua. TBC's
+    /// `GetLootSlotInfo` fifth return is `locked`, not an id (1.12 returned four values).
     pub item_id: u32,
     /// `GetLootSlotLink`'s answer; `None` for the coin row and while the template is in flight.
     pub link: Option<String>,
@@ -94,8 +100,8 @@ impl super::UiScript {
         std::mem::take(&mut self.model_mut().loot_picks)
     }
 
-    /// Drain the 1-based rows `LootSlot` queued; the app honours only the one a LOOT_BIND confirm
-    /// is pending for (the reference's `[0x847cec]` gate).
+    /// Drain the 1-based rows `ConfirmLootSlot` queued; the app honours only the one a LOOT_BIND
+    /// confirm is pending for (the reference's `[0x847cec]` gate).
     pub fn take_loot_confirms(&mut self) -> Vec<u32> {
         std::mem::take(&mut self.model_mut().loot_confirms)
     }
@@ -147,10 +153,12 @@ pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
         })?,
     )?;
 
-    // GetLootSlotInfo(slot) → texture, item, quantity, quality (`0x4c2c60`, `LootFrame.lua:81`),
-    // four on every leg (`0x4c2d07 mov eax,4`): no item is `nil, "", 0, 0`, a cleared slot
-    // `nil, "", 0, -1`. The miss sentinels are a floor: the reference opens no window before every
-    // template lands, and the app holds `LOOT_OPENED` back likewise.
+    // GetLootSlotInfo(slot) → texture, item, quantity, quality, locked (`LootFrame.lua:82` reads
+    // all five and red-tints the row when `locked` is truthy). TBC's five, against 1.12's four
+    // (`0x4c2d07 mov eax,4`); a false fifth keeps the row's normal colours. No item is
+    // `nil, "", 0, 0, false`, a cleared slot `nil, "", 0, -1, false`. The miss sentinels are a
+    // floor: the reference opens no window before every template lands, and the app holds
+    // `LOOT_OPENED` back likewise.
     g.set(
         "GetLootSlotInfo",
         lua.create_function(|lua, slot: usize| {
@@ -174,8 +182,8 @@ pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
                     } else {
                         NO_SLOT_QUALITY
                     }),
-                    // The trailing item id: none here.
-                    Value::Integer(0),
+                    // No slot is ever locked to us offline.
+                    Value::Boolean(false),
                 ]));
             };
             let texture =
@@ -188,8 +196,7 @@ pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
                 item,
                 Value::Integer(i64::from(row.quantity)),
                 quality,
-                // The item id, a fifth return that is not a 1.12 value.
-                Value::Integer(i64::from(row.item_id)),
+                Value::Boolean(false),
             ]))
         })?,
     )?;
@@ -275,11 +282,23 @@ pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
         lua.set_named_registry_value(REG_LOOTBUTTON_METHODS, m)?;
     }
 
-    // LootSlot(slot): the LOOT_BIND confirmation only (`0x4c2e70`: `luaL_checknumber(1)`,
-    // `dec eax`, `0x4c2790(slot, 1)`, whose arm at `0x4c27c0` returns unless the slot is the
-    // pending confirm, `cmp edi, [0x847cec]`). On an ordinary row it does nothing.
+    // LootSlot(slot): TBC's take (`LootFrame.lua:191` `LootButton_OnClick` → `LootSlot(this.slot)`).
+    // It queues a pick, the same intent a `CLootButton`'s own click raises. 1.12's flag-1
+    // continuation of `0x4c2790` is `ConfirmLootSlot` in TBC (`StaticPopup.lua:1108`).
     g.set(
         "LootSlot",
+        lua.create_function(|lua, slot: u32| {
+            let mut model = lua.app_data_mut::<Model>().expect("model app_data");
+            model.loot_picks.push(slot);
+            Ok(())
+        })?,
+    )?;
+
+    // ConfirmLootSlot(slot): TBC's LOOT_BIND completion (`StaticPopupDialogs["LOOT_BIND"].OnAccept`,
+    // `StaticPopup.lua:1103-1109`). It only completes a row the take deferred, so the app gates it
+    // on the pending confirm (`0x4c27c0`'s `cmp edi,[0x847cec]`).
+    g.set(
+        "ConfirmLootSlot",
         lua.create_function(|lua, slot: u32| {
             let mut model = lua.app_data_mut::<Model>().expect("model app_data");
             model.loot_confirms.push(slot);
@@ -598,16 +617,21 @@ mod tests {
         assert!(s.take_loot_picks().is_empty());
     }
 
-    /// In the pick queue `LootSlot` would loot any row an addon named, which the reference refuses.
+    /// TBC's split (`LootFrame.lua:191`, `StaticPopup.lua:1108`): `LootSlot` is the take and
+    /// `ConfirmLootSlot` the bind-on-pickup completion — the reverse of 1.12's flag-1 `LootSlot`.
     #[test]
-    fn loot_slot_queues_confirms_not_picks() {
+    fn loot_slot_takes_and_confirm_loot_slot_completes() {
         let mut s = UiScript::new().unwrap();
         s.set_loot(Some(loot()));
         s.run("LootSlot(2)").unwrap();
+        assert_eq!(s.take_loot_picks(), vec![2], "LootSlot is the take verb");
         assert!(
-            s.take_loot_picks().is_empty(),
-            "LootSlot is not the take verb"
+            s.take_loot_confirms().is_empty(),
+            "and queues no bind confirmation"
         );
+
+        s.run("ConfirmLootSlot(2)").unwrap();
+        assert!(s.take_loot_picks().is_empty(), "the confirm takes nothing");
         assert_eq!(s.take_loot_confirms(), vec![2]);
         assert!(s.take_loot_confirms().is_empty(), "drained");
     }

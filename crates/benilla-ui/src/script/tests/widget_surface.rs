@@ -160,6 +160,17 @@ const NOT_YET_ANSWERED: &[(&str, &str, &str)] = &[
 
 /// Methods answered here that 1.12 does not register on that class, each with why it stays.
 const ALLOWED_BEYOND: &[(&str, &str, &str)] = &[
+    // Build-8606 FrameXML uses these on tooltips and cooldown-bearing action buttons.
+    (
+        "GetOwner",
+        "GameTooltip",
+        "TBC tooltip ownership read-back used by stock UI scripts",
+    ),
+    (
+        "SetCooldown",
+        "Button CheckButton ColorSelect DressUpModel EditBox Frame GameTooltip LootButton MessageFrame Minimap Model MovieFrame PlayerModel ScrollFrame ScrollingMessageFrame SimpleHTML Slider StatusBar TabardModel WorldFrame",
+        "TBC cooldown widget method used by the stock spell/action UI",
+    ),
     // TBC secure templates need per-frame attributes and their change callback for action/unit UI.
     (
         "GetAttribute",

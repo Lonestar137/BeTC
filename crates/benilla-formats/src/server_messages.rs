@@ -54,20 +54,26 @@ impl ServerMessagesCatalog {
     }
 }
 
-fn schema() -> Schema {
+/// `ServerMessages.dbc`: 10 fields in 5875 and 18 in build 8606 (16 localized strings + flags).
+fn schema(tbc: bool) -> Schema {
     let mut s = Schema::new("ServerMessages");
     s.add_field(SchemaField::new("ID", FieldType::UInt32));
-    s.add_field(SchemaField::new_array("Text", FieldType::String, 8));
+    s.add_field(SchemaField::new_array(
+        "Text",
+        FieldType::String,
+        if tbc { 16 } else { 8 },
+    ));
     s.add_field(SchemaField::new("TextMask", FieldType::UInt32));
     s.set_key_field("ID");
     s
 }
 
 pub fn load_server_messages_catalog(chain: &mut Chain) -> Result<ServerMessagesCatalog> {
+    let tbc = chain.client_build() == Some(8606);
     let bytes = chain
         .read_file(SERVER_MESSAGES)
         .context("reading ServerMessages.dbc")?;
-    let rs = parse(&bytes, schema(), "ServerMessages")?;
+    let rs = parse(&bytes, schema(tbc), "ServerMessages")?;
     let mut rows = Vec::with_capacity(rs.records().len());
     for r in rs.records() {
         let (Some(id), Some(text)) = (u32_at(r, 0), str_at(&rs, r, 1)) else {
@@ -81,6 +87,25 @@ pub fn load_server_messages_catalog(chain: &mut Chain) -> Result<ServerMessagesC
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn empty_dbc(field_count: u32) -> Vec<u8> {
+        let mut bytes = b"WDBC".to_vec();
+        for value in [0, field_count, field_count * 4, 1] {
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
+        bytes.push(0);
+        bytes
+    }
+
+    #[test]
+    fn schema_tracks_classic_and_tbc_locale_widths() {
+        for (tbc, fields) in [(false, 10), (true, 18)] {
+            let bytes = empty_dbc(fields);
+            parse(&bytes, schema(tbc), "ServerMessages fixture").unwrap_or_else(|error| {
+                panic!("build TBC={tbc} schema should accept {fields} fields: {error}")
+            });
+        }
+    }
 
     #[test]
     fn the_real_table_is_the_five_documented_rows() {

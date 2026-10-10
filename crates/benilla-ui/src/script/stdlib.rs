@@ -143,17 +143,18 @@ const WOW_STDLIB: &str = r#"
 -- from the running reference client (19,572 entries), which is the
 -- authority this file answers to.
 --
--- `strmatch`, `strrev`, `gmatch`, `strlenutf8` and `strcmputf8i` come from Blizzard's *Era*
--- enumeration, which a Classic Era addon may reach for. **None of them exist in
--- 1.12** — `string.match`/`gmatch` are Lua 5.1 additions the 5.0 client never had — and Era is
--- not our target. They stay out; adding a global the client does not have is how an addon that
--- feature-detects gets sent down a path we cannot honour.
+-- TBC's ChatFrame.lua calls bare `strmatch`; it aliases Lua 5.1's matcher in this 2.4.3 runtime.
+-- It also calls `strtrim`, which removes leading/trailing whitespace before dispatching chat input.
+-- The other names below belong to later clients and stay out: adding an unsupported global changes
+-- which branch a feature-detecting addon takes.
 strlen  = string.len
 strsub  = string.sub
 strupper = string.upper
 strlower = string.lower
 strrep  = string.rep
 strfind = string.find
+strmatch = string.match
+function strtrim(s) return (string.gsub(s, "^%s*(.-)%s*$", "%1")) end
 strbyte = string.byte
 strchar = string.char
 gsub    = string.gsub
@@ -245,8 +246,8 @@ function setglobal(name, value) _G[name] = value end
 -- ── GetLocale: benilla ships/reads enUS data only (the 5875 MPQs + Spell.dbc enUS column) ──────
 function GetLocale() return "enUS" end
 
--- ── NOT here: wipe / tostringall / strsplit / strjoin / strconcat / strtrim ────────────────────
--- Six 2.0+ names benilla used to define. 1.12 has none of them (absent from
+-- ── NOT here: wipe / tostringall / strsplit / strjoin / strconcat ──────────────────────────────
+-- These 2.0+ names benilla used to define. 1.12 has none of them (absent from
 -- `reference/1.12-globals.tsv`, from the stock chain, and from every registrar table), and the
 -- reason they were kept — that the vanilla addon ecosystem assumes them — did not survive being
 -- checked: the corpus callers are multi-client addons whose vanilla paths raise on a real 1.12
