@@ -51,7 +51,7 @@ pub fn run(chain: &mut Chain, spell_id: u32) -> Result<()> {
                             ),
                         }
                     }
-                    // The kit's CharProcs (fields 15-34), what it does to the body.
+                    // The kit's CharProcs (build-8606 fields 18-37), what it does to the body.
                     crate::charprocs::print_kit_procs(&visuals, kit_id, "           ");
                     // The beam, if any: the chain CharProc's decoded `SpellChainEffects` row.
                     if let Some(c) = kit.chain_proc() {
@@ -86,31 +86,24 @@ pub fn run(chain: &mut Chain, spell_id: u32) -> Result<()> {
             }
         }
     }
-    // The AREA block (fields 11/12/13 — the DynamicObject machine, decision 0797): visual A is
-    // the persistent area model the dynobj instances verbatim (gated on field 11 ≠ 0), and the
-    // area kit's type-9 CharProc is the shard emitter. Printed because "what does Flamestrike
-    // actually put on the ground" is unanswerable from the five unit stages above — those are the
-    // CASTER's kit, and a ground effect's own model hangs off this row instead.
-    println!(
-        "  area     gate={} effect {:<5} -> {}   kit {}",
-        stages.area_gate,
-        stages.area_effect,
-        visuals
-            .effect_path(stages.area_effect)
-            .unwrap_or("(none/MISSING PATH)"),
-        stages.area_kit,
-    );
-    if stages.area_kit != 0 {
-        match visuals.kit(stages.area_kit) {
+    for (label, kit_id) in [
+        ("instant area", stages.instant_area_kit),
+        ("impact area", stages.impact_area_kit),
+        ("persistent area", stages.persistent_area_kit),
+    ] {
+        if kit_id == 0 {
+            continue;
+        }
+        match visuals.kit(kit_id) {
             Some(kit) => {
                 println!(
-                    "           areakit anim={:<12} sound={}",
+                    "  {label:<15} kit {kit_id} anim={:<12} sound={}",
                     kit.anim_id.map_or("—".into(), |a| a.to_string()),
                     kit.sound.map_or("—".into(), |s| s.to_string()),
                 );
-                crate::charprocs::print_kit_procs(&visuals, stages.area_kit, "           ");
+                crate::charprocs::print_kit_procs(&visuals, kit_id, "           ");
             }
-            None => println!("           areakit {} (MISSING ROW)", stages.area_kit),
+            None => println!("  {label:<15} kit {kit_id} (MISSING ROW)"),
         }
     }
     // The missile block (phase 4): the projectile exists whenever Speed > 0; its model is

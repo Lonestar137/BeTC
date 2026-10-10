@@ -1,6 +1,6 @@
 //! `shakecensus`: the 24 shipped `CameraShakes.dbc` presets and all that names one: creature
 //! models (`CreatureModelData` fields 11 and 12, footstep and death thud), the 9
-//! `SpellEffectCameraShakes.dbc` groups that `SpellVisualKit` field 14 names, and `$SHK` animation
+//! `SpellEffectCameraShakes.dbc` groups that build-8606 `SpellVisualKit` field 17 names, and `$SHK` animation
 //! events. Every named id must land on a real row, or the column map is wrong.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -189,15 +189,15 @@ pub fn shakecensus(chain: &mut Chain) -> Result<()> {
     // Only the GameObject (typemask 0x20, `0x5f3e20`) and DynamicObject (0x40, `0x5d58c0`)
     // dispatchers decode `$SHK`; on a creature it reaches `CGUnit_C::HandleAnimEvent` and on a
     // bone-attached `CEffect` the fixed `$SND`/`$HIT` router `0x61f6f0`, and neither decodes it.
-    // A DynamicObject's area model is `SpellVisual` field 12, gated by field 11 (`0x5d57c0`):
-    // Inferno's visual 4859 and Meteor's 7479 plant one (effects 2362, 3007) with `$SHK` group 2.
+    // TBC DynamicObject area models are effects reached through each visual's PersistentAreaKit.
     let gos = benilla_formats::load_gameobject_catalog(chain)?;
     let go_models: BTreeSet<String> = gos.iter().map(|(_, path)| mdx_key(path)).collect();
     let creature_models: BTreeSet<String> = creatures.model_paths().map(mdx_key).collect();
     let dynobj_models: BTreeSet<String> = visuals
         .visuals()
-        .filter(|(_, v)| v.area_gate != 0 && v.area_effect != 0)
-        .filter_map(|(_, v)| visuals.effect_path(v.area_effect))
+        .filter_map(|(_, v)| visuals.kit(v.persistent_area_kit))
+        .flat_map(|kit| kit.effects())
+        .filter_map(|(_, effect)| visuals.effect_path(effect))
         .map(mdx_key)
         .collect();
     let mut shk_models = 0u32;

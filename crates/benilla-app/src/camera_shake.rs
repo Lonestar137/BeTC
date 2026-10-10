@@ -3,7 +3,7 @@
 //!
 //! `CreatureModelData.FootstepShakeSize` (field 11, on the visual footfall tags, not `$FSD`) and
 //! `DeathThudShakeSize` (field 12, on `$DTH`) name a `CameraShakes.dbc` preset. `SpellVisualKit`
-//! field 14 and the `$SHK` event name a `SpellEffectCameraShakes.dbc` group of up to three.
+//! build-8606 field 17 and the `$SHK` event name a `SpellEffectCameraShakes.dbc` group of up to three.
 //!
 //! Per live record, per frame (`0x511760`/`0x5116e0`):
 //!
@@ -284,7 +284,7 @@ fn fire_shakes(
     }
 }
 
-/// Fire the shake group a spell-visual kit's field 14 names, once per kit play, with no stage test
+/// Fire the shake group a spell-visual kit's build-8606 field 17 names, once per kit play, with no stage test
 /// and no cancel (`0x620e11`, or `0x60f4e6` when the play created no effect node).
 ///
 /// The shake spawns at the kit play's position. The reference reads `&node+0x48` before

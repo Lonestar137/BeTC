@@ -4,7 +4,7 @@
 //! Two id spaces, never conflated: the creature footstep and death-thud columns
 //! (`CreatureModelData` fields 11 and 12, read through
 //! [`CreatureCatalog::footstep_shake`](crate::CreatureCatalog::footstep_shake)) name a preset
-//! directly, while `SpellVisualKit` field 14 and the `$SHK` animation event name a group, never a
+//! directly, while build-8606 `SpellVisualKit` field 17 and the `$SHK` animation event name a group, never a
 //! preset (`[0xc0d814]`, bound `0xc0d818`). Column names follow vmangos `DBCStructure.h`; what
 //! `ShakeType` and `Direction` select is the evaluator's, `benilla-app`'s `camera_shake`.
 

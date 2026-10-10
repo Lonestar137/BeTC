@@ -4,7 +4,7 @@
 //!
 //! In the reference an aura slot change (`0x604d00` → `0x6123f0`) reaches `0x5ff350`, which plays
 //! the spell's state kit (`SpellVisual` field 4) at stage 2, and the kit's tail (`0x60f35c`) runs
-//! the CharProc dispatcher `0x60d7c0` over its four proc slots (`SpellVisualKit` fields 15-34).
+//! the CharProc dispatcher `0x60d7c0` over its four proc slots (build-8606 `SpellVisualKit` fields 18-37).
 //! Three procs act on the body: 14 installs an alpha node (`0x60d972`), 1 a tint node
 //! (`0x60d840`), 11 an animation rate (`0x60db7e`). A node is keyed by spell id and linked at the
 //! head of its list, only the head counts, and the aura's removal drops its spell's nodes

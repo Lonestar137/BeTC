@@ -269,10 +269,10 @@ fn precast_kit_sound_rings_once_at_start() {
     );
 }
 
-/// The `$TRD` strike sound is the held spell's `SpellVisual` field 14: Mining's visual 93 names
+/// The held spell's animation-event sound is TBC `SpellVisual` field 11: Mining's visual 93 names
 /// 1143 (Mining Impact), Fireball's visual 67 none.
 #[test]
-fn held_strike_sound_reads_the_visuals_field_14() {
+fn held_strike_sound_reads_the_tbc_animation_event_sound() {
     const MINING: u32 = 2575;
     const FIREBALL: u32 = 133;
     let visuals = SpellVisualCatalog::from_tables(
@@ -281,7 +281,7 @@ fn held_strike_sound_reads_the_visuals_field_14() {
                 93,
                 VisualStages {
                     precast: 166,
-                    strike_sound: Some(1143),
+                    anim_event_sound: Some(1143),
                     ..Default::default()
                 },
             ),
@@ -497,6 +497,8 @@ fn aura_state_kit_arms_persistent_and_reaps_on_aura_end() {
                     None,
                     None,
                     Some(BREAD_FX),
+                    None,
+                    None,
                     None,
                     None,
                     None,
@@ -850,8 +852,7 @@ fn a_targetless_dest_go_spawns_a_ground_missile_whose_arrival_sounds_at_the_poin
             VisualStages {
                 // Field 6 ≠ 0: the missile owns the arrival, so the GO plays no dest burst.
                 missile_gate: 1,
-                area_effect: 3021,
-                area_kit: AREA_KIT,
+                impact_area_kit: AREA_KIT,
                 ..Default::default()
             },
         )]),

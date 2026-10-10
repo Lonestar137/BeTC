@@ -1,6 +1,6 @@
 //! `SpellVisual.dbc`, `SpellVisualKit.dbc`, `SpellVisualEffectName.dbc` and
 //! `SpellChainEffects.dbc`: what a cast shows at each stage (the client's loaders `0x5508e0`,
-//! `0x550690` and `0x550460`; vmangos `SpellVisualEntry`, `DBCStructure.h:613-640`). A stage sets
+//! `0x550690` and `0x550460`; build-8606 table layouts). A stage sets
 //! lifetime only: every populated slot of a reached kit fires, precast persists until reaped by
 //! spell id, and cast and impact end on their own.
 
@@ -9,25 +9,54 @@ use std::collections::HashMap;
 use anyhow::{Context, Result};
 use benilla_dbc::{FieldType, Schema, SchemaField};
 
-use crate::Chain;
 use crate::dbc::{f32_at, i32_at, parse, str_at, u32_at};
+use crate::Chain;
 
 pub mod chain_effects;
 
-pub use chain_effects::{CHAIN_MAX_BEAMS, ChainEffect, ChainProc};
+pub use chain_effects::{ChainEffect, ChainProc, CHAIN_MAX_BEAMS};
 
 const SPELL_VISUAL: &str = "DBFilesClient\\SpellVisual.dbc";
 const SPELL_VISUAL_KIT: &str = "DBFilesClient\\SpellVisualKit.dbc";
 const SPELL_VISUAL_EFFECT_NAME: &str = "DBFilesClient\\SpellVisualEffectName.dbc";
 
-const SPELL_VISUAL_FIELDS: usize = 16;
-const SPELL_VISUAL_KIT_FIELDS: usize = 35;
+const SPELL_VISUAL_FIELDS: usize = 25;
+const SPELL_VISUAL_KIT_FIELDS: usize = 38;
 
-/// Each emitter slot's M2 `AttachmentID`, kit fields 3-11 in order, as the client's slot loop
-/// (`0x60edf0`) pushes them: head, chest, base, left hand, right hand, breath, special 1-3.
-pub const KIT_SLOT_TAGS: [u16; 9] = [0x14, 0x22, 0x13, 0x15, 0x16, 0x11, 0x17, 0x18, 0x19];
+const SPELL_VISUAL_COLUMNS: [&str; SPELL_VISUAL_FIELDS] = [
+    "ID",
+    "PrecastKit",
+    "CastKit",
+    "ImpactKit",
+    "StateKit",
+    "ChannelKit",
+    "HasMissile",
+    "MissileModel",
+    "MissilePathType",
+    "MissileDestinationAttachment",
+    "MissileSound",
+    "AnimEventSoundID",
+    "Flags",
+    "CasterImpactKit",
+    "TargetImpactKit",
+    "MissileAttachment",
+    "MissileFollowGroundHeight",
+    "MissileFollowGroundDropSpeed",
+    "MissileFollowGroundApproach",
+    "MissileFollowGroundFlags",
+    "MissileMotion",
+    "MissileTargetingKit",
+    "InstantAreaKit",
+    "ImpactAreaKit",
+    "PersistentAreaKit",
+];
 
-/// The tag for kit field 12, the client's -1: `0x61fcf0` passes no attach tag (`0x61fd23`), so the
+/// Each build-8606 kit effect slot's M2 attachment, in DBC column order.
+pub const KIT_SLOT_TAGS: [u16; 11] = [
+    0x14, 0x22, 0x13, 0x15, 0x16, 0x11, 0x1a, 0x1b, 0x17, 0x18, 0x19,
+];
+
+/// The tag for TBC kit field 15, the client's -1: `0x61fcf0` passes no attach tag (`0x61fd23`), so the
 /// placement walk (`0x620be0`) plants the model once in world space at the owner's position, facing
 /// and scale (`0x620c86`); it rides no bone and does not turn with the unit.
 pub const WORLD_EFFECT_TAG: u16 = u16::MAX;
@@ -168,8 +197,8 @@ pub mod char_proc_type {
     }
 }
 
-/// One `SpellVisual.dbc` row: the kit ids for the five stages (fields 1-5, 0 for none), then the
-/// missile and dest-anchored columns.
+/// One build-8606 `SpellVisual.dbc` row. TBC keeps the five stage kits and missile columns at the
+/// same offsets as 1.12, but replaces the old dest-model block after `MissileSound`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct VisualStages {
     pub precast: u32,
@@ -177,29 +206,34 @@ pub struct VisualStages {
     pub impact: u32,
     pub state: u32,
     pub channel: u32,
-    /// Field 7: the missile's `SpellVisualEffectName` id; 0 flies the ammo or weapon model, and an
+    /// TBC field 7: the missile's `SpellVisualEffectName` id; 0 flies the ammo or weapon model, and an
     /// id with no row the client's `Spells\ErrorCube.mdx` (`0x60a3d0`). A missile exists whenever
     /// `Spell.dbc` Speed > 0, whatever this holds.
     pub missile_model: u32,
-    /// Field 9: the index into [`MISSILE_ATTACH_TABLE`].
+    /// TBC field 9: the index into [`MISSILE_ATTACH_TABLE`].
     pub missile_attach: u32,
-    /// Field 10: the `SoundEntries.dbc` loop the missile plays in flight (`CMissile+0x40`, its
+    /// TBC field 10: the `SoundEntries.dbc` loop the missile plays in flight (`CMissile+0x40`, its
     /// volume shaped by distance at `0x61d790`), stopped when it arrives.
     pub missile_sound: Option<u32>,
-    /// Field 14: the `SoundEntries.dbc` id the `$TRD` anim event plays at a craft's strike frame
-    /// (`0x62faa0`), such as mining's pick clang, sound 1143.
-    pub strike_sound: Option<u32>,
-    /// Field 6: `SMSG_SPELL_GO` spawns the dest one-shot at the packet's dest only when this is 0
-    /// and [`Self::area_effect`] is set (`0x6e8088`); the missile spawn ignores it.
+    /// TBC field 11: the `SoundEntries.dbc` id used by the visual's animation event.
+    pub anim_event_sound: Option<u32>,
+    /// TBC field 6. A ranged visual can inherit the missile block from its weapon visual.
     pub missile_gate: u32,
-    /// Field 11: a DynamicObject shows its own model only when this is nonzero (`0x5d57c0`).
-    pub area_gate: u32,
-    /// Field 12: a `SpellVisualEffectName` id, not a kit: a DynamicObject's own model and the dest
-    /// one-shot's.
-    pub area_effect: u32,
-    /// Field 13: a DynamicObject's kit, for its emitters (`0x5d55c0` scans it for CharProc type 9)
-    /// and its looping sound.
-    pub area_kit: u32,
+    /// TBC fields 13-14: caster- and target-side impact kits.
+    pub caster_impact_kit: u32,
+    pub target_impact_kit: u32,
+    /// TBC field 15: the missile's caster-side attachment.
+    pub missile_attachment: u32,
+    /// TBC fields 16-19, retained as raw values until the ground-following missile path is used.
+    pub missile_follow_ground: [u32; 4],
+    /// TBC field 20: missile motion mode.
+    pub missile_motion: u32,
+    /// TBC field 21: a missile-targeting visual kit.
+    pub missile_targeting_kit: u32,
+    /// TBC fields 22-24: area visuals are kits in TBC, not the old direct model/gate columns.
+    pub instant_area_kit: u32,
+    pub impact_area_kit: u32,
+    pub persistent_area_kit: u32,
 }
 
 impl VisualStages {
@@ -222,7 +256,7 @@ impl VisualStages {
         }
         out.missile_attach = fill(self.missile_attach, weapon.missile_attach); // 60d525
         out.missile_sound = self.missile_sound.or(weapon.missile_sound); // 60d532
-        out.strike_sound = self.strike_sound.or(weapon.strike_sound); // 60d53f
+        out.anim_event_sound = self.anim_event_sound.or(weapon.anim_event_sound); // 60d53f
         out
     }
 }
@@ -231,21 +265,25 @@ impl VisualStages {
 // No `Eq`: the `CharProc` params are floats.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct VisualKit {
-    /// Field 2: the `AnimationData.dbc` id played on the unit.
+    /// TBC field 1: the kit's start animation from `AnimationData.dbc`.
+    pub start_anim_id: Option<u16>,
+    /// TBC field 2: the `AnimationData.dbc` id played on the unit.
     pub anim_id: Option<u16>,
-    /// Field 13: the `SoundEntries.dbc` id.
+    /// TBC field 3: an `AnimKit.dbc` reference, retained but not yet routed by the offline adapter.
+    pub anim_kit_id: Option<u32>,
+    /// TBC field 16: the `SoundEntries.dbc` id.
     pub sound: Option<u32>,
-    /// Fields 3-11: `SpellVisualEffectName` ids, slot `i` attaching at [`KIT_SLOT_TAGS`]`[i]`.
-    pub effect_slots: [Option<u32>; 9],
-    /// Field 12, a tenth effect slot the client plays inline (`0x61fcf0`) as a `CEffect` node
-    /// marked as a world plant (`node+0x2c | 0x2`), with the nine slots' lifecycle (`0x614150`).
+    /// TBC fields 4-14: `SpellVisualEffectName` ids, slot `i` attaching at [`KIT_SLOT_TAGS`]`[i]`.
+    pub effect_slots: [Option<u32>; 11],
+    /// TBC field 15, a twelfth effect slot the client plays inline (`0x61fcf0`) as a `CEffect` node
+    /// marked as a world plant (`node+0x2c | 0x2`), with the other slots' lifecycle (`0x614150`).
     /// The data puts state models here (Frost Nova's ice, Net, Entangling Roots) and caster-feet
     /// rings (Thunderclap), never a projectile.
     pub world_effect: Option<u32>,
-    /// Field 14: a `SpellEffectCameraShakes.dbc` group id, never a `CameraShakes` row
+    /// TBC field 17: a `SpellEffectCameraShakes.dbc` group id, never a `CameraShakes` row
     /// ([`crate::SpellShakeGroup`]); all 58 shipped values land on that table.
     pub shake: Option<u32>,
-    /// Fields 15-34, transposed out of five parallel arrays. The dynobject emitter takes the first
+    /// TBC fields 18-37, transposed out of five parallel arrays. The dynobject emitter takes the first
     /// type-9 slot: `params[0]` is its shard model index, `params[1]` the emit rate the graphics
     /// quality scales (`0x6eb930`).
     pub char_proc_slots: [Option<CharProc>; KIT_CHAR_PROCS],
@@ -293,6 +331,7 @@ pub struct SpellVisualCatalog {
     /// client resolves by name at boot against 14 baked strings (`0x61f5b0`).
     hardcoded: HashMap<String, (u32, String)>,
     chain_effects: HashMap<u32, ChainEffect>,
+    chain_effect_error: Option<String>,
 }
 
 impl SpellVisualCatalog {
@@ -312,6 +351,7 @@ impl SpellVisualCatalog {
             effect_paths,
             hardcoded: HashMap::new(),
             chain_effects: HashMap::new(),
+            chain_effect_error: None,
         }
     }
 
@@ -396,14 +436,28 @@ impl SpellVisualCatalog {
     pub fn chain_effect_len(&self) -> usize {
         self.chain_effects.len()
     }
+
+    /// Why chain-effect visuals are unavailable, if the build's table schema is not converted yet.
+    pub fn chain_effect_error(&self) -> Option<&str> {
+        self.chain_effect_error.as_deref()
+    }
 }
 
+#[cfg(test)]
 fn n_u32_schema(name: &str, fields: usize) -> Schema {
     let mut s = Schema::new(name);
     for i in 0..fields {
         s.add_field(SchemaField::new(format!("F{i}"), FieldType::UInt32));
     }
     s
+}
+
+fn spell_visual_schema() -> Schema {
+    let mut schema = Schema::new("SpellVisual");
+    for name in SPELL_VISUAL_COLUMNS {
+        schema.add_field(SchemaField::new(name, FieldType::UInt32));
+    }
+    schema
 }
 
 /// `SpellVisualEffectName`: id, name, model path, and two columns the client never reads.
@@ -420,7 +474,7 @@ fn effect_name_schema() -> Schema {
     s
 }
 
-/// `SpellVisualKit`: fields 0-14 are ids, 15-18 the signed `CharProcType` keys and 19-34 the
+/// `SpellVisualKit`: fields 0-17 are ids, 18-21 the signed `CharProcType` keys and 22-37 the
 /// float params, which the dispatcher (`0x60d7c0`) loads with `fld`.
 fn kit_schema() -> Schema {
     let mut s = Schema::new("SpellVisualKit");
@@ -435,9 +489,9 @@ fn kit_schema() -> Schema {
     s
 }
 
-/// Kit field 15, `CharProcType[0]` (`+0x3c`).
-const CHAR_PROC_TYPE_FIELD: usize = 15;
-/// Kit field 19, `CharParamZero[0]` (`+0x4c`); `CharParamOne..Three[0]` follow at every
+/// TBC kit field 18, `CharProcType[0]`.
+const CHAR_PROC_TYPE_FIELD: usize = 18;
+/// TBC kit field 22, `CharParamZero[0]`; `CharParamOne..Three[0]` follow at every
 /// [`KIT_CHAR_PROCS`] fields (`+0x5c`, `+0x6c`, `+0x7c`).
 const CHAR_PROC_PARAM_FIELD: usize = CHAR_PROC_TYPE_FIELD + KIT_CHAR_PROCS;
 
@@ -460,38 +514,63 @@ fn some_unless_none(v: u32) -> Option<u32> {
     (v != 0 && v != NONE_SENTINEL).then_some(v)
 }
 
+fn visual_stages(r: &benilla_dbc::Record) -> VisualStages {
+    let g = |i: usize| u32_at(r, i).unwrap_or(0);
+    let id = |i: usize| u32_at(r, i).and_then(some_unless_none).unwrap_or(0);
+    VisualStages {
+        precast: id(1),
+        cast: id(2),
+        impact: id(3),
+        state: id(4),
+        channel: id(5),
+        missile_model: id(7),
+        missile_attach: id(9),
+        missile_sound: u32_at(r, 10).and_then(some_unless_none),
+        anim_event_sound: u32_at(r, 11).and_then(some_unless_none),
+        missile_gate: g(6),
+        caster_impact_kit: id(13),
+        target_impact_kit: id(14),
+        missile_attachment: g(15),
+        missile_follow_ground: [g(16), g(17), g(18), g(19)],
+        missile_motion: g(20),
+        missile_targeting_kit: id(21),
+        instant_area_kit: id(22),
+        impact_area_kit: id(23),
+        persistent_area_kit: id(24),
+    }
+}
+
+fn visual_kit(r: &benilla_dbc::Record) -> VisualKit {
+    let mut effect_slots = [None; 11];
+    for (i, slot) in effect_slots.iter_mut().enumerate() {
+        *slot = u32_at(r, 4 + i).and_then(some_unless_none);
+    }
+    let mut char_proc_slots = [None; KIT_CHAR_PROCS];
+    for (i, slot) in char_proc_slots.iter_mut().enumerate() {
+        *slot = char_proc_slot(r, i);
+    }
+    VisualKit {
+        start_anim_id: u32_at(r, 1).and_then(some_unless_none).map(|a| a as u16),
+        anim_id: u32_at(r, 2).and_then(some_unless_none).map(|a| a as u16),
+        anim_kit_id: u32_at(r, 3).and_then(some_unless_none),
+        effect_slots,
+        world_effect: u32_at(r, 15).and_then(some_unless_none),
+        sound: u32_at(r, 16).and_then(some_unless_none),
+        shake: u32_at(r, 17).and_then(some_unless_none),
+        char_proc_slots,
+    }
+}
+
 /// Read the four spell visual tables off the patch chain.
 pub fn load_spell_visual_catalog(chain: &mut Chain) -> Result<SpellVisualCatalog> {
     let sv_bytes = chain
         .read_file(SPELL_VISUAL)
         .context("reading SpellVisual.dbc")?;
-    let sv_set = parse(
-        &sv_bytes,
-        n_u32_schema("SpellVisual", SPELL_VISUAL_FIELDS),
-        "SpellVisual.dbc",
-    )?;
+    let sv_set = parse(&sv_bytes, spell_visual_schema(), "SpellVisual.dbc")?;
     let mut visuals = HashMap::with_capacity(sv_set.records().len());
     for r in sv_set.records() {
         let Some(id) = u32_at(r, 0) else { continue };
-        let g = |i: usize| u32_at(r, i).unwrap_or(0);
-        visuals.insert(
-            id,
-            VisualStages {
-                precast: g(1),
-                cast: g(2),
-                impact: g(3),
-                state: g(4),
-                channel: g(5),
-                missile_model: g(7),
-                missile_attach: g(9),
-                missile_sound: u32_at(r, 10).and_then(some_unless_none),
-                strike_sound: u32_at(r, 14).and_then(some_unless_none),
-                missile_gate: g(6),
-                area_gate: g(11),
-                area_effect: g(12),
-                area_kit: g(13),
-            },
-        );
+        visuals.insert(id, visual_stages(r));
     }
 
     let svk_bytes = chain
@@ -501,27 +580,7 @@ pub fn load_spell_visual_catalog(chain: &mut Chain) -> Result<SpellVisualCatalog
     let mut kits = HashMap::with_capacity(svk_set.records().len());
     for r in svk_set.records() {
         let Some(id) = u32_at(r, 0) else { continue };
-        let anim_id = u32_at(r, 2).and_then(some_unless_none).map(|a| a as u16);
-        let sound = u32_at(r, 13).and_then(some_unless_none);
-        let mut effect_slots = [None; 9];
-        for (i, slot) in effect_slots.iter_mut().enumerate() {
-            *slot = u32_at(r, 3 + i).and_then(some_unless_none);
-        }
-        let mut char_proc_slots = [None; KIT_CHAR_PROCS];
-        for (i, slot) in char_proc_slots.iter_mut().enumerate() {
-            *slot = char_proc_slot(r, i);
-        }
-        kits.insert(
-            id,
-            VisualKit {
-                anim_id,
-                sound,
-                effect_slots,
-                world_effect: u32_at(r, 12).and_then(some_unless_none),
-                shake: u32_at(r, 14).and_then(some_unless_none),
-                char_proc_slots,
-            },
-        );
+        kits.insert(id, visual_kit(r));
     }
 
     let sven_bytes = chain
@@ -545,7 +604,16 @@ pub fn load_spell_visual_catalog(chain: &mut Chain) -> Result<SpellVisualCatalog
         }
     }
 
-    let chain_effects = chain_effects::load(chain).context("reading SpellChainEffects.dbc")?;
+    let (chain_effects, chain_effect_error) = match chain_effects::load(chain) {
+        Ok(rows) => (rows, None),
+        Err(error)
+            if chain.client_build() == Some(8606)
+                && format!("{error:#}").contains("schema has 8 fields but file has 47") =>
+        {
+            (HashMap::new(), Some(format!("{error:#}")))
+        }
+        Err(error) => return Err(error).context("reading SpellChainEffects.dbc"),
+    };
 
     Ok(SpellVisualCatalog {
         visuals,
@@ -553,6 +621,7 @@ pub fn load_spell_visual_catalog(chain: &mut Chain) -> Result<SpellVisualCatalog
         effect_paths,
         hardcoded,
         chain_effects,
+        chain_effect_error,
     })
 }
 

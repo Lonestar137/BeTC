@@ -79,7 +79,7 @@ pub(crate) enum SpellKitSound {
     StopKit { entity: Entity, kit_sound: u32 },
 }
 
-/// A kit's camera shake (kit field 14 → `SpellEffectCameraShakes.dbc`), consumed by
+/// A kit's camera shake (build-8606 kit field 17 → `SpellEffectCameraShakes.dbc`), consumed by
 /// [`crate::camera_shake`]: once per kit play at every stage (`0x620e11`, or `0x60f4e6` with no
 /// node), never cancelled.
 #[derive(Message, Clone, Copy, Debug)]
@@ -207,6 +207,9 @@ pub(super) fn load_spell_visuals(mut commands: Commands, assets: Option<Res<Worl
     };
     match loaded {
         Ok(cat) => {
+            if let Some(error) = cat.chain_effect_error() {
+                warn!("anim: SpellChainEffects unsupported for build 8606: {error}");
+            }
             info!(
                 "anim: {} SpellVisual / {} SpellVisualKit rows",
                 cat.len(),
@@ -333,14 +336,14 @@ fn resolve_kit_traced(
     kit
 }
 
-/// The in-flight cast's strike sound for the `$TRD` event (`0x62faa0`): `SpellVisual` dword 14
-/// (Mining's 1143 "Mining Impact"). No ranged fallback: `$TRD` rides work animations only.
+/// The in-flight cast's animation-event sound: build-8606 `SpellVisual` field 11. No ranged
+/// fallback: the event rides work animations only.
 pub(crate) fn held_strike_sound(
     spells: &crate::ui_action::Spells,
     visuals: &SpellVisualCatalog,
     spell_id: u32,
 ) -> Option<u32> {
-    resolve_stages(spells, visuals, spell_id, || None)?.strike_sound
+    resolve_stages(spells, visuals, spell_id, || None)?.anim_event_sound
 }
 
 /// A kit's populated effect slots; a slot with no `SpellVisualEffectName` path is skipped.
@@ -566,8 +569,8 @@ pub(super) fn route_cast_visuals(
     let (Some(visuals), Some(spells)) = (visuals.as_deref(), spells.as_deref()) else {
         return; // no client data
     };
-    // Disjoint borrows: the beam writer rides `out` while the missile and burst writers stay free.
-    let (missiles, bursts, chains, shakes, trails, recomputes) = (
+    // Disjoint borrows: the beam writer rides `out` while the missile writer stays free.
+    let (missiles, _bursts, chains, shakes, trails, recomputes) = (
         &mut spawns.0,
         &mut spawns.1,
         &mut spawns.2,
@@ -770,7 +773,13 @@ pub(super) fn route_cast_visuals(
                 // A missile arrived at a point (`0x61e1d0` → `0x61d870`): `SpellVisual` field 13,
                 // the area kit, plays at the landing point. Every shipped row that reaches here
                 // carries only a sound, so the anim and slot legs are not built.
-                let area = resolve_kit(spells, &visuals.0, ev.spell_id, |s| s.area_kit, || None);
+                let area = resolve_kit(
+                    spells,
+                    &visuals.0,
+                    ev.spell_id,
+                    |s| s.impact_area_kit,
+                    || None,
+                );
                 if let Some(kit_sound) = area.and_then(|k| k.sound) {
                     out.sounds.write(SpellKitSound::PlayAt { pos, kit_sound });
                 }
@@ -804,20 +813,6 @@ pub(super) fn route_cast_visuals(
         // Resolved once per GO (`0x6e802e`); every consumer below reads the merged row.
         let wv = weapon_src.caster(go.caster);
         let stages = resolve_stages(spells, &visuals.0, go.spell_id, || wv);
-        // The dest one-shot (`0x6e8088`): field 12's model once at the dest point when field 6 is
-        // 0, fired at GO whatever the hit list.
-        if let Some(dest) = go.dest {
-            if let Some(stages) = stages {
-                if stages.missile_gate == 0 && stages.area_effect != 0 {
-                    if let Some(path) = visuals.0.effect_path(stages.area_effect) {
-                        bursts.write(crate::entities::dest_fx::GroundBurst {
-                            path: path.to_string(),
-                            pos: dest,
-                        });
-                    }
-                }
-            }
-        }
         if display.speed <= 0.0 {
             // Each hit flinches after its impact kit iff the spell is harmful (`0x6e8c7b`).
             let flinch = display.is_harmful();

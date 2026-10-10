@@ -1,4 +1,4 @@
-//! `charprocs`: census the `SpellVisualKit` CharProc columns (fields 15-34), what a kit does to
+//! `charprocs`: census the `SpellVisualKit` CharProc columns (build-8606 fields 18-37), what a kit does to
 //! the body rather than at an attach point: which proc types exist, which stage reaches each from
 //! a live spell, and every state-stage proc, which lasts as long as its aura.
 
