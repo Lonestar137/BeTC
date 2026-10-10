@@ -1772,15 +1772,6 @@ impl GameCore {
             });
             (amount, periodic)
         };
-        if let Some(spawn_id) = target_spawn_id {
-            let hostile = self
-                .hostiles
-                .iter_mut()
-                .find(|hostile| hostile.spawn_id == spawn_id && hostile.health > 0)
-                .ok_or(CoreError::InvalidTarget)?;
-            hostile.provoked = true;
-            hostile.evading = false;
-        }
         self.cast_remaining_ms = cast_time_ms;
         self.cooldown_remaining_ms = cooldown_ms;
         if spell_cooldown_ms > 0 {
@@ -1822,12 +1813,19 @@ impl GameCore {
         if self.active.is_none() || self.active_health == 0 || self.cast_spell_id != 0 {
             return None;
         }
+        // Only a mana-using class regens toward its pool; every other class pools at 0 and its
+        // `maximum_mana` is 0, so the loop never moves it (a rogue never gains mana).
+        let max_mana = self
+            .active
+            .as_ref()
+            .and_then(|id| self.snapshots.get(id))
+            .map_or(0, |snapshot| maximum_mana(snapshot.appearance.class));
         self.mana_regen_remainder_ms = self.mana_regen_remainder_ms.saturating_add(elapsed_ms);
         let mut changed = false;
         while self.mana_regen_remainder_ms >= MANA_REGEN_TICK_MS {
             self.mana_regen_remainder_ms -= MANA_REGEN_TICK_MS;
-            if self.active_mana < PLAYER_MAX_MANA {
-                self.active_mana = (self.active_mana + MANA_REGEN_PER_TICK).min(PLAYER_MAX_MANA);
+            if self.active_mana < max_mana {
+                self.active_mana = (self.active_mana + MANA_REGEN_PER_TICK).min(max_mana);
                 changed = true;
             }
         }
@@ -1912,6 +1910,9 @@ impl GameCore {
                         .find(|hostile| hostile.spawn_id == spawn_id)
                         .filter(|hostile| hostile.health > 0)
                         .map(|hostile| {
+                            // The hit is what provokes a neutral mob, not the cast that preceded it.
+                            hostile.provoked = true;
+                            hostile.evading = false;
                             hostile.health = hostile.health.saturating_sub(damage);
                             let killed = hostile.health == 0;
                             if killed {
@@ -3820,6 +3821,33 @@ mod tests {
     }
 
     #[test]
+    fn a_damage_spell_provokes_only_when_it_impacts() {
+        let (mut core, _, _) = practice_core_with_two();
+        core.enter_world().unwrap();
+        let hostile = core.hostile(HOSTILE_SPAWN_ID).unwrap();
+        core.begin_fireball(
+            FIREBALL_SPELL_ID,
+            hostile.spawn_id,
+            30,
+            FIREBALL_CAST_MS,
+            FIREBALL_CAST_MS,
+            FIREBALL_RANGE_YARDS,
+            30,
+            30,
+        )
+        .unwrap();
+        assert!(
+            !core.hostile(HOSTILE_SPAWN_ID).unwrap().provoked,
+            "a neutral mob stays neutral through the cast wind-up"
+        );
+        core.advance_combat(FIREBALL_CAST_MS);
+        assert!(
+            core.hostile(HOSTILE_SPAWN_ID).unwrap().provoked,
+            "the hit provokes the mob"
+        );
+    }
+
+    #[test]
     fn fireball_is_validated_casts_damages_and_respawns_the_authored_hostile() {
         let (mut core, player, _) = practice_core_with_two();
         core.enter_world().unwrap();
@@ -4796,6 +4824,19 @@ mod tests {
             None,
             "a full pool does not change"
         );
+    }
+
+    #[test]
+    fn a_non_mana_class_never_regens_a_pool() {
+        let (mut core, _) = core_for(10, 4); // Blood Elf Rogue: mana pool is 0.
+        core.enter_world().unwrap();
+        assert_eq!(core.active_mana(), 0, "a rogue has no mana pool");
+        assert_eq!(
+            core.advance_mana_regen(1_000_000),
+            None,
+            "a class with `maximum_mana` 0 never regens"
+        );
+        assert_eq!(core.active_mana(), 0);
     }
 
     #[test]

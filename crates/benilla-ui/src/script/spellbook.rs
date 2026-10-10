@@ -131,6 +131,21 @@ impl super::UiScript {
         self.model_mut().casting = casting;
     }
 
+    /// Stamp the player's in-flight timed cast for `UnitCastingInfo`/`UnitChannelInfo`, on the
+    /// `GetTime()` clock (seconds): the resolved name and icon, and the cast window.
+    pub fn set_active_cast(&mut self, name: String, icon: String, start: f64, end: f64) {
+        let mut model = self.model_mut();
+        model.cast_name = name;
+        model.cast_icon = icon;
+        model.cast_start = start;
+        model.cast_end = end;
+    }
+
+    /// Clear the in-flight cast `UnitCastingInfo` reads: the bar reads nothing mid-cast.
+    pub fn clear_active_cast(&mut self) {
+        self.model_mut().cast_name.clear();
+    }
+
     /// Take the `SpellStopCasting()` calls out of the call stream: whether there was one. The app
     /// stops the auto-repeat first, else the in-flight cast, the reference's order.
     pub fn take_spell_stop(&mut self) -> bool {

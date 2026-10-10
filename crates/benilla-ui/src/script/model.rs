@@ -457,6 +457,12 @@ pub(crate) struct Model {
     /// stock unit frames ask before they call `SpellTargetUnit`; a token resolves to its guid
     /// through [`Self::unit_guids`].
     pub(crate) spell_targetable_units: HashSet<u64>,
+    /// The player's in-flight timed cast, for `UnitCastingInfo`: the resolved spell name and icon,
+    /// with the cast window on the `GetTime()` clock (seconds). An empty name is nothing mid-cast.
+    pub(crate) cast_name: String,
+    pub(crate) cast_icon: String,
+    pub(crate) cast_start: f64,
+    pub(crate) cast_end: f64,
 
     pub(crate) talents: super::talent::TalentUiState,
     /// `LearnTalent(tab, index)` calls queued.
@@ -1202,6 +1208,10 @@ impl Model {
             casting: false,
             spell_targeting: false,
             spell_targetable_units: HashSet::new(),
+            cast_name: String::new(),
+            cast_icon: String::new(),
+            cast_start: 0.0,
+            cast_end: 0.0,
             talents: super::talent::TalentUiState::default(),
             talent_learns: Vec::new(),
             talent_wipe_confirms: 0,

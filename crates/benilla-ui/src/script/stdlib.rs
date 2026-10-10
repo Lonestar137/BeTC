@@ -376,8 +376,6 @@ if UnitCanAssist == nil then function UnitCanAssist() return nil end end
 if IsEquippableItem == nil then function IsEquippableItem() return nil end end
 if IsEquippedItem == nil then function IsEquippedItem() return nil end end
 if EquipItemByName == nil then function EquipItemByName() end end
-if UnitChannelInfo == nil then function UnitChannelInfo() return nil end end
-if UnitCastingInfo == nil then function UnitCastingInfo() return nil end end
 if SpellCanTargetItem == nil then function SpellCanTargetItem() return nil end end
 if SpellTargetItem == nil then function SpellTargetItem() end end
 if RunMacro == nil then function RunMacro() end end

@@ -1099,7 +1099,7 @@ pub(in crate::script) fn install(lua: &Lua) -> mlua::Result<()> {
         })?,
     )?;
 
-    // ClearTarget() (`0x489ff0`): 1 when it cleared a target, nil when there was none, which
+    //    ClearTarget() (`0x489ff0`): 1 when it cleared a target, nil when there was none, which
     // `ToggleGameMenu`'s Escape chain needs to fall through to the menu. The deselect is queued
     // either way: it reads the selection as the calls before it leave it (`0x489ff0`-`0x489fff`),
     // so `TargetUnit("player") ClearTarget()` ends with nothing selected.
@@ -1110,6 +1110,54 @@ pub(in crate::script) fn install(lua: &Lua) -> mlua::Result<()> {
             let had = model.unit("target").is_some_and(|u| u.exists);
             model.script_calls.push(ScriptCall::ClearTarget);
             Ok(flag(had))
+        })?,
+    )?;
+
+    // UnitCastingInfo(unit)/UnitChannelInfo(unit): the player's in-flight timed cast, the state the
+    // stock `CastingBarFrame` reads off the `UNIT_SPELLCAST_*` events. The reference's 7-tuple is
+    // name, nameSubtext, text, texture, startTime, endTime, isTradeSkill (start/end in ms on the
+    // `GetTime()` clock); nothing for any unit but `"player"`, and nothing idle. The rank subtext
+    // and the isTradeSkill flag read from `Spell.dbc` columns the offline sim does not resolve, so
+    // they answer nil.
+    g.set(
+        "UnitCastingInfo",
+        lua.create_function(|lua, token: Value| {
+            let token = crate::script::binding_abi::string_arg(
+                lua,
+                token,
+                r#"Usage: UnitCastingInfo("unit")"#,
+            )?;
+            if !token.eq_ignore_ascii_case("player") {
+                return Ok(mlua::MultiValue::new());
+            }
+            let model = lua.app_data_ref::<Model>().expect("model app_data");
+            if model.cast_name.is_empty() {
+                return Ok(mlua::MultiValue::new());
+            }
+            let name = lua.create_string(&model.cast_name)?;
+            let icon = lua.create_string(&model.cast_icon)?;
+            Ok(mlua::MultiValue::from_vec(vec![
+                Value::String(name.clone()),
+                Value::Nil,
+                Value::String(name),
+                Value::String(icon),
+                Value::Number(model.cast_start * 1000.0),
+                Value::Number(model.cast_end * 1000.0),
+                Value::Nil,
+            ]))
+        })?,
+    )?;
+
+    // The offline combat has no channelled spells, so the channel bar never opens.
+    g.set(
+        "UnitChannelInfo",
+        lua.create_function(|lua, token: Value| {
+            crate::script::binding_abi::string_arg(
+                lua,
+                token,
+                r#"Usage: UnitChannelInfo("unit")"#,
+            )?;
+            Ok(mlua::MultiValue::new())
         })?,
     )?;
 
