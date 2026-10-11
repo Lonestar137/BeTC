@@ -476,6 +476,24 @@ fn emit_world_entry_with_talents(
     patrols: &mut OfflinePatrols,
 ) {
     patrols.0.clear();
+    // The summoned pets' identities join the creature-name cache at world entry, so a summon's
+    // unit, pet tab and combat log resolve whenever one appears.
+    for template in benilla_game_core::summon::summons() {
+        names.insert_creature(
+            template.entry,
+            Some(crate::names::CreatureRecord {
+                name: template.name.clone(),
+                subname: None,
+                creature_type: template.creature_type,
+                pet_family: template.family,
+                rank: 0,
+                type_flags: 0,
+                civilian: false,
+                racial_leader: false,
+                display_id: template.display_id,
+            }),
+        );
+    }
     let guid = snapshot.id.presentation_guid();
     let position = [
         snapshot.position.x,
@@ -924,6 +942,36 @@ fn imported_guid(entry: u32, source_guid: u32) -> u64 {
     (u64::from(benilla_protocol::guid::HIGH_UNIT) << 48)
         | (u64::from(entry) << 24)
         | u64::from(source_guid & 0x00ff_ffff)
+}
+
+/// The summoned pet's unit guid: its summon-pack creature entry with one synthetic spawn id (only
+/// one pet is up at a time).
+fn summon_guid(entry: u32) -> u64 {
+    imported_guid(entry, 1)
+}
+
+/// The summoned pet's action bar: the fixed command and reaction buttons in vmangos's order
+/// (`Player::PetSpellInitialize`), defensive react and follow command as the default state.
+fn summon_pet_bar(pet_guid: u64) -> benilla_protocol::messages::PetSpells {
+    use benilla_protocol::messages as m;
+    let command = |action: u32| m::PetActionEntry::from((u32::from(m::PET_ACT_COMMAND) << 24) | action);
+    let reaction =
+        |react: u32| m::PetActionEntry::from((u32::from(m::PET_ACT_REACTION) << 24) | react);
+    let mut bar = [m::PetActionEntry::default(); m::PET_ACTION_SLOTS];
+    bar[0] = command(m::PET_COMMAND_ATTACK);
+    bar[1] = command(m::PET_COMMAND_FOLLOW);
+    bar[2] = command(m::PET_COMMAND_STAY);
+    bar[3] = reaction(m::PET_REACT_PASSIVE);
+    bar[4] = reaction(m::PET_REACT_DEFENSIVE);
+    bar[5] = reaction(m::PET_REACT_AGGRESSIVE);
+    m::PetSpells {
+        pet_guid,
+        duration_ms: 0,
+        state: m::PET_REACT_DEFENSIVE | (m::PET_COMMAND_FOLLOW << 8),
+        bar,
+        spells: Vec::new(),
+        cooldowns: Vec::new(),
+    }
 }
 
 fn combat_target_guid(hostile: &HostileState) -> Option<u64> {
@@ -1619,7 +1667,8 @@ fn plan_direct_effect(effects: [u32; 3], auras: [u32; 3]) -> Option<EffectPlan> 
             | benilla_formats::SPELL_EFFECT_HEAL
             | benilla_formats::SPELL_EFFECT_WEAPON_DAMAGE
             | benilla_formats::SPELL_EFFECT_WEAPON_DAMAGE_NOSCHOOL
-            | benilla_formats::SPELL_EFFECT_NORMALIZED_WEAPON_DMG => {
+            | benilla_formats::SPELL_EFFECT_NORMALIZED_WEAPON_DMG
+            | benilla_formats::SPELL_EFFECT_SUMMON => {
                 if direct.replace(slot).is_some() {
                     return None;
                 }
@@ -2058,7 +2107,14 @@ fn drive_offline_gameplay(
                             })
                         })
                         .flatten();
-                    let effect = if let Some(channel) = channel_effect {
+                    // A summon row names its creature in `EffectMiscValue`; the sim arms the pet.
+                    let summon = (0..3).find_map(|slot| {
+                        (spell.effects[slot] == benilla_formats::SPELL_EFFECT_SUMMON)
+                            .then(|| spell.effect_misc_value[slot].max(0) as u32)
+                    });
+                    let effect = if let Some(creature_entry) = summon {
+                        benilla_game_core::DirectSpellEffect::Summon { creature_entry }
+                    } else if let Some(channel) = channel_effect {
                         channel
                     } else if let Some(control) = control.filter(|_| plan.direct.is_none()) {
                         // A bare control spell (Hammer of Justice's stun) lands its control arm.
@@ -3193,6 +3249,10 @@ fn start_offline_cast(
     };
     let player_guid = id.presentation_guid();
     let (presentation_target, cast_target) = match effect {
+        benilla_game_core::DirectSpellEffect::Summon { .. } => (
+            Some(player_guid),
+            benilla_game_core::SpellTarget::SelfCharacter,
+        ),
         benilla_game_core::DirectSpellEffect::Damage { .. }
         | benilla_game_core::DirectSpellEffect::WeaponDamage { .. }
         | benilla_game_core::DirectSpellEffect::Channel { .. }
@@ -3748,6 +3808,102 @@ fn advance_offline_combat_with_talents(
             CombatUpdate::ChannelEnd { spell_id } => {
                 changed = true;
                 let _ = spell_id;
+            }
+            CombatUpdate::Summoned { creature_entry } => {
+                // The pet's unit object and action bar come up together, as vmangos's
+                // `Pet::Create` + `PetSpellInitialize` pair does.
+                changed = true;
+                let Some(template) = benilla_game_core::summon::summon_template(creature_entry)
+                else {
+                    continue;
+                };
+                let Some(id) = core.active() else {
+                    continue;
+                };
+                let Some(position) = core.snapshot(id).map(|snapshot| snapshot.position) else {
+                    continue;
+                };
+                let guid = summon_guid(creature_entry);
+                let fields = [
+                    (2, 0x9), // OBJECT_FIELD_TYPE: object and unit
+                    (3, creature_entry),
+                    (4, template.scale.to_bits()),
+                    (22, template.health),
+                    (28, template.health),
+                    (34, 1),
+                    (35, template.faction),
+                    (130, 1.5f32.to_bits()),
+                    (131, template.display_id),
+                    (132, template.display_id),
+                ];
+                send_gameplay_events(
+                    channels,
+                    [
+                        SessionEvent::ObjectCreate {
+                            guid,
+                            kind: EntityKind::Unit,
+                            display_id: Some(template.display_id),
+                            position: [position.x, position.y, position.z],
+                            orientation: position.orientation,
+                            scale: template.scale,
+                            speeds: None,
+                            mover: None,
+                            transport_progress: None,
+                            transport: None,
+                            spline: None,
+                            fields: ObjectFields::from_pairs(&fields)
+                                .into_created(benilla_protocol::messages::ObjectType::Unit),
+                        },
+                        SessionEvent::PetSpells(Box::new(summon_pet_bar(guid))),
+                    ],
+                );
+            }
+            CombatUpdate::SummonImpact {
+                creature_entry,
+                impact,
+            } => {
+                // The pet's white swing: its own attacker state from its unit guid.
+                changed = true;
+                let Some(hostile) = core.hostile(impact.spawn_id) else {
+                    continue;
+                };
+                let Some(victim) = combat_target_guid(&hostile) else {
+                    continue;
+                };
+                let mut events = vec![SessionEvent::AttackerState(
+                    benilla_protocol::messages::AttackerState {
+                        attacker: summon_guid(creature_entry),
+                        victim,
+                        hit_info: 0,
+                        damage: impact.damage,
+                        victim_state: 1,
+                        absorb: 0,
+                        resist: 0,
+                        blocked: 0,
+                        melee_spell_id: 0,
+                        school: 0,
+                    },
+                )];
+                events.extend(hostile_spell_state_events(
+                    victim,
+                    &hostile,
+                    impact.killed.then_some(0),
+                ));
+                send_gameplay_events(channels, events);
+            }
+            CombatUpdate::SummonDismissed { creature_entry } => {
+                // The pet object leaves and the bar goes with it (a zero-guid `PetSpells` is the
+                // teardown).
+                changed = true;
+                send_gameplay_events(
+                    channels,
+                    [
+                        SessionEvent::ObjectDestroyed(summon_guid(creature_entry)),
+                        SessionEvent::PetSpells(Box::new(benilla_protocol::messages::PetSpells {
+                            ..Default::default()
+                        })),
+                    ],
+                );
             }
             CombatUpdate::MeleeImpact(impact) => {
                 let Some(id) = core.active() else {
@@ -4505,8 +4661,8 @@ mod tests {
 
         // Explicit unsupported effect families (RULES.md "Spell Effect Coverage"): dummy-armed
         // and health-cost mechanics, mana burn and resource restore, charge-like movement,
-        // summons and totems, the area and mana-leech channel arms, and the acquisition and tool
-        // families the trainer and profession systems own.
+        // totems and summoned world objects, the area and mana-leech channel arms, and the
+        // acquisition and tool families the trainer and profession systems own.
         const BLOCKERS: &[u32] = &[
             benilla_formats::SPELL_EFFECT_DUMMY,
             benilla_formats::SPELL_EFFECT_ENERGIZE,
@@ -4521,11 +4677,12 @@ mod tests {
             benilla_formats::SPELL_EFFECT_SKINNING,
             benilla_formats::SPELL_EFFECT_TRADE_SKILL,
             benilla_formats::SPELL_EFFECT_PROSPECTING,
+            benilla_formats::SPELL_EFFECT_SUMMON_TOTEM,
+            benilla_formats::SPELL_EFFECT_SUMMON_OBJECT_WILD,
             39, // SPELL_EFFECT_LANGUAGE (the language-learning family)
             5,  // SPELL_EFFECT_TELEPORT_UNITS (Hearthstone 8690)
             27, // SPELL_EFFECT_PERSISTENT_AREA_AURA (Blizzard 10's area arm)
             33, // SPELL_EFFECT_OPEN_LOCK (Pick Lock 1804)
-            76, // SPELL_EFFECT_SUMMON (the summon family; not modeled)
         ];
         let data = benilla_formats::wow_data_or_skip!();
         let mut chain = benilla_formats::open_chain(&data).expect("open chain");
@@ -6361,6 +6518,110 @@ mod tests {
         assert!(
             received.try_iter().next().is_none(),
             "a cancelled shot stays quiet"
+        );
+    }
+
+    /// Acceptance: a warlock's demon is a working pet. Summon Imp (688) brings the converted imp
+    /// (entry 416) up as a unit with its pet bar, and it swings with its owner's attack.
+    #[test]
+    fn offline_summon_imp_brings_up_the_pet_its_bar_and_its_swings() {
+        let Some(spells) = crate::ui_action::real_spells() else {
+            return;
+        };
+        let id = CharacterId::parse("00000000000000000000000000000007").unwrap();
+        let appearance = Appearance {
+            race: 10,
+            class: 9,
+            gender: 0,
+            skin: 0,
+            face: 0,
+            hair_style: 0,
+            hair_color: 0,
+            facial_hair: 0,
+        };
+        let mut core = GameCore::default();
+        core.create_character(
+            id.clone(),
+            "Velindra",
+            appearance,
+            starting_position(10).unwrap(),
+        )
+        .unwrap();
+        core.enter_world().unwrap();
+        assert!(
+            core.snapshot(&id)
+                .unwrap()
+                .known_spell_ids
+                .contains(&688),
+            "the authored stock-TBC grant puts Summon Imp in the spellbook"
+        );
+        let hostile = core.hostiles().first().copied().expect("imported target");
+        core.update_active(hostile.position, 0).unwrap();
+
+        let (_pick_tx, picks) = crossbeam_channel::unbounded();
+        let (events, received) = crossbeam_channel::unbounded();
+        let (commands, command_receiver) = crossbeam_channel::unbounded();
+        let mut app = App::new();
+        app.insert_resource(OfflineChannels {
+            picks,
+            events,
+            commands: command_receiver,
+        })
+        .insert_resource(OfflineGameCore(core))
+        .insert_resource(OfflinePersistence::new(false))
+        .insert_resource(Time::<()>::default())
+        .insert_resource(spells);
+
+        commands
+            .send(crate::net::ClientCommand::CastSpell {
+                spell_id: 688,
+                target: Some(id.presentation_guid()),
+            })
+            .unwrap();
+        app.world_mut()
+            .run_system_once(drive_offline_gameplay)
+            .expect("the summon command is handled");
+        let channels = app.world().resource::<OfflineChannels>().clone();
+        {
+            let core = &mut app.world_mut().resource_mut::<OfflineGameCore>().0;
+            advance_offline_combat(core, &channels, 20_000);
+        }
+        let pet_guid = summon_guid(416);
+        let summoned: Vec<_> = received.try_iter().collect();
+        assert!(
+            summoned.iter().any(|event| matches!(
+                event,
+                SessionEvent::ObjectCreate { guid, .. } if *guid == pet_guid
+            )),
+            "the imp's unit comes up: {summoned:?}"
+        );
+        assert!(summoned.iter().any(|event| matches!(
+            event,
+            SessionEvent::PetSpells(bar) if bar.pet_guid == pet_guid
+        )));
+
+        // The pet joins its owner's attack and swings the creature baseline at the target.
+        commands
+            .send(crate::net::ClientCommand::AttackSwing {
+                guid: hostile_guid(hostile.spawn_id),
+            })
+            .unwrap();
+        app.world_mut()
+            .run_system_once(drive_offline_gameplay)
+            .expect("the attack command is handled");
+        {
+            let core = &mut app.world_mut().resource_mut::<OfflineGameCore>().0;
+            advance_offline_combat(core, &channels, benilla_game_core::CREATURE_SWING_MS);
+        }
+        let swings: Vec<_> = received.try_iter().collect();
+        assert!(
+            swings.iter().any(|event| matches!(
+                event,
+                SessionEvent::AttackerState(state)
+                    if state.attacker == pet_guid
+                        && state.damage == benilla_game_core::CREATURE_DAMAGE
+            )),
+            "the pet's swing lands: {swings:?}"
         );
     }
 

@@ -1,0 +1,178 @@
+schema_version = 1
+source = "https://github.com/cmangos/tbc-db"
+revision = "866723612d93791e442fb1b18d642118fa682edd"
+license = "GPL-3.0"
+client_build = 8606
+extraction_command = "python3 scripts/import-tbc-summons.py <TBC-DB full SQL dump> crates/benilla-game-core/content/tbc-summons.toml"
+authored = "[[grant]] rows restore the stock-TBC warlock demon spellbook; the pinned DB teaches none of them (see the script's docstring)"
+
+[[summon]]
+entry = 416
+name = "Imp"
+display_id = 4449
+faction = 14
+scale = 1.0
+creature_type = 3
+family = 23
+health = 166
+
+[[summon]]
+entry = 417
+name = "Felhunter"
+display_id = 850
+faction = 115
+scale = 1.0
+creature_type = 3
+family = 15
+health = 3857
+
+[[summon]]
+entry = 1860
+name = "Voidwalker"
+display_id = 1132
+faction = 14
+scale = 1.0
+creature_type = 3
+family = 16
+health = 500
+
+[[summon]]
+entry = 1863
+name = "Succubus"
+display_id = 4162
+faction = 14
+scale = 1.0
+creature_type = 3
+family = 17
+health = 20000
+
+[[summon]]
+entry = 17252
+name = "Felguard"
+display_id = 14255
+faction = 90
+scale = 1.0
+creature_type = 3
+family = 29
+health = 1034
+
+[[grant]]
+race = 1
+class = 9
+spell_id = 688
+note = "Summon (authored: stock TBC level-1 Summon Imp; the pinned DB teaches no demon)"
+
+[[grant]]
+race = 1
+class = 9
+spell_id = 697
+note = "Summon (authored: stock TBC level-10 Summon Voidwalker; the pinned DB teaches no demon)"
+
+[[grant]]
+race = 1
+class = 9
+spell_id = 712
+note = "Summon (authored: stock TBC level-20 Summon Succubus; the pinned DB teaches no demon)"
+
+[[grant]]
+race = 1
+class = 9
+spell_id = 691
+note = "Summon (authored: stock TBC level-30 Summon Felhunter; the pinned DB teaches no demon)"
+
+[[grant]]
+race = 2
+class = 9
+spell_id = 688
+note = "Summon (authored: stock TBC level-1 Summon Imp; the pinned DB teaches no demon)"
+
+[[grant]]
+race = 2
+class = 9
+spell_id = 697
+note = "Summon (authored: stock TBC level-10 Summon Voidwalker; the pinned DB teaches no demon)"
+
+[[grant]]
+race = 2
+class = 9
+spell_id = 712
+note = "Summon (authored: stock TBC level-20 Summon Succubus; the pinned DB teaches no demon)"
+
+[[grant]]
+race = 2
+class = 9
+spell_id = 691
+note = "Summon (authored: stock TBC level-30 Summon Felhunter; the pinned DB teaches no demon)"
+
+[[grant]]
+race = 5
+class = 9
+spell_id = 688
+note = "Summon (authored: stock TBC level-1 Summon Imp; the pinned DB teaches no demon)"
+
+[[grant]]
+race = 5
+class = 9
+spell_id = 697
+note = "Summon (authored: stock TBC level-10 Summon Voidwalker; the pinned DB teaches no demon)"
+
+[[grant]]
+race = 5
+class = 9
+spell_id = 712
+note = "Summon (authored: stock TBC level-20 Summon Succubus; the pinned DB teaches no demon)"
+
+[[grant]]
+race = 5
+class = 9
+spell_id = 691
+note = "Summon (authored: stock TBC level-30 Summon Felhunter; the pinned DB teaches no demon)"
+
+[[grant]]
+race = 7
+class = 9
+spell_id = 688
+note = "Summon (authored: stock TBC level-1 Summon Imp; the pinned DB teaches no demon)"
+
+[[grant]]
+race = 7
+class = 9
+spell_id = 697
+note = "Summon (authored: stock TBC level-10 Summon Voidwalker; the pinned DB teaches no demon)"
+
+[[grant]]
+race = 7
+class = 9
+spell_id = 712
+note = "Summon (authored: stock TBC level-20 Summon Succubus; the pinned DB teaches no demon)"
+
+[[grant]]
+race = 7
+class = 9
+spell_id = 691
+note = "Summon (authored: stock TBC level-30 Summon Felhunter; the pinned DB teaches no demon)"
+
+[[grant]]
+race = 10
+class = 9
+spell_id = 688
+note = "Summon (authored: stock TBC level-1 Summon Imp; the pinned DB teaches no demon)"
+
+[[grant]]
+race = 10
+class = 9
+spell_id = 697
+note = "Summon (authored: stock TBC level-10 Summon Voidwalker; the pinned DB teaches no demon)"
+
+[[grant]]
+race = 10
+class = 9
+spell_id = 712
+note = "Summon (authored: stock TBC level-20 Summon Succubus; the pinned DB teaches no demon)"
+
+[[grant]]
+race = 10
+class = 9
+spell_id = 691
+note = "Summon (authored: stock TBC level-30 Summon Felhunter; the pinned DB teaches no demon)"
+

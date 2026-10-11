@@ -180,12 +180,18 @@ pub fn creature_kill_xp(player_level: u8, creature_level: u8) -> u32 {
 }
 
 pub fn starter_spell_ids(race: u8, class: u8) -> Vec<u32> {
-    progression_data()
+    let mut ids: Vec<u32> = progression_data()
         .starter_spell
         .iter()
         .filter(|spell| spell.race == race && spell.class == class)
         .map(|spell| spell.spell_id)
-        .collect()
+        .collect();
+    // The authored summon grants join the starter set (see `crate::summon`): stock TBC's warlock
+    // demons, which the pinned DB teaches through no importable table.
+    ids.extend(crate::summon::summon_grants(race, class));
+    ids.sort_unstable();
+    ids.dedup();
+    ids
 }
 
 pub fn starting_actions(race: u8, class: u8) -> impl Iterator<Item = StartingAction> {

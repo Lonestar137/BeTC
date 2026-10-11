@@ -129,15 +129,35 @@ health costs are modeled. `ManaCostPercentage` counts against base mana only for
 
 ## Summons
 
-Summons, guardians and totems are not modeled yet: no pet state exists in the simulation, and a
-summon spell is an explicit unsupported blocker rather than a silent no-op. The action bar, pet
-frames and combat-log naming in the presentation remain wired for the future pet model.
+A `SPELL_EFFECT_SUMMON` row (Summon Imp 688 and the other warlock demons) resolves to a summoned
+combat pet: the row's `EffectMiscValue` is the creature entry, converted into
+`content/tbc-summons.toml` from the pinned CMaNGOS source. One pet is up at a time; a second
+summon replaces the first and a dismissal empties the slot. The pet joins its owner's auto-attack
+target and swings the creature baseline (`CREATURE_DAMAGE` per `CREATURE_SWING_MS`) like every
+creature in the simulation — the pack carries no pet combat numbers, and converted pet damage
+scaling (`pet_levelstats` and attack power) is the future fidelity path. Nothing attacks the pet:
+guardian durability is not modeled, and it stops fighting when its owner dies. The pet is session
+state — never saved — and its summon spell re-creates it.
+
+The pet's spellbook grant is **authored, not converted**: stock TBC teaches a warlock its demons
+(Imp at 1, Voidwalker at 10, Succubus at 20, Felhunter at 30) and the pinned Vengeance-One DB
+expresses none of those acquisitions in `playercreateinfo_spell`, `npc_trainer`,
+`npc_trainer_template` or `spell_learn_spell` (verified against the pinned dump: the demon spell
+ids appear zero times in `npc_trainer`, where a control spell appears three times). The
+`[[grant]]` rows in the summon pack restore the stock spellbook so the class plays as stock TBC;
+the grants join the starter set and the coverage audit audits them like any starter spell.
+
+Totems and totem-style guardians (`SPELL_EFFECT_SUMMON_TOTEM`: Earthbind Totem 2484, Water
+Elemental 31687, Shadowfiend 34433) and summoned world objects (`SPELL_EFFECT_SUMMON_OBJECT_WILD`:
+Ritual of Doom 18540) remain explicit unsupported blockers — their stationary placement and
+auto-casting are their own model. The presentation is already wired for the pet (pet frame, pet
+bar, pet tab and combat-log naming).
 
 ## Spell Effect Coverage
 
 The direct-cast resolver reads build-8606 `Spell.dbc` effect rows and resolves these families:
 school damage, heal, the four weapon-damage arms, aura-only buffs and debuffs, one linked
-periodic-damage aura (DoT), channeled per-tick effects, and movement-control arms. Secondary
+periodic-damage aura (DoT), channeled per-tick effects, movement-control arms, and summons. Secondary
 mechanics beside the direct arm are named and carried:
 builder combo points, the interrupt's school lockout (Shield Bash, Pummel; no caster to interrupt
 yet, so the lockout is presentation), and a trigger (`EffectTriggerSpell`). Periodic damage ticks

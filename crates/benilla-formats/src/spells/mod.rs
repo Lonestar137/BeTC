@@ -267,6 +267,15 @@ pub const SPELL_EFFECT_APPLY_AURA: u32 = 6;
 pub const SPELL_EFFECT_DUMMY: u32 = 3;
 /// `SPELL_EFFECT_HEAL`, a direct health restore (Holy Light 635).
 pub const SPELL_EFFECT_HEAL: u32 = 10;
+/// `SPELL_EFFECT_SUMMON`: the row's `EffectMiscValue` is the summoned creature entry (the warlock
+/// demons' arm — Summon Imp 688 summons entry 416).
+pub const SPELL_EFFECT_SUMMON: u32 = 56;
+/// `SPELL_EFFECT_SUMMON_TOTEM`: totems and totem-style guardians (Earthbind Totem 2484, Water
+/// Elemental 31687, Shadowfiend 34433). Not modeled.
+pub const SPELL_EFFECT_SUMMON_TOTEM: u32 = 28;
+/// `SPELL_EFFECT_SUMMON_OBJECT_WILD`: a summoned world object (Ritual of Doom 18540's ritual
+/// object). Not modeled.
+pub const SPELL_EFFECT_SUMMON_OBJECT_WILD: u32 = 50;
 /// `SPELL_EFFECT_WEAPON_DAMAGE_NOSCHOOL`: "weapon damage plus $s1", the physical melee
 /// abilities (Heroic Strike 78, Cleave 845, Slam 1464).
 pub const SPELL_EFFECT_WEAPON_DAMAGE_NOSCHOOL: u32 = 17;

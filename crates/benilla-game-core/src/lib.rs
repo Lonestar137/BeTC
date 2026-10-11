@@ -4,6 +4,7 @@ pub mod content;
 pub mod loot;
 pub mod progression;
 pub mod quest;
+pub mod summon;
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -439,6 +440,12 @@ pub enum DirectSpellEffect {
     },
     /// A movement-control spell with no direct amount (Hammer of Justice's stun).
     Control(ControlEffect),
+    /// A summon (the warlock demons' `SPELL_EFFECT_SUMMON` arm): the row's `EffectMiscValue` is
+    /// the summoned creature entry. The pet replaces any current one and joins its owner's
+    /// auto-attack target.
+    Summon {
+        creature_entry: u32,
+    },
 }
 
 /// A hostile movement-control arm and its duration. One control runs per hostile at a time and
@@ -458,6 +465,18 @@ pub enum ControlKind {
     Stun,
     Root,
     Snare,
+}
+
+/// The one summoned combat pet (a warlock demon). It is session state — never saved, its summon
+/// spell re-creates it — and it joins its owner's auto-attack target on the creature baseline's
+/// swing. Nothing attacks it: guardian durability is not modeled (`RULES.md`, "Summons").
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SummonState {
+    pub creature_entry: u32,
+    pub health: u32,
+    pub max_health: u32,
+    pub target_spawn_id: Option<u32>,
+    pub swing_remaining_ms: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -606,6 +625,20 @@ pub enum CombatUpdate {
     /// A channeled spell's last tick landed (or its target died mid-channel).
     ChannelEnd {
         spell_id: u32,
+    },
+    /// A summon joined the session (a warlock demon): its unit and pet bar come up in the
+    /// presentation.
+    Summoned {
+        creature_entry: u32,
+    },
+    /// The summon left the session: replaced by another summon or dismissed.
+    SummonDismissed {
+        creature_entry: u32,
+    },
+    /// The summon's white swing landed on a hostile.
+    SummonImpact {
+        creature_entry: u32,
+        impact: CastImpact,
     },
     /// A Fireball burn tick (periodic damage) on a living hostile.
     DotImpact(CastImpact),
@@ -924,7 +957,9 @@ pub struct GameCore {
     cast_periodic: Option<PendingPeriodicDamage>,
     cast_channel: Option<PendingChannel>,
     cast_control: Option<ControlEffect>,
+    cast_summon: Option<u32>,
     active_channel: Option<ActiveChannel>,
+    summon: Option<SummonState>,
     melee_target_spawn_id: Option<u32>,
     melee_remaining_ms: u32,
     /// The ranged white attack (Auto Shot, Shoot, Throw): its target, its own swing timer, and
@@ -1905,7 +1940,9 @@ impl GameCore {
         self.cast_periodic = None;
         self.cast_channel = None;
         self.cast_control = None;
+        self.cast_summon = None;
         self.active_channel = None;
+        self.summon = None;
         self.melee_target_spawn_id = None;
         self.melee_remaining_ms = 0;
         self.mana_regen_remainder_ms = 0;
@@ -2296,7 +2333,9 @@ impl GameCore {
         self.cast_periodic = None;
         self.cast_channel = None;
         self.cast_control = None;
+        self.cast_summon = None;
         self.active_channel = None;
+        self.summon = None;
         self.stop_auto_attack();
         for hostile in &mut self.hostiles {
             hostile.provoked = false;
@@ -2335,12 +2374,18 @@ impl GameCore {
         self.melee_target_spawn_id = Some(spawn_id);
         self.melee_remaining_ms =
             equipped_weapon(snapshot).map_or(MELEE_SWING_MS, |weapon| weapon.swing_ms);
+        if let Some(pet) = &mut self.summon {
+            pet.target_spawn_id = Some(spawn_id);
+        }
         Ok(())
     }
 
     /// Stop the active auto-attack and report its target so presentation can clear the combat edge.
     pub fn stop_auto_attack(&mut self) -> Option<u32> {
         self.melee_remaining_ms = 0;
+        if let Some(pet) = &mut self.summon {
+            pet.target_spawn_id = None;
+        }
         self.melee_target_spawn_id.take()
     }
 
@@ -2374,6 +2419,9 @@ impl GameCore {
         self.ranged_target_spawn_id = Some(spawn_id);
         self.ranged_remaining_ms = weapon.swing_ms;
         self.ranged_spell_id = spell_id;
+        if let Some(pet) = &mut self.summon {
+            pet.target_spawn_id = Some(spawn_id);
+        }
         Ok(())
     }
 
@@ -2381,6 +2429,9 @@ impl GameCore {
     pub fn stop_auto_shot(&mut self) -> Option<u32> {
         self.ranged_remaining_ms = 0;
         self.ranged_spell_id = 0;
+        if let Some(pet) = &mut self.summon {
+            pet.target_spawn_id = None;
+        }
         self.ranged_target_spawn_id.take()
     }
 
@@ -2392,6 +2443,16 @@ impl GameCore {
     /// Cancel the running channeled spell and report its id, so presentation can end the channel.
     pub fn cancel_channel(&mut self) -> Option<u32> {
         self.active_channel.take().map(|channel| channel.spell_id)
+    }
+
+    /// The session's summoned pet, if one is up.
+    pub fn summon(&self) -> Option<&SummonState> {
+        self.summon.as_ref()
+    }
+
+    /// Dismiss the summoned pet and report its creature entry for presentation.
+    pub fn dismiss_summon(&mut self) -> Option<u32> {
+        self.summon.take().map(|pet| pet.creature_entry)
     }
 
     /// Begin the starter Mage's Fireball against an authored hostile spawn.
@@ -2487,6 +2548,17 @@ impl GameCore {
         if !range_yards.is_finite() || range_yards < 0.0 {
             return Err(CoreError::UnsupportedSpellEffect);
         }
+        // A summon row names its creature in `EffectMiscValue`; the converted summon pack must
+        // know the entry (an unconverted summon is an explicit unsupported blocker).
+        let summon = match effect {
+            DirectSpellEffect::Summon { creature_entry } => {
+                if summon::summon_template(creature_entry).is_none() {
+                    return Err(CoreError::UnsupportedSpellEffect);
+                }
+                Some(creature_entry)
+            }
+            _ => None,
+        };
         // A channeled cast resolves its per-tick mechanics on the cast's completion; a control arm
         // (Hammer of Justice's stun, Frostbolt's snare) lands with the direct amount.
         let channel = match effect {
@@ -2586,6 +2658,10 @@ impl GameCore {
                     DirectSpellEffect::Channel { .. } | DirectSpellEffect::Control(_),
                     SpellTarget::Hostile(spawn_id),
                 ) => (DamageShape::None, Some(spawn_id), None, false, 0, None),
+                // A summon is cast on self: its pet is session state, not a direct amount.
+                (DirectSpellEffect::Summon { .. }, SpellTarget::SelfCharacter) => {
+                    (DamageShape::None, None, None, false, 0, None)
+                }
                 // Friendly fire and weapon damage against a friendly unit are not modeled.
                 _ => return Err(CoreError::UnsupportedSpellEffect),
             };
@@ -2747,6 +2823,7 @@ impl GameCore {
         self.cast_periodic = periodic;
         self.cast_channel = channel;
         self.cast_control = control;
+        self.cast_summon = summon;
         self.persist_active_vitals();
         Ok(CastOutcome::Cast)
     }
@@ -2807,7 +2884,9 @@ impl GameCore {
         self.cast_periodic = None;
         self.cast_channel = None;
         self.cast_control = None;
+        self.cast_summon = None;
         self.active_channel = None;
+        self.summon = None;
         true
     }
 
@@ -2945,7 +3024,9 @@ impl GameCore {
             self.cast_periodic = None;
         self.cast_channel = None;
         self.cast_control = None;
+        self.cast_summon = None;
         self.active_channel = None;
+        self.summon = None;
             self.queued_melee = None;
             self.combo_points = 0;
             self.combo_target_spawn_id = None;
@@ -2977,7 +3058,27 @@ impl GameCore {
                 self.cast_school = 0;
                 let target = self.cast_target_spawn_id.take();
                 let ally_target = self.cast_ally_spawn_id.take();
-                if let Some(channel) = self.cast_channel.take() {
+                if let Some(entry) = self.cast_summon.take() {
+                    // The summon replaces any current pet and joins its owner's target on the
+                    // next swing.
+                    if let Some(previous) = self.summon.take() {
+                        updates.push(CombatUpdate::SummonDismissed {
+                            creature_entry: previous.creature_entry,
+                        });
+                    }
+                    let health = summon::summon_template(entry)
+                        .map_or(PLAYER_MAX_HEALTH, |template| template.health);
+                    self.summon = Some(SummonState {
+                        creature_entry: entry,
+                        health,
+                        max_health: health,
+                        target_spawn_id: None,
+                        swing_remaining_ms: CREATURE_SWING_MS,
+                    });
+                    updates.push(CombatUpdate::Summoned {
+                        creature_entry: entry,
+                    });
+                } else if let Some(channel) = self.cast_channel.take() {
                     // A channeled cast lands nothing at its end: it arms the channel that ticks
                     // the effect while the caster's attention is held.
                     self.cast_control = None;
@@ -3320,6 +3421,65 @@ impl GameCore {
             } else {
                 self.ranged_remaining_ms = weapon.swing_ms;
             }
+        }
+        // The summon joins its owner's target and swings the creature baseline on the creature
+        // cadence; nothing attacks it in this slice.
+        if let Some(mut pet) = self.summon.take() {
+            if self.active_health == 0 {
+                pet.target_spawn_id = None;
+            }
+            let mut elapsed = elapsed_ms;
+            loop {
+                let Some(spawn_id) = pet.target_spawn_id else {
+                    pet.swing_remaining_ms = CREATURE_SWING_MS;
+                    break;
+                };
+                if elapsed < pet.swing_remaining_ms {
+                    pet.swing_remaining_ms -= elapsed;
+                    break;
+                }
+                elapsed -= pet.swing_remaining_ms;
+                pet.swing_remaining_ms = CREATURE_SWING_MS;
+                let impact = self
+                    .hostiles
+                    .iter_mut()
+                    .find(|hostile| hostile.spawn_id == spawn_id && hostile.health > 0)
+                    .map(|hostile| {
+                        hostile.provoked = true;
+                        hostile.evading = false;
+                        hostile.health = hostile.health.saturating_sub(CREATURE_DAMAGE);
+                        let killed = hostile.health == 0;
+                        if killed {
+                            hostile.respawn_remaining_ms = Some(HOSTILE_RESPAWN_MS);
+                            clear_hostile_burn(hostile);
+                        }
+                        CastImpact {
+                            spawn_id,
+                            damage: CREATURE_DAMAGE,
+                            remaining_health: hostile.health,
+                            killed,
+                        }
+                    });
+                let Some(impact) = impact else {
+                    pet.target_spawn_id = None;
+                    break;
+                };
+                updates.push(CombatUpdate::SummonImpact {
+                    creature_entry: pet.creature_entry,
+                    impact,
+                });
+                if impact.killed {
+                    let creature_entry = self
+                        .hostiles
+                        .iter()
+                        .find(|hostile| hostile.spawn_id == spawn_id)
+                        .map_or(0, |hostile| hostile.creature_entry);
+                    pet.target_spawn_id = None;
+                    updates.extend(self.record_creature_kill(spawn_id, creature_entry));
+                    break;
+                }
+            }
+            self.summon = Some(pet);
         }
         // A running channel ticks its per-tick effect on its own cadence (Mind Flay, Drain Life,
         // Arcane Missiles): damage each tick, a drain heal beside it, and its control arm on the
@@ -3814,7 +3974,9 @@ impl GameCore {
             cast_periodic: None,
             cast_channel: None,
             cast_control: None,
+            cast_summon: None,
             active_channel: None,
+            summon: None,
             melee_target_spawn_id: None,
             melee_remaining_ms: 0,
             ranged_target_spawn_id: None,
@@ -6802,6 +6964,94 @@ mod tests {
             (closed - spawn_position.x - 7.0).abs() < 0.01,
             "half of the run speed, got {} yards",
             closed - spawn_position.x
+        );
+    }
+
+    #[test]
+    fn a_summon_fights_the_owners_target_and_replaces_the_previous_one() {
+        let (mut core, id) = core_for(1, 8);
+        {
+            let snapshot = core.snapshots.get_mut(&id).unwrap();
+            snapshot.known_spell_ids.extend([900_090, 900_091]);
+            snapshot.known_spell_ids.sort_unstable();
+        }
+        core.enter_world().unwrap();
+        core.update_active(core.hostile(HOSTILE_SPAWN_ID).unwrap().position, 0)
+            .unwrap();
+        let summon = |spell_id: u32, creature_entry: u32| CastRequest {
+            spell_id,
+            target: SpellTarget::SelfCharacter,
+            cost: PowerCost {
+                kind: PowerType::Mana,
+                amount: 0,
+            },
+            cast_time_ms: 0,
+            spell_cooldown_ms: 0,
+            cooldown_ms: 0,
+            range_yards: 0.0,
+            effect: DirectSpellEffect::Summon { creature_entry },
+            combo: ComboEffect::None,
+            on_next_swing: false,
+        };
+
+        // The imp joins the session (converted entry 416, Imp).
+        assert_eq!(core.begin_cast(summon(900_090, 416)), Ok(CastOutcome::Cast));
+        let updates = core.advance_combat(1);
+        assert!(
+            matches!(
+                updates.as_slice(),
+                [CombatUpdate::Summoned {
+                    creature_entry: 416
+                }]
+            ),
+            "the imp joins: {updates:?}"
+        );
+        assert_eq!(core.summon().unwrap().creature_entry, 416);
+
+        // The pet joins its owner's target and swings the creature baseline on the cadence.
+        core.start_auto_attack(HOSTILE_SPAWN_ID).unwrap();
+        assert!(
+            core.advance_combat(CREATURE_SWING_MS - 1).is_empty(),
+            "the pet draws its swing like a creature"
+        );
+        let updates = core.advance_combat(1);
+        let [CombatUpdate::SummonImpact {
+            creature_entry: 416,
+            impact,
+        }] = updates.as_slice()
+        else {
+            panic!("the pet's swing lands: {updates:?}");
+        };
+        assert_eq!(impact.damage, CREATURE_DAMAGE);
+        assert_eq!(
+            impact.remaining_health,
+            HOSTILE_MAX_HEALTH - CREATURE_DAMAGE
+        );
+
+        // A second summon replaces the first, and a dismissal empties the slot.
+        assert_eq!(core.begin_cast(summon(900_091, 1860)), Ok(CastOutcome::Cast));
+        let updates = core.advance_combat(1);
+        assert!(
+            matches!(
+                updates.as_slice(),
+                [
+                    CombatUpdate::SummonDismissed {
+                        creature_entry: 416
+                    },
+                    CombatUpdate::Summoned {
+                        creature_entry: 1860
+                    },
+                ]
+            ),
+            "the voidwalker replaces the imp: {updates:?}"
+        );
+        assert_eq!(core.dismiss_summon(), Some(1860));
+        assert_eq!(core.summon(), None);
+
+        // An unconverted summon entry is a named blocker, not a silent nothing.
+        assert_eq!(
+            core.begin_cast(summon(900_090, 91_999)),
+            Err(CoreError::UnsupportedSpellEffect)
         );
     }
 
