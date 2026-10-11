@@ -23,6 +23,13 @@ const QUEST_SNAPSHOT_VERSION: u32 = 3;
 const PROGRESSION_SNAPSHOT_VERSION: u32 = 2;
 const LEGACY_SNAPSHOT_VERSION: u32 = 1;
 const CHARACTER_AURA_SLOTS: u8 = 48;
+/// The first descriptor slot the negative (debuff) half of the unit's aura block starts at: buffs
+/// fill 0..32, debuffs 32..48. `AURA_FLAG_CANCELABLE` (`0x01`, the protocol's flag bit) marks the
+/// auras the client lets the player right-click away, and the effect-index field
+/// (`AURA_FLAG_EFF_INDEX_MASK`, bits 1-3) must be nonzero or the client drops the aura.
+pub const AURA_DEBUFF_SLOT: u8 = 32;
+pub const AURA_FLAG_CANCELABLE: u8 = 0x01;
+pub const AURA_FLAG_EFF_INDEX_ONE: u8 = 0x02;
 pub const MAX_CHARACTERS: usize = 10;
 pub const MAX_PLAYER_LEVEL: u8 = 70;
 pub const INITIAL_GAME_TIME_MINUTES: u64 = 12 * 60;
@@ -420,10 +427,13 @@ pub enum DirectSpellEffect {
         school: u32,
         periodic: Option<PeriodicDamage>,
     },
-    /// Aura-only abilities: apply a buff/debuff with no direct damage (Battle Shout, Power Word: Fortitude).
+    /// Aura-only abilities: apply a buff/debuff with no direct amount (Battle Shout, Power Word:
+    /// Fortitude). A self-cast lands in the character's aura slots for the row's `duration_ms`
+    /// (0 = permanent); its numbers are not modeled (no stat model).
     Aura {
         school: u32,
         periodic: Option<PeriodicDamage>,
+        duration_ms: u32,
     },
     /// A channeled per-tick effect (Mind Flay, Drain Life, Arcane Missiles): the cast resolves
     /// nothing at its end but arms a channel that lands `min..=max` every `tick_ms`, `ticks`
@@ -713,6 +723,13 @@ pub enum CombatUpdate {
         creature_entry: u32,
         amount: u32,
         remaining_health: u32,
+    },
+    /// An aura-only self cast landed in the character's aura slots (Battle Shout): the buff's
+    /// presence and duration are modeled, its numbers are not (no stat model).
+    PlayerAura {
+        spell_id: u32,
+        slot: u8,
+        remaining_ms: Option<u32>,
     },
     /// A Fireball burn tick (periodic damage) on a living hostile.
     DotImpact(CastImpact),
@@ -1033,6 +1050,7 @@ pub struct GameCore {
     cast_control: Option<ControlEffect>,
     cast_summon: Option<u32>,
     cast_totem: Option<(u32, TotemBehavior)>,
+    cast_aura_ms: Option<u32>,
     active_channel: Option<ActiveChannel>,
     summon: Option<SummonState>,
     totems: Vec<TotemState>,
@@ -2018,6 +2036,7 @@ impl GameCore {
         self.cast_control = None;
         self.cast_summon = None;
         self.cast_totem = None;
+        self.cast_aura_ms = None;
         self.active_channel = None;
         self.summon = None;
         self.totems.clear();
@@ -2413,6 +2432,7 @@ impl GameCore {
         self.cast_control = None;
         self.cast_summon = None;
         self.cast_totem = None;
+        self.cast_aura_ms = None;
         self.active_channel = None;
         self.summon = None;
         self.totems.clear();
@@ -2667,6 +2687,14 @@ impl GameCore {
                     return Err(CoreError::UnsupportedSpellEffect);
                 }
                 Some((creature_entry, behavior))
+            }
+            _ => None,
+        };
+        // An aura-only self cast lands in the character's aura slots at completion (Battle Shout,
+        // Power Word: Fortitude); the row's duration is the aura's lifetime (0 = permanent).
+        let self_aura_ms = match (effect, target) {
+            (DirectSpellEffect::Aura { duration_ms, .. }, SpellTarget::SelfCharacter) => {
+                Some(duration_ms)
             }
             _ => None,
         };
@@ -2941,6 +2969,7 @@ impl GameCore {
         self.cast_control = control;
         self.cast_summon = summon;
         self.cast_totem = totem;
+        self.cast_aura_ms = self_aura_ms;
         self.persist_active_vitals();
         Ok(CastOutcome::Cast)
     }
@@ -3003,6 +3032,7 @@ impl GameCore {
         self.cast_control = None;
         self.cast_summon = None;
         self.cast_totem = None;
+        self.cast_aura_ms = None;
         self.active_channel = None;
         self.summon = None;
         self.totems.clear();
@@ -3145,6 +3175,7 @@ impl GameCore {
         self.cast_control = None;
         self.cast_summon = None;
         self.cast_totem = None;
+        self.cast_aura_ms = None;
         self.active_channel = None;
         self.summon = None;
         self.totems.clear();
@@ -3282,6 +3313,33 @@ impl GameCore {
                             spawn_id,
                             amount,
                             remaining_health: ally.health,
+                        });
+                    }
+                } else if let Some(duration_ms) = self.cast_aura_ms.take() {
+                    // An aura-only self cast lands in the character's aura slots: cancelable and
+                    // present for the row's duration (0 = permanent). Its numbers are not modeled
+                    // (no stat model), and its slot is the first free buff slot.
+                    let slot = self
+                        .active_auras()
+                        .and_then(|auras| {
+                            (0..AURA_DEBUFF_SLOT)
+                                .find(|slot| !auras.iter().any(|aura| aura.slot == *slot))
+                        })
+                        .unwrap_or(0);
+                    let remaining_ms = (duration_ms > 0).then_some(duration_ms);
+                    let aura = CharacterAura {
+                        slot,
+                        spell_id,
+                        flags: AURA_FLAG_CANCELABLE | AURA_FLAG_EFF_INDEX_ONE,
+                        level: u8::try_from(caster_level).unwrap_or(1),
+                        stacks: 1,
+                        remaining_ms,
+                    };
+                    if self.set_active_aura(aura).is_ok() {
+                        updates.push(CombatUpdate::PlayerAura {
+                            spell_id,
+                            slot,
+                            remaining_ms,
                         });
                     }
                 } else if is_heal {
@@ -3948,6 +4006,7 @@ impl GameCore {
             return Vec::new();
         };
         let mut player_health = self.active_health;
+        let mut taken_hits = 0u32;
         let mut updates = Vec::new();
 
         for hostile in &mut self.hostiles {
@@ -4082,6 +4141,7 @@ impl GameCore {
                 }
                 remaining_ms -= hostile.attack_remaining_ms;
                 player_health = player_health.saturating_sub(CREATURE_DAMAGE);
+                taken_hits += 1;
                 updates.push(CreatureAiUpdate::MeleeImpact {
                     spawn_id: hostile.spawn_id,
                     damage: CREATURE_DAMAGE,
@@ -4096,6 +4156,11 @@ impl GameCore {
                     hostile.attack_remaining_ms = CREATURE_SWING_MS;
                 }
             }
+        }
+        // Rage from taken hits accrues per landed hit (the per-hit floor counts each one), and
+        // the loop cannot borrow the hostiles and the pool at once.
+        for _ in 0..taken_hits {
+            self.gain_rage(CREATURE_DAMAGE, true);
         }
         self.active_health = player_health;
         self.persist_active_vitals();
@@ -4250,6 +4315,7 @@ impl GameCore {
             cast_control: None,
             cast_summon: None,
             cast_totem: None,
+            cast_aura_ms: None,
             active_channel: None,
             summon: None,
             totems: Vec::new(),
@@ -6363,17 +6429,27 @@ mod tests {
             DirectSpellEffect::Aura {
                 school: 1,
                 periodic: None,
+                duration_ms: 30_000,
             },
         )
         .unwrap();
         let updates = core.advance_combat(0);
-        // Aura-only spells on self resolve as a heal with 0 amount (no-op).
+        // A self buff lands in the character's aura slots, with the row's lifetime.
         assert!(
-            updates.is_empty()
-                || updates
-                    .iter()
-                    .all(|u| matches!(u, CombatUpdate::SpellHeal { amount: 0, .. }))
+            matches!(
+                updates.as_slice(),
+                [CombatUpdate::PlayerAura {
+                    spell_id: 900_030,
+                    slot: 0,
+                    remaining_ms: Some(30_000),
+                }]
+            ),
+            "{updates:?}"
         );
+        let auras = core.active_auras().expect("the buff is held");
+        assert_eq!(auras.len(), 1);
+        assert_eq!(auras[0].spell_id, 900_030);
+        assert_eq!(auras[0].remaining_ms, Some(30_000));
     }
 
     #[test]
@@ -7550,6 +7626,75 @@ mod tests {
     }
 
     #[test]
+    fn warrior_rage_comes_from_the_creature_hits_it_takes() {
+        let (mut core, _id) = core_for(1, 1);
+        core.enter_world().unwrap();
+        core.update_active(core.hostile(HOSTILE_SPAWN_ID).unwrap().position, 0)
+            .unwrap();
+        assert_eq!(core.active_rage(), 0);
+        core.start_auto_attack(HOSTILE_SPAWN_ID).unwrap();
+        let updates = core.advance_creature_ai(CREATURE_SWING_MS);
+        assert!(
+            updates.iter().any(|update| matches!(
+                update,
+                CreatureAiUpdate::MeleeImpact {
+                    spawn_id: HOSTILE_SPAWN_ID,
+                    damage: CREATURE_DAMAGE,
+                    ..
+                }
+            )),
+            "{updates:?}"
+        );
+        // Each landed hit pays its own per-hit floor.
+        assert_eq!(core.active_rage(), rage_from_damage(CREATURE_DAMAGE, 1, true));
+    }
+
+    #[test]
+    fn self_buffs_expire_on_their_own_lifetime() {
+        let (mut core, id) = core_for(1, 8);
+        {
+            let snapshot = core.snapshots.get_mut(&id).unwrap();
+            snapshot.known_spell_ids.push(900_030);
+            snapshot.known_spell_ids.sort_unstable();
+        }
+        core.enter_world().unwrap();
+        core.begin_direct_spell(
+            900_030,
+            SpellTarget::SelfCharacter,
+            5,
+            0,
+            0,
+            0,
+            0.0,
+            DirectSpellEffect::Aura {
+                school: 1,
+                periodic: None,
+                duration_ms: 5_000,
+            },
+        )
+        .unwrap();
+        let updates = core.advance_combat(0);
+        assert!(
+            matches!(
+                updates.as_slice(),
+                [CombatUpdate::PlayerAura {
+                    spell_id: 900_030,
+                    remaining_ms: Some(5_000),
+                    ..
+                }]
+            ),
+            "{updates:?}"
+        );
+        assert!(core.advance_active_auras(4_999).is_empty());
+        let expired = core.advance_active_auras(1);
+        assert!(
+            matches!(expired.as_slice(), [aura] if aura.spell_id == 900_030),
+            "{expired:?}"
+        );
+        assert!(core.active_auras().unwrap().is_empty());
+    }
+
+    #[test]
     fn a_next_swing_melee_ability_takes_over_one_swing_and_spends_rage() {
         let (mut core, id) = core_for(1, 1);
         {
@@ -7833,6 +7978,7 @@ mod tests {
             DirectSpellEffect::Aura {
                 school: 1,
                 periodic: None,
+                duration_ms: 0,
             },
         )
         .unwrap();

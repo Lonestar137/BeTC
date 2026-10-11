@@ -2315,6 +2315,13 @@ fn drive_offline_gameplay(
                         None => benilla_game_core::DirectSpellEffect::Aura {
                             school: 1_u32.checked_shl(spell.school).unwrap_or(1),
                             periodic: None,
+                            // The row's own lifetime; 0 (or the permanent sentinel) means the
+                            // aura lasts until it is cancelled.
+                            duration_ms: spells
+                                .durations
+                                .get(spell.duration_index)
+                                .and_then(|duration| u32::try_from(duration.base_ms).ok())
+                                .unwrap_or(0),
                         },
                     }
                     };
@@ -3627,6 +3634,13 @@ fn advance_offline_combat_with_talents(
     if core.active().is_none() {
         return false;
     }
+    let pools_before = (
+        core.active_health(),
+        core.active_mana(),
+        core.active_rage(),
+        core.active_focus(),
+        core.active_energy(),
+    );
     let mut changed = false;
     let updates = core.advance_combat(elapsed_ms);
     for update in updates {
@@ -4372,9 +4386,35 @@ fn advance_offline_combat_with_talents(
                 changed = true;
                 let _ = (spawn_id, applied, remaining_ms);
             }
+            CombatUpdate::PlayerAura {
+                slot,
+                remaining_ms,
+                ..
+            } => {
+                // The buff's aura block goes up with the cast; a timed buff carries its remaining
+                // lifetime, and a permanent one shows the icon with no timer.
+                changed = true;
+                publish_offline_auras(core, channels, &[]);
+                if let Some(remaining_ms) = remaining_ms {
+                    send_gameplay_events(
+                        channels,
+                        [SessionEvent::AuraDuration { slot, remaining_ms }],
+                    );
+                }
+            }
         }
     }
-    if core.advance_power_regen(elapsed_ms) {
+    let _ = core.advance_power_regen(elapsed_ms);
+    // The pools move with swings, taken hits and regen alike: publish whenever they changed this
+    // round so the client's power bars follow every gain and spend.
+    let pools_now = (
+        core.active_health(),
+        core.active_mana(),
+        core.active_rage(),
+        core.active_focus(),
+        core.active_energy(),
+    );
+    if pools_now != pools_before {
         if let Some(id) = core.active() {
             send_gameplay_events(channels, player_power_events(id.presentation_guid(), core));
         }
@@ -4521,6 +4561,8 @@ fn advance_offline_creature_ai(
                         },
                     ],
                 );
+                // The hit moves the pools too: health down, warrior rage up.
+                send_gameplay_events(channels, player_power_events(player_guid, core));
             }
         }
     }
@@ -5108,6 +5150,7 @@ mod tests {
             benilla_game_core::DirectSpellEffect::Aura {
                 school: 1,
                 periodic: None,
+                duration_ms: 0,
             },
             benilla_game_core::ComboEffect::None,
             false,
@@ -7088,6 +7131,181 @@ mod tests {
                 SessionEvent::ObjectDestroyed(guid) if *guid == totem_guid
             )),
             "the totem expires: {expired:?}"
+        );
+    }
+
+    /// Acceptance: a buff shows on the character. Demon Skin (687, a warlock create-time spell)
+    /// lands in the character's aura block with its row's lifetime, published with the duration
+    /// the buff frame counts down.
+    #[test]
+    fn offline_buffs_show_in_the_character_aura_block() {
+        let Some(spells) = crate::ui_action::real_spells() else {
+            return;
+        };
+        let id = CharacterId::parse("00000000000000000000000000000009").unwrap();
+        let appearance = Appearance {
+            race: 10,
+            class: 9,
+            gender: 0,
+            skin: 0,
+            face: 0,
+            hair_style: 0,
+            hair_color: 0,
+            facial_hair: 0,
+        };
+        let mut core = GameCore::default();
+        core.create_character(
+            id.clone(),
+            "Velindra",
+            appearance,
+            starting_position(10).unwrap(),
+        )
+        .unwrap();
+        core.enter_world().unwrap();
+        let hostile = core.hostiles().first().copied().expect("imported target");
+        core.update_active(hostile.position, 0).unwrap();
+
+        let (_pick_tx, picks) = crossbeam_channel::unbounded();
+        let (events, received) = crossbeam_channel::unbounded();
+        let (commands, command_receiver) = crossbeam_channel::unbounded();
+        let mut app = App::new();
+        app.insert_resource(OfflineChannels {
+            picks,
+            events,
+            commands: command_receiver,
+        })
+        .insert_resource(OfflineGameCore(core))
+        .insert_resource(OfflinePersistence::new(false))
+        .insert_resource(Time::<()>::default())
+        .insert_resource(spells);
+
+        commands
+            .send(crate::net::ClientCommand::CastSpell {
+                spell_id: 687,
+                target: Some(id.presentation_guid()),
+            })
+            .unwrap();
+        app.world_mut()
+            .run_system_once(drive_offline_gameplay)
+            .expect("the buff command is handled");
+        let channels = app.world().resource::<OfflineChannels>().clone();
+        {
+            let core = &mut app.world_mut().resource_mut::<OfflineGameCore>().0;
+            advance_offline_combat(core, &channels, 1);
+        }
+        let buffed: Vec<_> = received.try_iter().collect();
+        assert!(
+            buffed.iter().any(|event| matches!(
+                event,
+                SessionEvent::ObjectValues { guid, fields }
+                    if *guid == id.presentation_guid()
+                        && (0..48).any(|slot| fields
+                            .unit_aura(slot)
+                            .is_some_and(|aura| aura.spell_id == 687))
+            )),
+            "the buff's aura block is written: {buffed:?}"
+        );
+        assert!(
+            buffed.iter().any(|event| matches!(
+                event,
+                SessionEvent::AuraDuration { remaining_ms, .. } if *remaining_ms > 0
+            )),
+            "the buff's duration is published: {buffed:?}"
+        );
+    }
+
+    /// Acceptance: the warrior's rage bar follows the fight — the swing's gain and the creature
+    /// hit's gain both republish the pools.
+    #[test]
+    fn offline_warrior_rage_moves_the_power_bar() {
+        let Some(spells) = crate::ui_action::real_spells() else {
+            return;
+        };
+        let id = CharacterId::parse("0000000000000000000000000000000a").unwrap();
+        let appearance = Appearance {
+            race: 10,
+            class: 1,
+            gender: 0,
+            skin: 0,
+            face: 0,
+            hair_style: 0,
+            hair_color: 0,
+            facial_hair: 0,
+        };
+        let mut core = GameCore::default();
+        core.create_character(
+            id.clone(),
+            "Braddok",
+            appearance,
+            starting_position(10).unwrap(),
+        )
+        .unwrap();
+        core.enter_world().unwrap();
+        let hostile = core.hostiles().first().copied().expect("imported target");
+        core.update_active(hostile.position, 0).unwrap();
+
+        let (_pick_tx, picks) = crossbeam_channel::unbounded();
+        let (events, received) = crossbeam_channel::unbounded();
+        let (commands, command_receiver) = crossbeam_channel::unbounded();
+        let mut app = App::new();
+        app.insert_resource(OfflineChannels {
+            picks,
+            events,
+            commands: command_receiver,
+        })
+        .insert_resource(OfflineGameCore(core))
+        .insert_resource(OfflinePersistence::new(false))
+        .insert_resource(Time::<()>::default())
+        .insert_resource(spells);
+
+        // Dealt: the swing's rage moves the bar.
+        commands
+            .send(crate::net::ClientCommand::AttackSwing {
+                guid: hostile_guid(hostile.spawn_id),
+            })
+            .unwrap();
+        app.world_mut()
+            .run_system_once(drive_offline_gameplay)
+            .expect("the attack command is handled");
+        let channels = app.world().resource::<OfflineChannels>().clone();
+        {
+            let core = &mut app.world_mut().resource_mut::<OfflineGameCore>().0;
+            advance_offline_combat(core, &channels, benilla_game_core::MELEE_SWING_MS);
+        }
+        let swung: Vec<_> = received.try_iter().collect();
+        assert!(
+            swung.iter().any(|event| matches!(
+                event,
+                SessionEvent::ObjectValues { guid, fields }
+                    if *guid == id.presentation_guid()
+                        && fields.unit_power(1).is_some_and(|rage| rage > 0)
+            )),
+            "the swing's rage reaches the bar: {swung:?}"
+        );
+
+        // Taken: the creature's hit pays rage too, and the bar follows.
+        {
+            let core = &mut app.world_mut().resource_mut::<OfflineGameCore>().0;
+            let mut patrols = OfflinePatrols::default();
+            advance_offline_creature_ai(
+                core,
+                &channels,
+                &mut patrols,
+                benilla_game_core::CREATURE_SWING_MS,
+            );
+        }
+        let hit: Vec<_> = received.try_iter().collect();
+        assert!(
+            hit.iter().any(|event| matches!(
+                event,
+                SessionEvent::ObjectValues { guid, fields }
+                    if *guid == id.presentation_guid()
+                        && fields.unit_power(1).is_some_and(|rage| rage > 0)
+                        && fields
+                            .unit_health()
+                            .is_some_and(|health| health < benilla_game_core::PLAYER_MAX_HEALTH)
+            )),
+            "the taken hit's rage reaches the bar: {hit:?}"
         );
     }
 

@@ -126,6 +126,15 @@ health costs are modeled. `ManaCostPercentage` counts against base mana only for
   friendly unit's health and active effects live in the simulation for the session and are not
   saved (the source creatures respawn from content, so their state is not part of the character's
   world snapshot).
+- Aura-only casts land in the character's own aura block: a self buff (Battle Shout 6673) takes
+  the first free buff slot (0..31) with the row's own lifetime (a permanent row holds until it is
+  cancelled), is cancelable through the client's cancel-aura request, and expires on its lifetime
+  in play. The buff's numbers are not modeled — the simulation carries no stat model — so a buff
+  shows and counts down without changing combat math. Debuffs on the player would occupy the
+  block's negative half (slots 32..47), but no creature casts at the player yet; a hostile's own
+  debuff (the Fireball burn) rides that unit's aura block instead. The power pools republish to
+  the client whenever they change — every swing, spend, taken hit and regen tick — so the bars
+  always follow the simulation.
 
 ## Summons
 
