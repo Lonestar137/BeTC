@@ -517,8 +517,10 @@ fn charter_lines_sit_between_the_name_and_the_signable_line() {
             "[ITEM_SIGNABLE]",
             "[ITEM_SOULBOUND]",
             "[ITEM_UNIQUE]",
+            "[ITEM_UNSELLABLE]",
         ],
-        "the two guild lines sit ABOVE the green line, not below it"
+        "the two guild lines sit ABOVE the green line, not below it; the unsellable line closes \
+         the tail (recorded deviation: the money row no longer needs an open merchant)"
     );
     assert_eq!(lines[1].1, [1.0, 1.0, 1.0, 1.0], "the title line is white");
     assert_eq!(lines[2].1, [1.0, 1.0, 1.0, 1.0], "the master line is white");
@@ -541,7 +543,8 @@ fn charter_lines_sit_between_the_name_and_the_signable_line() {
             "[GUILD_CHARTER_TITLE BTC]",
             "[ITEM_SIGNABLE]",
             "[ITEM_SOULBOUND]",
-            "[ITEM_UNIQUE]"
+            "[ITEM_UNIQUE]",
+            "[ITEM_UNSELLABLE]"
         ],
         "an unresolved owner withholds ITS line only — the repaint fills it"
     );
@@ -551,7 +554,8 @@ fn charter_lines_sit_between_the_name_and_the_signable_line() {
             "Guild Charter",
             "[ITEM_SIGNABLE]",
             "[ITEM_SOULBOUND]",
-            "[ITEM_UNIQUE]"
+            "[ITEM_UNIQUE]",
+            "[ITEM_UNSELLABLE]"
         ],
         "no record yet: exactly the plate we shipped before, not a blank one"
     );
@@ -563,7 +567,8 @@ fn charter_lines_sit_between_the_name_and_the_signable_line() {
             "[PETITION_CREATOR Someone]",
             "[ITEM_SIGNABLE]",
             "[ITEM_SOULBOUND]",
-            "[ITEM_UNIQUE]"
+            "[ITEM_UNIQUE]",
+            "[ITEM_UNSELLABLE]"
         ],
         "the record's charter bit picks the key family"
     );
@@ -643,8 +648,13 @@ fn instance_tail_creator_and_readable() {
     let texts: Vec<&str> = lines.iter().map(|(t, _)| t.as_str()).collect();
     assert_eq!(
         texts,
-        vec!["Plain Letter", "[WRITTEN_BY One]", "[ITEM_READABLE]"],
-        "the letter: writer line + instance-gated READABLE"
+        vec![
+            "Plain Letter",
+            "[WRITTEN_BY One]",
+            "[ITEM_READABLE]",
+            "[ITEM_UNSELLABLE]"
+        ],
+        "the letter: writer line + instance-gated READABLE + the always-on unsellable tail"
     );
     assert_eq!(lines[1].1, [1.0, 1.0, 1.0, 1.0], "WRITTEN_BY is white");
     assert_eq!(lines[2].1, [0.0, 1.0, 0.0, 1.0], "READABLE is green");
@@ -653,7 +663,10 @@ fn instance_tail_creator_and_readable() {
     s.run(r#"TT:SetOwner(getglobal("SlotL"), "ANCHOR_RIGHT"); TT:SetBagItem(0, 2)"#)
         .unwrap();
     let texts: Vec<String> = lines_of(&mut s).into_iter().map(|(t, _)| t).collect();
-    assert_eq!(texts, vec!["Plain Letter", "[ITEM_READABLE]"]);
+    assert_eq!(
+        texts,
+        vec!["Plain Letter", "[ITEM_READABLE]", "[ITEM_UNSELLABLE]"]
+    );
     s.run(r#"TT:SetOwner(getglobal("SlotL"), "ANCHOR_RIGHT"); TT:SetBagItem(0, 3)"#)
         .unwrap();
     let texts: Vec<String> = lines_of(&mut s).into_iter().map(|(t, _)| t).collect();
@@ -662,7 +675,8 @@ fn instance_tail_creator_and_readable() {
         vec![
             "Heavy Chest",
             "[LOCKED]",
-            "|cff00ff00[CREATED_BY Geoffrey]|r"
+            "|cff00ff00[CREATED_BY Geoffrey]|r",
+            "[ITEM_UNSELLABLE]"
         ],
         "CREATED_BY carries the string's own green escape; locked chest hides OPENABLE"
     );
@@ -671,12 +685,22 @@ fn instance_tail_creator_and_readable() {
         .unwrap();
     let lines = lines_of(&mut s);
     let texts: Vec<&str> = lines.iter().map(|(t, _)| t.as_str()).collect();
-    assert_eq!(texts, vec!["Heavy Chest", "[ITEM_OPENABLE]"]);
+    assert_eq!(
+        texts,
+        vec!["Heavy Chest", "[ITEM_OPENABLE]", "[ITEM_UNSELLABLE]"]
+    );
     assert_eq!(lines[1].1, [0.0, 1.0, 0.0, 1.0], "OPENABLE is green");
     s.run(r#"TT:SetOwner(getglobal("SlotL"), "ANCHOR_RIGHT"); TT:SetBagItem(0, 5)"#)
         .unwrap();
     let texts: Vec<String> = lines_of(&mut s).into_iter().map(|(t, _)| t).collect();
-    assert_eq!(texts, vec!["Small Barnacled Clam", "[ITEM_OPENABLE]"]);
+    assert_eq!(
+        texts,
+        vec![
+            "Small Barnacled Clam",
+            "[ITEM_OPENABLE]",
+            "[ITEM_UNSELLABLE]"
+        ]
+    );
     // Mid-cooldown the clam takes `SetBagItem`'s other leg (p6 = 1, picked at `0x6e2ed0`), which
     // skips the openable tree; the reference prints `ITEM_COOLDOWN_TIME` there, unfed here.
     let has_cd: bool = s
@@ -686,7 +710,7 @@ fn instance_tail_creator_and_readable() {
     let texts: Vec<String> = lines_of(&mut s).into_iter().map(|(t, _)| t).collect();
     assert_eq!(
         texts,
-        vec!["Small Barnacled Clam"],
+        vec!["Small Barnacled Clam", "[ITEM_UNSELLABLE]"],
         "a running cooldown suppresses ITEM_OPENABLE — the two lines are exclusive here"
     );
     assert!(s.take_errors().is_empty());

@@ -436,9 +436,10 @@ pub(super) fn install_methods(lua: &Lua, m: &Table) -> mlua::Result<()> {
     )?;
 
     // GameTooltip:SetBagItem(bag, slot) -> hasCooldown, repairCost: the real-instance hover and
-    // the one money source: with the merchant open and repair off (`0x52e376`), the engine fires
+    // the one money source: with repair off (`0x52e376`), the engine fires
     // `OnTooltipAddMoney(SellPrice × stack)`, or prints ITEM_UNSELLABLE at price 0 (`0x854a74`,
     // pushed at `0x52e4a3`). repairCost is the item's cost (`0x534975`), shown in repair mode.
+    // Recorded deviation: the money row shows with or without an open merchant (see below).
     m.set(
         "SetBagItem",
         lua.create_function(|lua, (this, bag, slot): (Table, i64, u32)| {
@@ -494,11 +495,18 @@ pub(super) fn install_methods(lua: &Lua, m: &Table) -> mlua::Result<()> {
             match view_of(lua, item_id) {
                 Some(v) => {
                     render_view(lua, &this, &v, BuilderFlags::default(), Some(&inst))?;
-                    let (merchant_open, repairing) = {
-                        let model = lua.app_data_mut::<Model>().expect("model app_data");
-                        (model.merchant.is_some(), model.repair_mode)
+                    let repairing = {
+                        let model = lua.app_data_ref::<Model>().expect("model app_data");
+                        model.repair_mode
                     };
-                    if merchant_open && !repairing {
+                    // Deviation (recorded): 2.4.3 fires `OnTooltipAddMoney` only while a merchant
+                    // is open (`0x854a74`'s `MerchantFrame:IsShown()` arm, `ContainerFrame.lua:
+                    // 668`), so `Sells for` appears only there. Offline merchants open now, but
+                    // the sell value is shown on every bag tooltip; the vendor list's own
+                    // buy-price row (`GetMerchantItemInfo`'s third return) is untouched. An addon
+                    // that feature-detects the money row outside a merchant takes a path the
+                    // reference never does, hence the deviation.
+                    if !repairing {
                         if v.sell_price > 0 {
                             fire_add_money(lua, h, u64::from(v.sell_price) * u64::from(count));
                         } else if let Some(t) = crate::strings::global(lua, "ITEM_UNSELLABLE") {

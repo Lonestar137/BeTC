@@ -6,8 +6,9 @@ use std::collections::HashMap;
 use super::script;
 use crate::script::*;
 
-/// `SetBagItem` at an open merchant fires `OnTooltipAddMoney` with SellPrice × stack, and price 0
-/// prints `ITEM_UNSELLABLE`; with no merchant, neither. A template in flight renders the link name.
+/// `SetBagItem` fires `OnTooltipAddMoney` with SellPrice × stack with or without an open merchant
+/// (recorded deviation: 2.4.3 gated the row on `MerchantFrame:IsShown()`, `ContainerFrame.lua:
+/// 668`), and price 0 prints `ITEM_UNSELLABLE`. A template in flight renders the link name.
 #[test]
 fn bag_item_money_law_and_fallback() {
     let mut s = script();
@@ -56,19 +57,21 @@ fn bag_item_money_law_and_fallback() {
         local a = CreateFrame("Button", "Slot3"); a:SetPoint("CENTER", 0, 0); a:SetWidth(10); a:SetHeight(10)
         local tt = CreateFrame("GameTooltip", "TT")
         tt:SetScript("OnTooltipAddMoney", function() local self = this money_fired = arg1 end)
-        -- No merchant: no money handler fires.
+        -- No merchant: the recorded deviation still fires the money row.
         tt:SetOwner(a, "ANCHOR_RIGHT")
         tt:SetBagItem(0, 1)
-        assert(money_fired == nil, "no merchant, no money")
+        assert(money_fired == 52, "no merchant: SellPrice 13 × stack 4, got " .. tostring(money_fired))
     "#,
     )
     .unwrap();
     s.set_merchant(Some(MerchantState::default()));
     s.run(
         r#"
+        -- At an open merchant the same row fires.
+        money_fired = nil
         TT:SetOwner(Slot3, "ANCHOR_RIGHT")
         TT:SetBagItem(0, 1)
-        assert(money_fired == 52, "SellPrice 13 × stack 4, got " .. tostring(money_fired))
+        assert(money_fired == 52, "at the merchant: SellPrice 13 × stack 4, got " .. tostring(money_fired))
         -- The unresolved key: the link-name fallback line + nothing else.
         TT:SetOwner(Slot3, "ANCHOR_RIGHT")
         TT:SetBagItem(0, 2)
@@ -87,6 +90,8 @@ fn bag_item_money_law_and_fallback() {
             ..Default::default()
         },
     );
+    // No merchant: the price-0 line still renders, so the deviation covers both arms.
+    s.set_merchant(None);
     s.run(
         r#"
         money_fired = nil
