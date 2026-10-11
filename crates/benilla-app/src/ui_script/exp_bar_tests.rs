@@ -1,10 +1,24 @@
 //! The XP bar: its hover plate, the exhaustion tick and the on-bar numerals.
 
-use benilla_ui::script::{QuadContent, ScriptValue, UiScript, UnitState};
+use benilla_ui::script::{
+    QuadContent, ReputationState, ScreenResolution, ScriptValue, UiScript, UnitState,
+};
 
 fn exp_bar_harness() -> UiScript {
     let mut s = UiScript::new().unwrap();
     s.set_screen_size(1024.0, 768.0);
+    // The display facts `UIParent.lua:959` reads through `GetScreenResolutions` at every manage
+    // pass; the production host pushes them before the UI loads.
+    s.set_screen_resolutions(
+        vec![ScreenResolution {
+            width: 1024,
+            height: 768,
+        }],
+        Some(ScreenResolution {
+            width: 1024,
+            height: 768,
+        }),
+    );
     for file in [
         "Interface\\FrameXML\\GlobalStrings.lua",
         "Interface\\FrameXML\\Fonts.xml",
@@ -16,6 +30,9 @@ fn exp_bar_harness() -> UiScript {
         // declares; the two template files before it are what its check boxes inherit.
         r"Interface\FrameXML\UIPanelTemplates.lua",
         r"Interface\FrameXML\UIPanelTemplates.xml",
+        // `ActionButton.lua:119` calls `SecureButton_GetEffectiveButton`, which stock
+        // `SecureTemplates.lua` defines; the production load reaches it before the action bars.
+        r"Interface\FrameXML\SecureTemplates.xml",
         r"Interface\FrameXML\OptionsFrameTemplates.xml",
         "Interface\\FrameXML\\TextStatusBar.lua",
         "Interface\\FrameXML\\TextStatusBar.xml",
@@ -23,6 +40,9 @@ fn exp_bar_harness() -> UiScript {
         "Interface\\FrameXML\\Cooldown.xml",
         "Interface\\FrameXML\\ActionButtonTemplate.xml",
         "Interface\\FrameXML\\ActionBarFrame.xml",
+        // `BonusActionBarFrame.lua`'s OnLoad manages the bottom stack through `MultiBarBottomRight`
+        // (UIParent.lua:959); the production load seats `MultiActionBars.xml` first.
+        "Interface\\FrameXML\\MultiActionBars.xml",
         r"Interface\FrameXML\ReputationFrame.xml",
         "Interface\\FrameXML\\BonusActionBarFrame.xml",
     ] {
@@ -189,8 +209,9 @@ fn the_exhaustion_tick_marks_where_rested_runs_out() {
 
 /// `ReputationWatchBar_Update` swaps in the rail at `MAX_PLAYER_LEVEL`, read from
 /// `PLAYER_LEVEL_UP`'s arg1; the tick's handler runs first by load order, so the rail's hides it.
+/// TBC's cap is 70 (`MAX_PLAYER_LEVEL_TABLE[GetAccountExpansionLevel()]`).
 #[test]
-fn the_max_level_rail_replaces_the_xp_bar_at_60() {
+fn the_max_level_rail_replaces_the_xp_bar_at_70() {
     benilla_formats::wow_data_or_skip!();
     let mut s = exp_bar_harness();
     s.set_player_xp(1000, 10000);
@@ -199,7 +220,7 @@ fn the_max_level_rail_replaces_the_xp_bar_at_60() {
         "player",
         Some(UnitState {
             exists: true,
-            level: 59,
+            level: 69,
             ..UnitState::default()
         }),
     );
@@ -216,10 +237,10 @@ fn the_max_level_rail_replaces_the_xp_bar_at_60() {
         .unwrap();
     assert!(
         ok,
-        "below 60 the strip and tick show, the rail stays hidden"
+        "below 70 the strip and tick show, the rail stays hidden"
     );
 
-    s.fire_event("PLAYER_LEVEL_UP", vec![ScriptValue::Int(60)]);
+    s.fire_event("PLAYER_LEVEL_UP", vec![ScriptValue::Int(70)]);
     let ok: bool = s
         .eval(
             r#"
@@ -230,7 +251,50 @@ fn the_max_level_rail_replaces_the_xp_bar_at_60() {
         .unwrap();
     assert!(
         ok,
-        "at 60 the rail replaces the strip and the tick goes with it"
+        "at 70 the rail replaces the strip and the tick goes with it"
+    );
+    assert!(s.errors().is_empty(), "script errors: {:?}", s.errors());
+}
+
+/// A fresh character with no watched faction (`PLAYER_FIELD_WATCHED_FACTION_INDEX` = -1, what the
+/// offline world entry writes) gets the XP bar: `GetWatchedFactionInfo()` is nil, so
+/// `ReputationWatchBar_Update` takes the else arm, and below 70 the strip shows with no rail.
+#[test]
+fn a_fresh_character_with_nothing_watched_shows_the_xp_bar() {
+    benilla_formats::wow_data_or_skip!();
+    let mut s = exp_bar_harness();
+    s.set_player_xp(0, 400);
+    s.set_unit(
+        "player",
+        Some(UnitState {
+            exists: true,
+            level: 1,
+            ..UnitState::default()
+        }),
+    );
+    s.set_reputation(ReputationState {
+        entries: Vec::new(),
+        watched: None,
+    });
+    s.fire_event("PLAYER_ENTERING_WORLD", vec![]);
+    s.resolve();
+
+    assert!(
+        s.eval::<bool>("return GetWatchedFactionInfo() == nil")
+            .unwrap(),
+        "nothing watched answers a nil name"
+    );
+    let ok: bool = s
+        .eval(
+            r#"
+            return MainMenuExpBar:IsShown() and not ReputationWatchBar:IsShown()
+               and not MainMenuBarMaxLevelBar:IsShown()
+        "#,
+        )
+        .unwrap();
+    assert!(
+        ok,
+        "the XP bar shows, with no watch bar stacked over it and no max-level rail"
     );
     assert!(s.errors().is_empty(), "script errors: {:?}", s.errors());
 }

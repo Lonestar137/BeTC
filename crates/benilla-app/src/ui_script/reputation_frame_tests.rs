@@ -519,8 +519,9 @@ fn the_at_war_box_keeps_its_art_while_it_is_disabled() {
     assert!(s.errors().is_empty(), "script errors: {:?}", s.errors());
 }
 
-/// Below 60 the watch bar stacks on the XP bar, 8 px in its own end art; at 60 it replaces it,
-/// 13 px in the dwarf art, and the rested tick hides (ReputationFrame.lua:184-230).
+/// Below 70 the watch bar stacks on the XP bar, 8 px in its own end art; at 70 it replaces it,
+/// 13 px in the dwarf art, and the rested tick hides (ReputationFrame.lua:184-230). TBC's cap is
+/// 70 (`MAX_PLAYER_LEVEL_TABLE[GetAccountExpansionLevel()]`).
 #[test]
 fn the_watch_bar_shows_the_watched_factions_progress_and_swaps_at_max_level() {
     let _data = benilla_formats::wow_data_or_skip!();
@@ -557,7 +558,7 @@ fn the_watch_bar_shows_the_watched_factions_progress_and_swaps_at_max_level() {
     );
     assert!(
         shown(&mut s, "MainMenuExpBar"),
-        "below 60 the strip STACKS on the XP bar rather than replacing it"
+        "below 70 the strip STACKS on the XP bar rather than replacing it"
     );
     assert!(
         shown(&mut s, "ReputationWatchBarTexture0"),
@@ -587,18 +588,18 @@ fn the_watch_bar_shows_the_watched_factions_progress_and_swaps_at_max_level() {
     s.run("ReputationWatchBar:Show() UIParent_ManageFramePositions()")
         .unwrap();
 
-    // Ding to 60: the reputation strip takes the XP bar's place, art and all.
-    s.set_unit("player", Some(player(60)));
+    // Ding to 70: the reputation strip takes the XP bar's place, art and all.
+    s.set_unit("player", Some(player(70)));
     s.fire_event(
         "PLAYER_LEVEL_UP",
-        vec![benilla_ui::script::ScriptValue::Int(60)],
+        vec![benilla_ui::script::ScriptValue::Int(70)],
     );
     s.resolve();
 
     assert!(shown(&mut s, "ReputationWatchBar"), "still watching");
     assert!(
         !shown(&mut s, "MainMenuExpBar"),
-        "at 60 the strip REPLACES the XP bar"
+        "at 70 the strip REPLACES the XP bar"
     );
     assert!(
         !shown(&mut s, "MainMenuBarMaxLevelBar"),
@@ -616,7 +617,7 @@ fn the_watch_bar_shows_the_watched_factions_progress_and_swaps_at_max_level() {
         13.0
     );
 
-    // Stop watching: at 60 with nothing watched the brass rail is what takes the XP bar's place.
+    // Stop watching: at 70 with nothing watched the brass rail is what takes the XP bar's place.
     let mut st = state();
     st.watched = None;
     s.set_reputation(st);

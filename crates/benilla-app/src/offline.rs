@@ -525,6 +525,10 @@ fn emit_world_entry_with_talents(
             benilla_game_core::progression::xp_to_next_level(snapshot.level).unwrap_or(0),
         ), // PLAYER_NEXT_LEVEL_XP
         (1102, free_talent_points(snapshot, talents)), // PLAYER_CHARACTER_POINTS1
+        // PLAYER_FIELD_WATCHED_FACTION_INDEX, signed: absent fields zero-fill, and 0 is a real
+        // reputation slot (Bloodsail Buccaneers), so "watch nothing" must be written as -1 or a
+        // fresh character's watch bar shows that faction.
+        (1261, benilla_protocol::messages::WATCHED_FACTION_NONE as u32),
         (46, 0x8),                                  // UNIT_FLAG_PLAYER_CONTROLLED
         (36, race_class_gender),                    // UNIT_FIELD_BYTES_0
         (193, player_bytes),                        // PLAYER_BYTES
@@ -2032,6 +2036,10 @@ fn drive_offline_gameplay(
                 cancel_offline_aura(&mut core.0, &mut persistence, &channels, *spell_id);
                 continue;
             }
+            crate::net::ClientCommand::SetWatchedFaction { rep_list_id } => {
+                set_offline_watched_faction(&core.0, &channels, *rep_list_id);
+                continue;
+            }
             crate::net::ClientCommand::AttackSwing { guid } => {
                 start_offline_auto_attack(&mut core.0, &channels, *guid);
                 continue;
@@ -2487,6 +2495,20 @@ fn cancel_offline_aura(
         }],
     );
     save_after_command(core, persistence);
+}
+
+/// Round-trip `CMSG_SET_WATCHED_FACTION` offline: the watched slot is a server descriptor field
+/// with no client mirror (`0x4d6b60`), so the answer is a `PLAYER_FIELD_WATCHED_FACTION_INDEX`
+/// update, exactly the packet the reference's own `SetWatchedFactionIndex` waits for.
+fn set_offline_watched_faction(core: &GameCore, channels: &OfflineChannels, rep_list_id: i32) {
+    let Some(id) = core.active() else { return };
+    send_gameplay_events(
+        channels,
+        [SessionEvent::ObjectValues {
+            guid: id.presentation_guid(),
+            fields: ObjectFields::from_pairs(&[(1261, rep_list_id as u32)]),
+        }],
+    );
 }
 
 fn publish_offline_auras(core: &GameCore, channels: &OfflineChannels, removed: &[CharacterAura]) {
@@ -5540,6 +5562,25 @@ mod tests {
             );
             let events: Vec<_> = received.try_iter().collect();
 
+            let player_fields = events
+                .iter()
+                .find_map(|event| match event {
+                    SessionEvent::ObjectCreate {
+                        kind: EntityKind::Player,
+                        fields,
+                        ..
+                    } => Some(fields),
+                    _ => None,
+                })
+                .expect("world entry emits the player create");
+            assert_eq!(
+                player_fields.player_watched_faction(),
+                Some(-1),
+                "a fresh character watches nothing: absent fields zero-fill, and slot 0 is the \
+                 Bloodsail Buccaneers, so the sentinel must be written or the watch bar replaces \
+                 the XP bar"
+            );
+
             let nearby: Vec<_> = content
                 .spawns_near(
                     snapshot.position.map_id,
@@ -5611,6 +5652,86 @@ mod tests {
             }
             assert!(patrols.0.values().any(|patrol| patrol.waypoints.len() > 1));
         }
+    }
+
+    /// The "Show as Experience Bar" box's `SetWatchedFactionIndex` reaches the offline adapter as
+    /// `CMSG_SET_WATCHED_FACTION`; watching is not optimistic (`0x4d6b60`), so the answer must be
+    /// the descriptor update stock `ReputationFrame.xml` waits for.
+    #[test]
+    fn offline_watched_faction_command_answers_with_the_descriptor_update() {
+        let id = CharacterId::parse("00000000000000000000000000000001").unwrap();
+        let mut core = GameCore::default();
+        core.create_character(
+            id,
+            "Alaera",
+            Appearance {
+                race: 10,
+                class: 8,
+                gender: 0,
+                skin: 0,
+                face: 0,
+                hair_style: 0,
+                hair_color: 0,
+                facial_hair: 0,
+            },
+            starting_position(10).unwrap(),
+        )
+        .unwrap();
+        core.enter_world().unwrap();
+        let player_guid = core.active().unwrap().presentation_guid();
+
+        let (_pick_tx, picks) = crossbeam_channel::unbounded();
+        let (events, received) = crossbeam_channel::unbounded();
+        let (command_tx, commands) = crossbeam_channel::unbounded();
+        let mut app = App::new();
+        app.insert_resource(OfflineChannels {
+            picks,
+            events,
+            commands,
+        })
+        .insert_resource(OfflineGameCore(core))
+        .insert_resource(OfflinePersistence::new(false))
+        .insert_resource(Time::<()>::default());
+
+        command_tx
+            .send(crate::net::ClientCommand::SetWatchedFaction { rep_list_id: 20 })
+            .unwrap();
+        app.world_mut()
+            .run_system_once(drive_offline_gameplay)
+            .expect("watch command handled");
+        let events: Vec<_> = received.try_iter().collect();
+        let watched = events
+            .iter()
+            .find_map(|event| match event {
+                SessionEvent::ObjectValues { guid, fields } if *guid == player_guid => {
+                    fields.player_watched_faction()
+                }
+                _ => None,
+            });
+        assert_eq!(
+            watched,
+            Some(20),
+            "the watched slot comes back as a field update: {events:?}"
+        );
+
+        command_tx
+            .send(crate::net::ClientCommand::SetWatchedFaction {
+                rep_list_id: benilla_protocol::messages::WATCHED_FACTION_NONE,
+            })
+            .unwrap();
+        app.world_mut()
+            .run_system_once(drive_offline_gameplay)
+            .expect("unwatch command handled");
+        let events: Vec<_> = received.try_iter().collect();
+        let watched = events
+            .iter()
+            .find_map(|event| match event {
+                SessionEvent::ObjectValues { guid, fields } if *guid == player_guid => {
+                    fields.player_watched_faction()
+                }
+                _ => None,
+            });
+        assert_eq!(watched, Some(-1), "unticking sends -1, not slot 0");
     }
 
     #[test]

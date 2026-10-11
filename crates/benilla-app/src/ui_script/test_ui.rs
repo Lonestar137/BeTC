@@ -300,6 +300,16 @@ pub(super) const UIPARENT_STAND_INS: &str = r#"
     RaidOptionsFrame_UpdatePartyFrames = RaidOptionsFrame_UpdatePartyFrames or function() end
     LocalizeFrames = LocalizeFrames or function() end
     updateContainerFrameAnchors = updateContainerFrameAnchors or function() end
+    -- TBC's voice-chat query, which stock `UIParent.lua:1542` calls unguarded in the manage pass;
+    -- the offline game has no voice chat and the engine presents no such global.
+    IsVoiceChatEnabled = IsVoiceChatEnabled or function() return nil end
+    -- The `PLAYER_ENTERING_WORLD` arm's voice-chat teardown call (`UIParent.lua:543`).
+    VoiceChat_Toggle = VoiceChat_Toggle or function() end
+    -- The same arm's arena walk (`UIParent.lua:544`), the window close (`l.538`) and the popup
+    -- hide (`l.548`); each lives in a file a short kit may not load.
+    GetArenaTeam = GetArenaTeam or function() end
+    CloseAllWindows = CloseAllWindows or function() end
+    StaticPopup_Hide = StaticPopup_Hide or function() end
     -- 1.12 keeps UpdateNameplates in UIOptionsFrame.lua, which a kit reaches only at manifest
     -- l.21; our own OptionsFrame.xml re-declares it below that. Both are plain
     -- `function X()` writes, so a full kit ends on ours and a short one keeps this no-op.
@@ -314,6 +324,9 @@ pub(super) const UIPARENT_STAND_INS: &str = r#"
     CONTAINER_OFFSET_X = CONTAINER_OFFSET_X or 0
     CONTAINER_OFFSET_Y = CONTAINER_OFFSET_Y or 70
     BATTLEFIELD_TAB_OFFSET_Y = BATTLEFIELD_TAB_OFFSET_Y or 210
+    -- Stock `PVPFrame.lua:1`'s count, which `UIParent_OnEvent`'s `PLAYER_ENTERING_WORLD` arm
+    -- walks unguarded (`UIParent.lua:541`); a kit may stop short of the PVP file.
+    MAX_ARENA_TEAMS = MAX_ARENA_TEAMS or 3
     -- The pass writes its `isVar` rows with `setglobal`, but only for a name that already reads
     -- non-nil (`frame = getglobal(index); if frame then`), so an unseeded one is never written at
     -- all. These four are the reference's own seeds, from the files that declare them

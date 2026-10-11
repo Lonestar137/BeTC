@@ -53,6 +53,10 @@ const BEYOND_1_12: &[&str] = &[
     "UnitChannelInfo",
     "hooksecurefunc",
     "securecall",
+    // TBC's account-expansion tier. The offline game is 2.4.3, so it answers 1 (The Burning
+    // Crusade) and `ReputationFrame.lua:17` resolves `MAX_PLAYER_LEVEL` to 70; 1.12 has no such
+    // global. Without it the OnLoad raises and `MAX_PLAYER_LEVEL` stays 0, hiding the XP bar.
+    "GetAccountExpansionLevel",
     // TBC FrameXML reads and writes the modified-click mapping through this table and its APIs.
     "MODIFIER_CLICK",
     "GetModifiedClick",

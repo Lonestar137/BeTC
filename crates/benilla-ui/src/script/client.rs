@@ -101,6 +101,15 @@ pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
         })?,
     )?;
 
+    // `GetAccountExpansionLevel()`: the account's expansion tier, 0 classic, 1 The Burning
+    // Crusade, 2 Wrath. This offline game is TBC 2.4.3, so it answers 1: stock
+    // `ReputationFrame.lua:17` reads `MAX_PLAYER_LEVEL_TABLE[1]` = 70, the same cap as
+    // `benilla_game_core::MAX_PLAYER_LEVEL`.
+    g.set(
+        "GetAccountExpansionLevel",
+        lua.create_function(|_, ()| Ok(1))?,
+    )?;
+
     // `RunScript(text)` (`0x48b980`) runs a chunk in the shared global state with full API
     // access, no `setfenv`. Its contract:
     // 1. The chunk name is the source itself: the one `lua_tostring` result is passed as both
@@ -266,6 +275,33 @@ mod tests {
             s.arity("GetBuildInfo()").unwrap(),
             3,
             "three values, never a fourth"
+        );
+    }
+
+    /// The offline game is TBC 2.4.3, so `ReputationFrame_OnLoad` resolves
+    /// `MAX_PLAYER_LEVEL_TABLE[1]` to the 70 cap and `newLevel < MAX_PLAYER_LEVEL` stays true
+    /// through 69. One number, never nil.
+    #[test]
+    fn get_account_expansion_level_answers_the_tbc_tier() {
+        let s = UiScript::new().unwrap();
+        assert_eq!(
+            s.arity("GetAccountExpansionLevel()").unwrap(),
+            1,
+            "one value, as the reference pushes"
+        );
+        assert_eq!(
+            s.eval::<i64>("return GetAccountExpansionLevel()").unwrap(),
+            1
+        );
+        assert_eq!(
+            s.eval::<i64>(
+                "MAX_PLAYER_LEVEL_TABLE = {} MAX_PLAYER_LEVEL_TABLE[0] = 60 \
+                 MAX_PLAYER_LEVEL_TABLE[1] = 70 \
+                 return MAX_PLAYER_LEVEL_TABLE[GetAccountExpansionLevel()]"
+            )
+            .unwrap(),
+            70,
+            "stock ReputationFrame.lua:17's own lookup"
         );
     }
 
