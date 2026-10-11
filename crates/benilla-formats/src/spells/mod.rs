@@ -152,8 +152,9 @@ const SPELL_AURA_MOD_SHAPESHIFT: u32 = 36;
 /// per-tick arm (Mind Flay 15407's first effect).
 pub const SPELL_AURA_PERIODIC_DAMAGE: u32 = 3;
 /// `SPELL_AURA_PERIODIC_TRIGGER_SPELL`: the tick is the triggered spell's own effect (Arcane
-/// Missiles 5143 triggers 7268 on its amplitude).
-pub const SPELL_AURA_PERIODIC_TRIGGER_SPELL: u32 = 4;
+/// Missiles 5143's second arm triggers 7268 on its amplitude; the totem passives — Earthbind
+/// Totem Passive 6474 — pulse the same way). The row's other arm, aura 4, is the dummy family.
+pub const SPELL_AURA_PERIODIC_TRIGGER_SPELL: u32 = 23;
 /// `SPELL_AURA_PERIODIC_LEECH`: a periodic hit that heals the caster for its damage (Drain Life
 /// 689's only effect).
 pub const SPELL_AURA_PERIODIC_LEECH: u32 = 53;

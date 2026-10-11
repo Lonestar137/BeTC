@@ -4,7 +4,7 @@ revision = "866723612d93791e442fb1b18d642118fa682edd"
 license = "GPL-3.0"
 client_build = 8606
 extraction_command = "python3 scripts/import-tbc-summons.py <TBC-DB full SQL dump> crates/benilla-game-core/content/tbc-summons.toml"
-authored = "[[grant]] rows restore the stock-TBC warlock demon spellbook; the pinned DB teaches none of them (see the script's docstring)"
+authored = "[[grant]] rows restore the stock-TBC warlock demon spellbook and swing = true names the guardian creatures whose pet AI keys no converted table; the pinned DB expresses neither (see the script's docstring)"
 
 [[summon]]
 entry = 416
@@ -15,6 +15,7 @@ scale = 1.0
 creature_type = 3
 family = 23
 health = 166
+spells = [3110]
 
 [[summon]]
 entry = 417
@@ -25,6 +26,17 @@ scale = 1.0
 creature_type = 3
 family = 15
 health = 3857
+
+[[summon]]
+entry = 510
+name = "Water Elemental"
+display_id = 525
+faction = 115
+scale = 1.0
+creature_type = 4
+family = 0
+health = 2998
+swing = true
 
 [[summon]]
 entry = 1860
@@ -47,6 +59,996 @@ family = 17
 health = 20000
 
 [[summon]]
+entry = 1964
+name = "Treant"
+display_id = 18922
+faction = 1828
+scale = 1.0
+creature_type = 4
+family = 0
+health = 9250
+swing = true
+
+[[summon]]
+entry = 2630
+name = "Earthbind Totem"
+display_id = 19073
+faction = 82
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [6474]
+
+[[summon]]
+entry = 3573
+name = "Mana Spring Totem"
+display_id = 19075
+faction = 6
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [5677]
+
+[[summon]]
+entry = 3579
+name = "Stoneclaw Totem"
+display_id = 19073
+faction = 2
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [5728]
+
+[[summon]]
+entry = 3902
+name = "Searing Totem II"
+display_id = 19074
+faction = 1629
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [6350]
+
+[[summon]]
+entry = 3903
+name = "Searing Totem III"
+display_id = 19074
+faction = 45
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [6351]
+
+[[summon]]
+entry = 3904
+name = "Searing Totem IV"
+display_id = 19074
+faction = 116
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [6352]
+
+[[summon]]
+entry = 3906
+name = "Healing Stream Totem II"
+display_id = 19075
+faction = 116
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [6371]
+
+[[summon]]
+entry = 3907
+name = "Healing Stream Totem III"
+display_id = 19075
+faction = 6
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [6372]
+
+[[summon]]
+entry = 3908
+name = "Healing Stream Totem IV"
+display_id = 19075
+faction = 2
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [10460]
+
+[[summon]]
+entry = 3909
+name = "Healing Stream Totem V"
+display_id = 19075
+faction = 6
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [10461]
+
+[[summon]]
+entry = 3911
+name = "Stoneclaw Totem II"
+display_id = 19073
+faction = 2
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [6397]
+
+[[summon]]
+entry = 3912
+name = "Stoneclaw Totem III"
+display_id = 19073
+faction = 2
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [6398]
+
+[[summon]]
+entry = 3913
+name = "Stoneclaw Totem IV"
+display_id = 19073
+faction = 2
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [6399]
+
+[[summon]]
+entry = 3968
+name = "Sentry Totem"
+display_id = 19071
+faction = 6
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+
+[[summon]]
+entry = 4277
+name = "Eye of Kilrogg"
+display_id = 2421
+faction = 58
+scale = 1.0
+creature_type = 3
+family = 0
+health = 1113
+
+[[summon]]
+entry = 5874
+name = "Strength of Earth Totem"
+display_id = 19073
+faction = 2
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [8076]
+
+[[summon]]
+entry = 5879
+name = "Fire Nova Totem"
+display_id = 19074
+faction = 6
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [8443, 8350]
+
+[[summon]]
+entry = 5913
+name = "Tremor Totem"
+display_id = 19073
+faction = 1629
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [8145]
+
+[[summon]]
+entry = 5919
+name = "Stoneskin Totem II"
+display_id = 19073
+faction = 116
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [8156]
+
+[[summon]]
+entry = 5920
+name = "Stoneskin Totem III"
+display_id = 19073
+faction = 1629
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [8157]
+
+[[summon]]
+entry = 5921
+name = "Strength of Earth Totem II"
+display_id = 19073
+faction = 2
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [8162]
+
+[[summon]]
+entry = 5922
+name = "Strength of Earth Totem III"
+display_id = 19073
+faction = 116
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [8163]
+
+[[summon]]
+entry = 5923
+name = "Poison Cleansing Totem"
+display_id = 19075
+faction = 1629
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [8167]
+
+[[summon]]
+entry = 5924
+name = "Disease Cleansing Totem"
+display_id = 19075
+faction = 116
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [8172]
+
+[[summon]]
+entry = 5925
+name = "Grounding Totem"
+display_id = 19071
+faction = 16
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [8178, 8179]
+
+[[summon]]
+entry = 5926
+name = "Frost Resistance Totem"
+display_id = 19074
+faction = 2
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [8182]
+
+[[summon]]
+entry = 5927
+name = "Fire Resistance Totem"
+display_id = 19075
+faction = 6
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [8185]
+
+[[summon]]
+entry = 5929
+name = "Magma Totem"
+display_id = 19074
+faction = 654
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [8188]
+
+[[summon]]
+entry = 5950
+name = "Flametongue Totem"
+display_id = 19074
+faction = 2
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [8229]
+
+[[summon]]
+entry = 6012
+name = "Flametongue Totem II"
+display_id = 19074
+faction = 58
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [8251]
+
+[[summon]]
+entry = 6110
+name = "Fire Nova Totem II"
+display_id = 19074
+faction = 2
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [8504, 8508]
+
+[[summon]]
+entry = 6111
+name = "Fire Nova Totem III"
+display_id = 19074
+faction = 2
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [8505, 8509]
+
+[[summon]]
+entry = 6112
+name = "Windfury Totem"
+display_id = 19071
+faction = 16
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [8515, 8516]
+
+[[summon]]
+entry = 7366
+name = "Stoneskin Totem IV"
+display_id = 19073
+faction = 6
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [10403]
+
+[[summon]]
+entry = 7367
+name = "Stoneskin Totem V"
+display_id = 19073
+faction = 6
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [10404]
+
+[[summon]]
+entry = 7368
+name = "Stoneskin Totem VI"
+display_id = 19073
+faction = 116
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [10405]
+
+[[summon]]
+entry = 7398
+name = "Stoneclaw Totem V"
+display_id = 19073
+faction = 2
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [10425]
+
+[[summon]]
+entry = 7399
+name = "Stoneclaw Totem VI"
+display_id = 19073
+faction = 116
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [10426]
+
+[[summon]]
+entry = 7400
+name = "Searing Totem V"
+display_id = 19074
+faction = 2
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [10435]
+
+[[summon]]
+entry = 7402
+name = "Searing Totem VI"
+display_id = 19074
+faction = 6
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [10436]
+
+[[summon]]
+entry = 7403
+name = "Strength of Earth Totem IV"
+display_id = 19073
+faction = 6
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [10441]
+
+[[summon]]
+entry = 7412
+name = "Frost Resistance Totem II"
+display_id = 19074
+faction = 116
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [10476]
+
+[[summon]]
+entry = 7413
+name = "Frost Resistance Totem III"
+display_id = 19074
+faction = 116
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [10477]
+
+[[summon]]
+entry = 7414
+name = "Mana Spring Totem II"
+display_id = 19075
+faction = 6
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [10491]
+
+[[summon]]
+entry = 7415
+name = "Mana Spring Totem III"
+display_id = 19075
+faction = 2
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [10493]
+
+[[summon]]
+entry = 7416
+name = "Mana Spring Totem IV"
+display_id = 19075
+faction = 2
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [10494]
+
+[[summon]]
+entry = 7423
+name = "Flametongue Totem III"
+display_id = 19074
+faction = 58
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [10524]
+
+[[summon]]
+entry = 7424
+name = "Fire Resistance Totem II"
+display_id = 19075
+faction = 116
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [10534]
+
+[[summon]]
+entry = 7425
+name = "Fire Resistance Totem III"
+display_id = 19075
+faction = 116
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [10535]
+
+[[summon]]
+entry = 7464
+name = "Magma Totem II"
+display_id = 19074
+faction = 2
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [10582]
+
+[[summon]]
+entry = 7465
+name = "Magma Totem III"
+display_id = 19074
+faction = 6
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [10583]
+
+[[summon]]
+entry = 7466
+name = "Magma Totem IV"
+display_id = 19074
+faction = 116
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [10584]
+
+[[summon]]
+entry = 7467
+name = "Nature Resistance Totem"
+display_id = 19071
+faction = 2
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [10596]
+
+[[summon]]
+entry = 7468
+name = "Nature Resistance Totem II"
+display_id = 19071
+faction = 2
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [10598]
+
+[[summon]]
+entry = 7469
+name = "Nature Resistance Totem III"
+display_id = 19071
+faction = 116
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [10599]
+
+[[summon]]
+entry = 7483
+name = "Windfury Totem II"
+display_id = 19071
+faction = 116
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [10609, 10608]
+
+[[summon]]
+entry = 7484
+name = "Windfury Totem III"
+display_id = 19071
+faction = 2
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [10612, 10610]
+
+[[summon]]
+entry = 7486
+name = "Grace of Air Totem"
+display_id = 19071
+faction = 2
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [8836]
+
+[[summon]]
+entry = 7487
+name = "Grace of Air Totem II"
+display_id = 19071
+faction = 6
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [10626]
+
+[[summon]]
+entry = 7844
+name = "Fire Nova Totem IV"
+display_id = 19074
+faction = 6
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [11310, 11312]
+
+[[summon]]
+entry = 7845
+name = "Fire Nova Totem V"
+display_id = 19074
+faction = 6
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [11311, 11313]
+
+[[summon]]
+entry = 9687
+name = "Windwall Totem"
+display_id = 19071
+faction = 2
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [15108]
+
+[[summon]]
+entry = 9688
+name = "Windwall Totem II"
+display_id = 19071
+faction = 58
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [15109]
+
+[[summon]]
+entry = 9689
+name = "Windwall Totem III"
+display_id = 19071
+faction = 58
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [15110]
+
+[[summon]]
+entry = 10467
+name = "Mana Tide Totem"
+display_id = 19075
+faction = 6
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [16191]
+
+[[summon]]
+entry = 10557
+name = "Flametongue Totem IV"
+display_id = 19074
+faction = 58
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [16388]
+
+[[summon]]
+entry = 15430
+name = "Earth Elemental Totem"
+display_id = 19073
+faction = 1629
+scale = 1.0
+creature_type = 11
+family = 0
+health = 4711
+spells = [33663]
+swing = true
+
+[[summon]]
+entry = 15439
+name = "Fire Elemental Totem"
+display_id = 19074
+faction = 1629
+scale = 1.0
+creature_type = 11
+family = 0
+health = 3834
+spells = [32982]
+swing = true
+
+[[summon]]
+entry = 15447
+name = "Wrath of Air Totem"
+display_id = 19071
+faction = 1629
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [2895]
+
+[[summon]]
+entry = 15463
+name = "Grace of Air Totem III"
+display_id = 19071
+faction = 2
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [25360]
+
+[[summon]]
+entry = 15464
+name = "Strength of Earth Totem V"
+display_id = 19073
+faction = 1629
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [25362]
+
+[[summon]]
+entry = 15470
+name = "Stoneskin Totem VII"
+display_id = 19073
+faction = 2
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [25506]
+
+[[summon]]
+entry = 15474
+name = "Stoneskin Totem VIII"
+display_id = 19073
+faction = 1629
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [25507]
+
+[[summon]]
+entry = 15478
+name = "Stoneclaw Totem VII"
+display_id = 19073
+faction = 2
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [25513]
+
+[[summon]]
+entry = 15479
+name = "Strength of Earth Totem VI"
+display_id = 19073
+faction = 1629
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [25527]
+
+[[summon]]
+entry = 15480
+name = "Searing Totem VII"
+display_id = 19074
+faction = 1629
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [25530]
+
+[[summon]]
+entry = 15482
+name = "Fire Nova Totem VI"
+display_id = 19074
+faction = 58
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [25538, 25540]
+
+[[summon]]
+entry = 15483
+name = "Fire Nova Totem VII"
+display_id = 19074
+faction = 45
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [25539, 25544]
+
+[[summon]]
+entry = 15484
+name = "Magma Totem V"
+display_id = 19074
+faction = 1629
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [25551]
+
+[[summon]]
+entry = 15485
+name = "Flametongue Totem V"
+display_id = 19074
+faction = 1629
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [25556]
+
+[[summon]]
+entry = 15486
+name = "Frost Resistance Totem IV"
+display_id = 19074
+faction = 1629
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [25559]
+
+[[summon]]
+entry = 15487
+name = "Fire Resistance Totem IV"
+display_id = 19075
+faction = 1629
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [25562]
+
+[[summon]]
+entry = 15488
+name = "Healing Stream Totem VI"
+display_id = 19075
+faction = 1629
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [25566]
+
+[[summon]]
+entry = 15489
+name = "Mana Spring Totem V"
+display_id = 19075
+faction = 1629
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [25569]
+
+[[summon]]
+entry = 15490
+name = "Nature Resistance Totem IV"
+display_id = 19071
+faction = 1629
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [25573]
+
+[[summon]]
+entry = 15492
+name = "Windwall Totem IV"
+display_id = 19071
+faction = 58
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [25576]
+
+[[summon]]
+entry = 15496
+name = "Windfury Totem IV"
+display_id = 19071
+faction = 2
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [25581]
+
+[[summon]]
+entry = 15497
+name = "Windfury Totem V"
+display_id = 19071
+faction = 1629
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [25582]
+
+[[summon]]
+entry = 15803
+name = "Tranquil Air Totem"
+display_id = 19071
+faction = 58
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [25909]
+
+[[summon]]
 entry = 17252
 name = "Felguard"
 display_id = 14255
@@ -55,6 +1057,28 @@ scale = 1.0
 creature_type = 3
 family = 29
 health = 1034
+
+[[summon]]
+entry = 17539
+name = "Totem of Wrath"
+display_id = 19074
+faction = 1629
+scale = 1.0
+creature_type = 11
+family = 0
+health = 42
+spells = [30708]
+
+[[summon]]
+entry = 19668
+name = "Shadowfiend"
+display_id = 19110
+faction = 7
+scale = 1.0
+creature_type = 10
+family = 0
+health = 9800
+swing = true
 
 [[grant]]
 race = 1

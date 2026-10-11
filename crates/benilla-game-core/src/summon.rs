@@ -38,6 +38,14 @@ pub struct SummonTemplate {
     /// `CreatureFamily.dbc` id (the pet tab's family word); 0 for anything without a row.
     pub family: u32,
     pub health: u32,
+    /// The creature's own cast list (`creature_template_spells`): a totem's passive rows, whose
+    /// arms fold into its buff and pulse.
+    #[serde(default)]
+    pub spells: Vec<u32>,
+    /// The authored guardian marker (see the pack's provenance header): this creature swings the
+    /// creature baseline instead of folding a totem behavior.
+    #[serde(default)]
+    pub swing: bool,
 }
 
 /// One authored spellbook grant (a stock-TBC warlock demon).

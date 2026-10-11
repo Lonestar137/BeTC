@@ -149,15 +149,46 @@ the grants join the starter set and the coverage audit audits them like any star
 
 Totems and totem-style guardians (`SPELL_EFFECT_SUMMON_TOTEM`: Earthbind Totem 2484, Water
 Elemental 31687, Shadowfiend 34433) and summoned world objects (`SPELL_EFFECT_SUMMON_OBJECT_WILD`:
-Ritual of Doom 18540) remain explicit unsupported blockers — their stationary placement and
-auto-casting are their own model. The presentation is already wired for the pet (pet frame, pet
-bar, pet tab and combat-log naming).
+Ritual of Doom 18540) resolve as totem-style summons (below) and as explicit unsupported blockers
+respectively. The presentation is already wired for the pet (pet frame, pet bar, pet tab and
+combat-log naming).
+
+## Totems
+
+A `SPELL_EFFECT_SUMMON_TOTEM` row (Earthbind Totem 2484 and every shaman totem rank, the mage's
+Water Elemental 31687, the priest's Shadowfiend 34433, the druid's Force of Nature 33831) resolves
+to a totem-style summon: the row's `EffectMiscValue` is the converted creature entry and the row's
+`SpellDuration` is its lifetime (`content/tbc-summons.toml`, from the pinned CMaNGOS source).
+
+A totem creature (`CreatureType` 11) folds its converted cast list (`creature_template_spells`)
+into its behavior. A periodic-trigger arm fires the trigger row's own effect on the arm's
+amplitude (Earthbind's snare every 3000ms for its 5s); a periodic-heal arm ticks on its own
+cadence (Healing Stream's 6/tick); a plain damage row is the totem's own attack on the creature
+cadence ("Attack" 6350, Searing Totem); and a static arm is the passive buff the totem holds
+while it stands (Stoneskin 8156). The pulse lands on its owner's engaged target — a control sweep
+hits every hostile the owner has provoked, a heal hits the owner. One totem stands per totem: a
+recast of the same totem (any rank) replaces it — the family key is the creature name with the
+source's rank suffix stripped, because the spell rows carry no totem slot — while different totems
+stand together. A totem is session state: it expires on its own lifetime, and its owner's death
+silences its pulses without ending it.
+
+A guardian creature (the pack's authored `swing = true` entries: the mage's Water Elemental, the
+priest's Shadowfiend, the druid's Treants, the elemental totems' fighters) swings the creature
+baseline (`CREATURE_DAMAGE` per `CREATURE_SWING_MS`) like every creature in the simulation.
+
+Named fidelities: totem auras grant no stats (the simulation carries no stat model) and the held
+buff's icon is not presented; Mana Spring's resource restore and the cleansing, tremor, grounding
+and Stoneclaw pulses fold to no pulse (the resource-restore and absorb families stay explicit
+blockers, like their player-cast arms); the Eye of Kilrogg stands inert (its vision is not
+modeled); and a guardian's level-scaled pet damage is the future fidelity path, the same one the
+summon pet needs.
 
 ## Spell Effect Coverage
 
 The direct-cast resolver reads build-8606 `Spell.dbc` effect rows and resolves these families:
 school damage, heal, the four weapon-damage arms, aura-only buffs and debuffs, one linked
-periodic-damage aura (DoT), channeled per-tick effects, movement-control arms, and summons. Secondary
+periodic-damage aura (DoT), channeled per-tick effects, movement-control arms, summons, and
+totems. Secondary
 mechanics beside the direct arm are named and carried:
 builder combo points, the interrupt's school lockout (Shield Bash, Pummel; no caster to interrupt
 yet, so the lockout is presentation), and a trigger (`EffectTriggerSpell`). Periodic damage ticks

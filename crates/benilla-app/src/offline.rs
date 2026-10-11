@@ -974,6 +974,179 @@ fn summon_pet_bar(pet_guid: u64) -> benilla_protocol::messages::PetSpells {
     }
 }
 
+/// The movement control a row's aura arms carry: stun (Hammer of Justice; the disorient families
+/// act as a stun here — wander and flee are not modeled), root (Frost Nova) or snare (Frostbolt's
+/// -40), for the row's own duration. The strongest arm of the row wins, and an arm without a row
+/// duration lands no control.
+fn control_effect(
+    durations: &benilla_formats::SpellDurationCatalog,
+    spell: &benilla_formats::SpellDisplay,
+) -> Option<benilla_game_core::ControlEffect> {
+    let rank = |kind: benilla_game_core::ControlKind| match kind {
+        benilla_game_core::ControlKind::Stun => 2,
+        benilla_game_core::ControlKind::Root => 1,
+        benilla_game_core::ControlKind::Snare => 0,
+    };
+    let mut control: Option<benilla_game_core::ControlEffect> = None;
+    for slot in 0..3 {
+        let kind = match spell.effect_apply_aura[slot] {
+            benilla_formats::SPELL_AURA_MOD_STUN
+            | benilla_formats::SPELL_AURA_MOD_CONFUSE
+            | benilla_formats::SPELL_AURA_MOD_FEAR => benilla_game_core::ControlKind::Stun,
+            benilla_formats::SPELL_AURA_MOD_ROOT => benilla_game_core::ControlKind::Root,
+            benilla_formats::SPELL_AURA_MOD_DECREASE_SPEED => benilla_game_core::ControlKind::Snare,
+            _ => continue,
+        };
+        let Ok(duration_ms) = u32::try_from(durations.get(spell.duration_index)?.base_ms) else {
+            continue;
+        };
+        // A snare's strength is the row's own percent (Frostbolt's -40).
+        let slow_percent = if kind == benilla_game_core::ControlKind::Snare {
+            spell
+                .base_effect_range(slot)
+                .map(|(min, _)| min.saturating_neg().clamp(1, 99) as u32)
+                .unwrap_or(50)
+        } else {
+            0
+        };
+        let candidate = benilla_game_core::ControlEffect {
+            kind,
+            slow_percent,
+            duration_ms,
+        };
+        if duration_ms > 0 && control.is_none_or(|current| rank(candidate.kind) > rank(current.kind))
+        {
+            control = Some(candidate);
+        }
+    }
+    control
+}
+
+/// `CreatureType` 11 in the converted template: a totem creature stands and pulses; every other
+/// summoned creature is a guardian or observer.
+const TOTEM_CREATURE_TYPE: u32 = 11;
+
+/// The totem-style behavior the converted summon implies. A totem creature folds its converted
+/// passive rows into the buff it holds and the pulse it fires: a periodic trigger fires the
+/// trigger row's own arm (Earthbind's snare every 3000ms), a periodic heal ticks on its own
+/// cadence (Healing Stream), and a static arm is the standing buff (Stoneskin). A guardian (the
+/// pack's `swing` entries) swings the creature baseline like every creature in the simulation,
+/// and anything else stands inert (the Eye of Kilrogg's vision is a named fidelity).
+fn totem_behavior(
+    catalog: &benilla_formats::SpellCatalog,
+    durations: &benilla_formats::SpellDurationCatalog,
+    spell: &benilla_formats::SpellDisplay,
+    template: &benilla_game_core::summon::SummonTemplate,
+) -> benilla_game_core::TotemBehavior {
+    use benilla_game_core::{TotemBehavior, TotemPulse};
+    let duration_ms = durations
+        .get(spell.duration_index)
+        .and_then(|duration| u32::try_from(duration.base_ms).ok())
+        .unwrap_or(0);
+    let mut behavior = TotemBehavior {
+        buff_spell: None,
+        pulse: None,
+        pulse_ms: 0,
+        duration_ms,
+    };
+    if template.swing {
+        behavior.pulse = Some(TotemPulse::Damage {
+            min: benilla_game_core::CREATURE_DAMAGE,
+            max: benilla_game_core::CREATURE_DAMAGE,
+            school: 0,
+        });
+        behavior.pulse_ms = benilla_game_core::CREATURE_SWING_MS;
+        return behavior;
+    }
+    if template.creature_type != TOTEM_CREATURE_TYPE {
+        return behavior;
+    }
+    for &passive in &template.spells {
+        let Some(row) = catalog.get(passive) else {
+            continue;
+        };
+        for slot in 0..3 {
+            let amplitude = row.effect_amplitude[slot];
+            match row.effect_apply_aura[slot] {
+                benilla_formats::SPELL_AURA_PERIODIC_TRIGGER_SPELL if amplitude > 0 => {
+                    if behavior.pulse.is_none() {
+                        if let Some(pulse) =
+                            pulse_from_trigger(catalog, durations, row.effect_trigger_spell[slot])
+                        {
+                            behavior.pulse = Some(pulse);
+                            behavior.pulse_ms = amplitude;
+                        }
+                    }
+                }
+                benilla_formats::SPELL_AURA_PERIODIC_HEAL if amplitude > 0 => {
+                    if behavior.pulse.is_none() {
+                        if let Some((min, max)) = row.base_effect_range(slot) {
+                            behavior.pulse = Some(TotemPulse::Heal {
+                                min: min.max(0) as u32,
+                                max: max.max(0) as u32,
+                            });
+                            behavior.pulse_ms = amplitude;
+                        }
+                    }
+                }
+                0 => {}
+                // A static arm is the buff the totem holds while it stands. Behavior outside the
+                // pulse vocabulary (Mana Spring's resource restore) folds here too and stays a
+                // named fidelity (RULES.md, "Totems").
+                _ => {
+                    if behavior.buff_spell.is_none() {
+                        behavior.buff_spell = Some(passive);
+                    }
+                }
+            }
+        }
+        // A plain damage or heal row is the totem's own attack ("Attack" 6350): it fires on the
+        // creature cadence like a creature's swing.
+        if behavior.pulse.is_none() {
+            if let Some(pulse) = pulse_from_trigger(catalog, durations, passive) {
+                behavior.pulse = Some(pulse);
+                behavior.pulse_ms = benilla_game_core::CREATURE_SWING_MS;
+            }
+        }
+    }
+    behavior
+}
+
+/// The pulse a periodic trigger's row carries: its damage or heal arm, or the movement control its
+/// aura arms hold (Earthbind 3600's snare). Anything else folds to no pulse (a named fidelity).
+fn pulse_from_trigger(
+    catalog: &benilla_formats::SpellCatalog,
+    durations: &benilla_formats::SpellDurationCatalog,
+    trigger: u32,
+) -> Option<benilla_game_core::TotemPulse> {
+    use benilla_game_core::TotemPulse;
+    let row = catalog.get(trigger)?;
+    for slot in 0..3 {
+        match row.effects[slot] {
+            benilla_formats::SPELL_EFFECT_SCHOOL_DAMAGE
+            | benilla_formats::SPELL_EFFECT_WEAPON_DAMAGE
+            | benilla_formats::SPELL_EFFECT_WEAPON_DAMAGE_NOSCHOOL
+            | benilla_formats::SPELL_EFFECT_NORMALIZED_WEAPON_DMG => {
+                let (min, max) = row.base_effect_range(slot)?;
+                return Some(TotemPulse::Damage {
+                    min: min.max(0) as u32,
+                    max: max.max(0) as u32,
+                    school: 1_u32.checked_shl(row.school).unwrap_or(1),
+                });
+            }
+            benilla_formats::SPELL_EFFECT_HEAL => {
+                let (min, max) = row.base_effect_range(slot)?;
+                return Some(TotemPulse::Heal {
+                    min: min.max(0) as u32,
+                    max: max.max(0) as u32,
+                });
+            }
+            _ => {}
+        }
+    }
+    control_effect(durations, row).map(TotemPulse::Control)
+}
+
 fn combat_target_guid(hostile: &HostileState) -> Option<u64> {
     if hostile.position.map_id != 530 {
         return Some(hostile_guid(hostile.spawn_id));
@@ -1668,7 +1841,8 @@ fn plan_direct_effect(effects: [u32; 3], auras: [u32; 3]) -> Option<EffectPlan> 
             | benilla_formats::SPELL_EFFECT_WEAPON_DAMAGE
             | benilla_formats::SPELL_EFFECT_WEAPON_DAMAGE_NOSCHOOL
             | benilla_formats::SPELL_EFFECT_NORMALIZED_WEAPON_DMG
-            | benilla_formats::SPELL_EFFECT_SUMMON => {
+            | benilla_formats::SPELL_EFFECT_SUMMON
+            | benilla_formats::SPELL_EFFECT_SUMMON_TOTEM => {
                 if direct.replace(slot).is_some() {
                     return None;
                 }
@@ -2010,57 +2184,9 @@ fn drive_offline_gameplay(
                             },
                         )
                     });
-                    // Movement control rides the row's aura arms: stun (Hammer of Justice), root
-                    // (Frost Nova) or snare (Frostbolt's -40), for the row's duration. The
-                    // disorient families act as a stun here (wander and flee are not modeled),
-                    // and the strongest arm of the row wins.
-                    let mut control: Option<benilla_game_core::ControlEffect> = None;
-                    let rank = |kind: benilla_game_core::ControlKind| match kind {
-                        benilla_game_core::ControlKind::Stun => 2,
-                        benilla_game_core::ControlKind::Root => 1,
-                        benilla_game_core::ControlKind::Snare => 0,
-                    };
-                    for slot in 0..3 {
-                        let kind = match spell.effect_apply_aura[slot] {
-                            benilla_formats::SPELL_AURA_MOD_STUN
-                            | benilla_formats::SPELL_AURA_MOD_CONFUSE
-                            | benilla_formats::SPELL_AURA_MOD_FEAR => {
-                                benilla_game_core::ControlKind::Stun
-                            }
-                            benilla_formats::SPELL_AURA_MOD_ROOT => {
-                                benilla_game_core::ControlKind::Root
-                            }
-                            benilla_formats::SPELL_AURA_MOD_DECREASE_SPEED => {
-                                benilla_game_core::ControlKind::Snare
-                            }
-                            _ => continue,
-                        };
-                        let Ok(duration_ms) =
-                            u32::try_from(spells.durations.get(spell.duration_index)?.base_ms)
-                        else {
-                            continue;
-                        };
-                        // A snare's strength is the row's own percent (Frostbolt's -40).
-                        let slow_percent = if kind == benilla_game_core::ControlKind::Snare {
-                            spell
-                                .base_effect_range(slot)
-                                .map(|(min, _)| min.saturating_neg().clamp(1, 99) as u32)
-                                .unwrap_or(50)
-                        } else {
-                            0
-                        };
-                        let candidate = benilla_game_core::ControlEffect {
-                            kind,
-                            slow_percent,
-                            duration_ms,
-                        };
-                        if duration_ms > 0
-                            && control
-                                .is_none_or(|current| rank(candidate.kind) > rank(current.kind))
-                        {
-                            control = Some(candidate);
-                        }
-                    }
+                    // Movement control rides the row's aura arms (Hammer of Justice's stun,
+                    // Frostbolt's snare) for the row's own duration.
+                    let control = control_effect(&spells.durations, spell);
                     // A channeled row ticks its per-tick arm instead of landing a direct amount:
                     // periodic damage (Mind Flay), periodic leech (Drain Life), or the periodic
                     // trigger's own damage arm (Arcane Missiles 5143's trigger 7268).
@@ -2112,7 +2238,27 @@ fn drive_offline_gameplay(
                         (spell.effects[slot] == benilla_formats::SPELL_EFFECT_SUMMON)
                             .then(|| spell.effect_misc_value[slot].max(0) as u32)
                     });
-                    let effect = if let Some(creature_entry) = summon {
+                    // A totem-style summon names its creature the same way; the converted
+                    // creature's own rows carry its behavior.
+                    let totem = (0..3).find_map(|slot| {
+                        (spell.effects[slot] == benilla_formats::SPELL_EFFECT_SUMMON_TOTEM)
+                            .then(|| {
+                                let entry = spell.effect_misc_value[slot].max(0) as u32;
+                                Some((entry, benilla_game_core::summon::summon_template(entry)?))
+                            })
+                            .flatten()
+                    });
+                    let effect = if let Some((creature_entry, template)) = totem {
+                        benilla_game_core::DirectSpellEffect::Totem {
+                            creature_entry,
+                            behavior: totem_behavior(
+                                &spells.catalog,
+                                &spells.durations,
+                                spell,
+                                template,
+                            ),
+                        }
+                    } else if let Some(creature_entry) = summon {
                         benilla_game_core::DirectSpellEffect::Summon { creature_entry }
                     } else if let Some(channel) = channel_effect {
                         channel
@@ -3249,7 +3395,8 @@ fn start_offline_cast(
     };
     let player_guid = id.presentation_guid();
     let (presentation_target, cast_target) = match effect {
-        benilla_game_core::DirectSpellEffect::Summon { .. } => (
+        benilla_game_core::DirectSpellEffect::Summon { .. }
+        | benilla_game_core::DirectSpellEffect::Totem { .. } => (
             Some(player_guid),
             benilla_game_core::SpellTarget::SelfCharacter,
         ),
@@ -3902,6 +4049,145 @@ fn advance_offline_combat_with_talents(
                         SessionEvent::PetSpells(Box::new(benilla_protocol::messages::PetSpells {
                             ..Default::default()
                         })),
+                    ],
+                );
+            }
+            CombatUpdate::TotemSummoned {
+                spell_id,
+                creature_entry,
+                buff_spell: _,
+            } => {
+                // The totem's unit stands at its owner's feet for the row's own lifetime. Its
+                // passive buff is held as totem state; the buff's numbers and icon are not
+                // modeled (RULES.md, "Totems").
+                changed = true;
+                let Some(template) = benilla_game_core::summon::summon_template(creature_entry)
+                else {
+                    continue;
+                };
+                let Some(id) = core.active() else {
+                    continue;
+                };
+                let Some(position) = core.snapshot(id).map(|snapshot| snapshot.position) else {
+                    continue;
+                };
+                let guid = imported_guid(creature_entry, spell_id);
+                let fields = [
+                    (2, 0x9), // OBJECT_FIELD_TYPE: object and unit
+                    (3, creature_entry),
+                    (4, template.scale.to_bits()),
+                    (22, template.health),
+                    (28, template.health),
+                    (34, 1),
+                    (35, template.faction),
+                    (130, 1.5f32.to_bits()),
+                    (131, template.display_id),
+                    (132, template.display_id),
+                ];
+                send_gameplay_events(
+                    channels,
+                    [SessionEvent::ObjectCreate {
+                        guid,
+                        kind: EntityKind::Unit,
+                        display_id: Some(template.display_id),
+                        position: [position.x, position.y, position.z],
+                        orientation: position.orientation,
+                        scale: template.scale,
+                        speeds: None,
+                        mover: None,
+                        transport_progress: None,
+                        transport: None,
+                        spline: None,
+                        fields: ObjectFields::from_pairs(&fields)
+                            .into_created(benilla_protocol::messages::ObjectType::Unit),
+                    }],
+                );
+            }
+            CombatUpdate::TotemDismissed {
+                spell_id,
+                creature_entry,
+            } => {
+                changed = true;
+                send_gameplay_events(
+                    channels,
+                    [SessionEvent::ObjectDestroyed(imported_guid(
+                        creature_entry, spell_id,
+                    ))],
+                );
+            }
+            CombatUpdate::TotemImpact {
+                spell_id,
+                creature_entry,
+                school,
+                impact,
+            } => {
+                // The totem's pulse rides its own attacker state from its unit guid.
+                changed = true;
+                let Some(hostile) = core.hostile(impact.spawn_id) else {
+                    continue;
+                };
+                let Some(victim) = combat_target_guid(&hostile) else {
+                    continue;
+                };
+                let mut events = vec![SessionEvent::AttackerState(
+                    benilla_protocol::messages::AttackerState {
+                        attacker: imported_guid(creature_entry, spell_id),
+                        victim,
+                        hit_info: 0,
+                        damage: impact.damage,
+                        victim_state: 1,
+                        absorb: 0,
+                        resist: 0,
+                        blocked: 0,
+                        melee_spell_id: spell_id,
+                        school: u8::try_from(school).unwrap_or(0),
+                    },
+                )];
+                events.extend(hostile_spell_state_events(
+                    victim,
+                    &hostile,
+                    impact.killed.then_some(0),
+                ));
+                send_gameplay_events(channels, events);
+            }
+            CombatUpdate::TotemHeal {
+                spell_id,
+                creature_entry,
+                amount,
+                remaining_health,
+            } => {
+                changed = true;
+                let Some(id) = core.active() else {
+                    continue;
+                };
+                let guid = id.presentation_guid();
+                let healer = imported_guid(creature_entry, spell_id);
+                send_gameplay_events(
+                    channels,
+                    [
+                        SessionEvent::SpellGo {
+                            caster: healer,
+                            spell_id,
+                            cast_flags: 0x100,
+                            hits: vec![guid],
+                            misses: Vec::new(),
+                            target: Some(guid),
+                            go_target: None,
+                            dest: None,
+                            ammo_display_id: None,
+                            item_caster: None,
+                        },
+                        SessionEvent::SpellHealLog(benilla_protocol::messages::SpellHealLog {
+                            target: guid,
+                            healer,
+                            spell_id,
+                            amount,
+                            critical: false,
+                        }),
+                        SessionEvent::ObjectValues {
+                            guid,
+                            fields: ObjectFields::from_pairs(&[(22, remaining_health)]),
+                        },
                     ],
                 );
             }
@@ -4656,13 +4942,26 @@ mod tests {
                     }
                 }
             }
+            // A summon arm resolves only through a converted creature entry.
+            for slot in 0..3 {
+                let effect = spell.effects[slot];
+                if (effect == benilla_formats::SPELL_EFFECT_SUMMON
+                    || effect == benilla_formats::SPELL_EFFECT_SUMMON_TOTEM)
+                    && benilla_game_core::summon::summon_template(
+                        spell.effect_misc_value[slot].max(0) as u32,
+                    )
+                    .is_none()
+                {
+                    unaccounted.push((spell_id, spell.name.clone(), effect));
+                }
+            }
             1
         }
 
         // Explicit unsupported effect families (RULES.md "Spell Effect Coverage"): dummy-armed
         // and health-cost mechanics, mana burn and resource restore, charge-like movement,
-        // totems and summoned world objects, the area and mana-leech channel arms, and the
-        // acquisition and tool families the trainer and profession systems own.
+        // summoned world objects, the area and mana-leech channel arms, and the acquisition and
+        // tool families the trainer and profession systems own.
         const BLOCKERS: &[u32] = &[
             benilla_formats::SPELL_EFFECT_DUMMY,
             benilla_formats::SPELL_EFFECT_ENERGIZE,
@@ -4677,7 +4976,6 @@ mod tests {
             benilla_formats::SPELL_EFFECT_SKINNING,
             benilla_formats::SPELL_EFFECT_TRADE_SKILL,
             benilla_formats::SPELL_EFFECT_PROSPECTING,
-            benilla_formats::SPELL_EFFECT_SUMMON_TOTEM,
             benilla_formats::SPELL_EFFECT_SUMMON_OBJECT_WILD,
             39, // SPELL_EFFECT_LANGUAGE (the language-learning family)
             5,  // SPELL_EFFECT_TELEPORT_UNITS (Hearthstone 8690)
@@ -6622,6 +6920,174 @@ mod tests {
                         && state.damage == benilla_game_core::CREATURE_DAMAGE
             )),
             "the pet's swing lands: {swings:?}"
+        );
+    }
+
+    /// The totem behaviors fold from the converted rows: Earthbind's snare pulse, Searing's own
+    /// attack, Healing Stream's heal tick, and Stoneskin's standing buff.
+    #[test]
+    fn totem_behaviors_fold_from_the_converted_creature_rows() {
+        let data = benilla_formats::wow_data_or_skip!();
+        let mut chain = benilla_formats::open_chain(&data).expect("open chain");
+        let catalog = benilla_formats::load_spell_catalog(&mut chain).expect("spell catalog");
+        let durations = benilla_formats::load_spell_durations(&mut chain).expect("durations");
+        let fold = |spell_id: u32, entry: u32| {
+            let spell = catalog.get(spell_id).expect("summon row");
+            let template = benilla_game_core::summon::summon_template(entry).expect("converted");
+            totem_behavior(&catalog, &durations, spell, template)
+        };
+        use benilla_game_core::{ControlEffect, ControlKind, TotemPulse};
+
+        // Earthbind Totem: the converted passive (6474) triggers Earthbind (3600) every 3000ms —
+        // the snare, for the trigger's own 5s — and the totem lives the row's 45s.
+        let earthbind = fold(2484, 2630);
+        assert_eq!(earthbind.buff_spell, Some(6474));
+        assert_eq!(earthbind.pulse_ms, 3_000);
+        assert_eq!(earthbind.duration_ms, 45_000);
+        assert_eq!(
+            earthbind.pulse,
+            Some(TotemPulse::Control(ControlEffect {
+                kind: ControlKind::Snare,
+                slow_percent: 50,
+                duration_ms: 5_000,
+            }))
+        );
+
+        // Searing Totem: its own "Attack" row (6350) is the pulse, on the creature cadence.
+        let searing = fold(6363, 3902);
+        assert_eq!(searing.pulse_ms, benilla_game_core::CREATURE_SWING_MS);
+        let Some(TotemPulse::Damage { min, max, school }) = searing.pulse else {
+            panic!("Searing bolts: {searing:?}");
+        };
+        assert!(min <= max && min > 0, "{searing:?}");
+        assert_eq!(
+            school,
+            1_u32
+                .checked_shl(catalog.get(6350).expect("Attack row").school)
+                .unwrap_or(1)
+        );
+
+        // Healing Stream: the converted heal tick (6371) every 2000ms.
+        let healing = fold(6375, 3906);
+        assert_eq!(healing.pulse_ms, 2_000);
+        assert!(matches!(
+            healing.pulse,
+            Some(TotemPulse::Heal { min, max }) if min <= max && min > 0
+        ));
+
+        // Stoneskin is a standing buff (8156) with no pulse of its own.
+        let stoneskin = fold(8154, 5919);
+        assert_eq!(stoneskin.buff_spell, Some(8156));
+        assert_eq!(stoneskin.pulse, None);
+    }
+
+    /// Acceptance: a totem is a standing summon that works. Earthbind Totem (2484) puts the
+    /// converted totem (entry 2630) on the ground for its row's 45s, its snare sweep rides the
+    /// totem's own attacker state at the engaged target, and the unit leaves when the lifetime
+    /// runs out.
+    #[test]
+    fn offline_earthbind_totem_stands_sweeps_and_expires() {
+        let Some(spells) = crate::ui_action::real_spells() else {
+            return;
+        };
+        let id = CharacterId::parse("00000000000000000000000000000008").unwrap();
+        let appearance = Appearance {
+            race: 10,
+            class: 7,
+            gender: 0,
+            skin: 0,
+            face: 0,
+            hair_style: 0,
+            hair_color: 0,
+            facial_hair: 0,
+        };
+        let mut core = GameCore::default();
+        core.create_character(
+            id.clone(),
+            "Sheylen",
+            appearance,
+            starting_position(10).unwrap(),
+        )
+        .unwrap();
+        core.enter_world().unwrap();
+        let hostile = core.hostiles().first().copied().expect("imported target");
+        core.update_active(hostile.position, 0).unwrap();
+
+        let (_pick_tx, picks) = crossbeam_channel::unbounded();
+        let (events, received) = crossbeam_channel::unbounded();
+        let (commands, command_receiver) = crossbeam_channel::unbounded();
+        let mut app = App::new();
+        app.insert_resource(OfflineChannels {
+            picks,
+            events,
+            commands: command_receiver,
+        })
+        .insert_resource(OfflineGameCore(core))
+        .insert_resource(OfflinePersistence::new(false))
+        .insert_resource(Time::<()>::default())
+        .insert_resource(spells);
+
+        commands
+            .send(crate::net::ClientCommand::CastSpell {
+                spell_id: 2484,
+                target: Some(id.presentation_guid()),
+            })
+            .unwrap();
+        app.world_mut()
+            .run_system_once(drive_offline_gameplay)
+            .expect("the totem command is handled");
+        let channels = app.world().resource::<OfflineChannels>().clone();
+        {
+            let core = &mut app.world_mut().resource_mut::<OfflineGameCore>().0;
+            advance_offline_combat(core, &channels, 1);
+        }
+        let totem_guid = imported_guid(2630, 2484);
+        let summoned: Vec<_> = received.try_iter().collect();
+        assert!(
+            summoned.iter().any(|event| matches!(
+                event,
+                SessionEvent::ObjectCreate { guid, .. } if *guid == totem_guid
+            )),
+            "the totem's unit stands: {summoned:?}"
+        );
+
+        // The sweep rides the totem's own attacker state at the engaged target.
+        commands
+            .send(crate::net::ClientCommand::AttackSwing {
+                guid: hostile_guid(hostile.spawn_id),
+            })
+            .unwrap();
+        app.world_mut()
+            .run_system_once(drive_offline_gameplay)
+            .expect("the attack command is handled");
+        {
+            let core = &mut app.world_mut().resource_mut::<OfflineGameCore>().0;
+            advance_offline_combat(core, &channels, 3_000);
+        }
+        let pulses: Vec<_> = received.try_iter().collect();
+        assert!(
+            pulses.iter().any(|event| matches!(
+                event,
+                SessionEvent::AttackerState(state)
+                    if state.attacker == totem_guid
+                        && state.damage == 0
+                        && state.melee_spell_id == 2484
+            )),
+            "the snare sweep lands: {pulses:?}"
+        );
+
+        // The totem's unit leaves when the row's lifetime runs out.
+        {
+            let core = &mut app.world_mut().resource_mut::<OfflineGameCore>().0;
+            advance_offline_combat(core, &channels, 42_000);
+        }
+        let expired: Vec<_> = received.try_iter().collect();
+        assert!(
+            expired.iter().any(|event| matches!(
+                event,
+                SessionEvent::ObjectDestroyed(guid) if *guid == totem_guid
+            )),
+            "the totem expires: {expired:?}"
         );
     }
 

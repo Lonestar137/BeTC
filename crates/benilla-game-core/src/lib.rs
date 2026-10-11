@@ -446,6 +446,13 @@ pub enum DirectSpellEffect {
     Summon {
         creature_entry: u32,
     },
+    /// A totem-style summon (Earthbind Totem 2484, Shadowfiend 34433): the row's
+    /// `EffectMiscValue` is the summoned creature entry and the behavior is the converted
+    /// creature's own (its passive buff and pulse).
+    Totem {
+        creature_entry: u32,
+        behavior: TotemBehavior,
+    },
 }
 
 /// A hostile movement-control arm and its duration. One control runs per hostile at a time and
@@ -477,6 +484,47 @@ pub struct SummonState {
     pub max_health: u32,
     pub target_spawn_id: Option<u32>,
     pub swing_remaining_ms: u32,
+}
+
+/// A totem-style summon's periodic effect and the target it derives: a damage or control arm
+/// lands on its owner's engaged target (a control sweeps every hostile its owner has provoked),
+/// a heal arm on its owner. Behavior outside this vocabulary — Mana Spring's resource restore,
+/// Grounding's absorb, the cleansing and taunt pulses — folds to no pulse and stays a named
+/// fidelity (`RULES.md`, "Totems").
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TotemPulse {
+    /// The totem bolts its owner's target for a rolled band (Searing Bolt 6350, Waterbolt).
+    Damage { min: u32, max: u32, school: u32 },
+    /// The totem heals its owner for a rolled band (Healing Stream 5672's tick).
+    Heal { min: u32, max: u32 },
+    /// The totem sweeps a movement control over every hostile its owner has provoked (Earthbind
+    /// 3600's snare).
+    Control(ControlEffect),
+}
+
+/// What a totem-style summon does while it stands: the passive buff it holds (Stoneskin 8156),
+/// its periodic pulse and that pulse's cadence, and the row's own lifetime.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TotemBehavior {
+    pub buff_spell: Option<u32>,
+    pub pulse: Option<TotemPulse>,
+    pub pulse_ms: u32,
+    pub duration_ms: u32,
+}
+
+/// A totem-style summon standing at its owner's feet (a shaman totem, the mage's water
+/// elemental). It holds its converted passive buff, fires its converted pulse every `pulse_ms`,
+/// and expires after the row's own lifetime. One stands per totem: a recast of the same totem
+/// (any rank) replaces it while different totems stand together (`RULES.md`, "Totems").
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TotemState {
+    pub spell_id: u32,
+    pub creature_entry: u32,
+    pub buff_spell: Option<u32>,
+    pub pulse: Option<TotemPulse>,
+    pub pulse_ms: u32,
+    pub pulse_remaining_ms: u32,
+    pub remaining_ms: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -639,6 +687,32 @@ pub enum CombatUpdate {
     SummonImpact {
         creature_entry: u32,
         impact: CastImpact,
+    },
+    /// A totem-style summon stood up: its unit object and, when it holds one, its passive buff.
+    TotemSummoned {
+        spell_id: u32,
+        creature_entry: u32,
+        buff_spell: Option<u32>,
+    },
+    /// The totem left: its lifetime ran out or a recast replaced it.
+    TotemDismissed {
+        spell_id: u32,
+        creature_entry: u32,
+    },
+    /// A totem's damage pulse landed on a hostile (Searing Bolt, a guardian's swing); a control
+    /// sweep lands one per provoked hostile with no damage.
+    TotemImpact {
+        spell_id: u32,
+        creature_entry: u32,
+        school: u32,
+        impact: CastImpact,
+    },
+    /// A totem's heal pulse landed on its owner (Healing Stream's tick).
+    TotemHeal {
+        spell_id: u32,
+        creature_entry: u32,
+        amount: u32,
+        remaining_health: u32,
     },
     /// A Fireball burn tick (periodic damage) on a living hostile.
     DotImpact(CastImpact),
@@ -958,8 +1032,10 @@ pub struct GameCore {
     cast_channel: Option<PendingChannel>,
     cast_control: Option<ControlEffect>,
     cast_summon: Option<u32>,
+    cast_totem: Option<(u32, TotemBehavior)>,
     active_channel: Option<ActiveChannel>,
     summon: Option<SummonState>,
+    totems: Vec<TotemState>,
     melee_target_spawn_id: Option<u32>,
     melee_remaining_ms: u32,
     /// The ranged white attack (Auto Shot, Shoot, Throw): its target, its own swing timer, and
@@ -1941,8 +2017,10 @@ impl GameCore {
         self.cast_channel = None;
         self.cast_control = None;
         self.cast_summon = None;
+        self.cast_totem = None;
         self.active_channel = None;
         self.summon = None;
+        self.totems.clear();
         self.melee_target_spawn_id = None;
         self.melee_remaining_ms = 0;
         self.mana_regen_remainder_ms = 0;
@@ -2334,8 +2412,10 @@ impl GameCore {
         self.cast_channel = None;
         self.cast_control = None;
         self.cast_summon = None;
+        self.cast_totem = None;
         self.active_channel = None;
         self.summon = None;
+        self.totems.clear();
         self.stop_auto_attack();
         for hostile in &mut self.hostiles {
             hostile.provoked = false;
@@ -2455,6 +2535,19 @@ impl GameCore {
         self.summon.take().map(|pet| pet.creature_entry)
     }
 
+    /// The standing totems, in the order they were dropped.
+    pub fn totems(&self) -> &[TotemState] {
+        &self.totems
+    }
+
+    /// Dismiss every standing totem and report each `(spell, creature)` pair for presentation.
+    pub fn dismiss_totems(&mut self) -> Vec<(u32, u32)> {
+        std::mem::take(&mut self.totems)
+            .into_iter()
+            .map(|totem| (totem.spell_id, totem.creature_entry))
+            .collect()
+    }
+
     /// Begin the starter Mage's Fireball against an authored hostile spawn.
     /// Begin Fireball using the rank's unscaled inclusive damage values from the client spell
     /// record. The roll is deterministic and persisted in the character snapshot.
@@ -2559,6 +2652,24 @@ impl GameCore {
             }
             _ => None,
         };
+        // A totem-style summon row names its creature in `EffectMiscValue`; the behavior must
+        // carry a lifetime and a cadence for its pulse (an unconverted summon is an explicit
+        // unsupported blocker).
+        let totem = match effect {
+            DirectSpellEffect::Totem {
+                creature_entry,
+                behavior,
+            } => {
+                if summon::summon_template(creature_entry).is_none()
+                    || behavior.duration_ms == 0
+                    || behavior.pulse.is_some_and(|_| behavior.pulse_ms == 0)
+                {
+                    return Err(CoreError::UnsupportedSpellEffect);
+                }
+                Some((creature_entry, behavior))
+            }
+            _ => None,
+        };
         // A channeled cast resolves its per-tick mechanics on the cast's completion; a control arm
         // (Hammer of Justice's stun, Frostbolt's snare) lands with the direct amount.
         let channel = match effect {
@@ -2660,6 +2771,11 @@ impl GameCore {
                 ) => (DamageShape::None, Some(spawn_id), None, false, 0, None),
                 // A summon is cast on self: its pet is session state, not a direct amount.
                 (DirectSpellEffect::Summon { .. }, SpellTarget::SelfCharacter) => {
+                    (DamageShape::None, None, None, false, 0, None)
+                }
+                // A totem stands at its owner's feet and lands its own effects on its own
+                // cadence; the direct arm is empty.
+                (DirectSpellEffect::Totem { .. }, SpellTarget::SelfCharacter) => {
                     (DamageShape::None, None, None, false, 0, None)
                 }
                 // Friendly fire and weapon damage against a friendly unit are not modeled.
@@ -2824,6 +2940,7 @@ impl GameCore {
         self.cast_channel = channel;
         self.cast_control = control;
         self.cast_summon = summon;
+        self.cast_totem = totem;
         self.persist_active_vitals();
         Ok(CastOutcome::Cast)
     }
@@ -2885,8 +3002,10 @@ impl GameCore {
         self.cast_channel = None;
         self.cast_control = None;
         self.cast_summon = None;
+        self.cast_totem = None;
         self.active_channel = None;
         self.summon = None;
+        self.totems.clear();
         true
     }
 
@@ -3025,8 +3144,10 @@ impl GameCore {
         self.cast_channel = None;
         self.cast_control = None;
         self.cast_summon = None;
+        self.cast_totem = None;
         self.active_channel = None;
         self.summon = None;
+        self.totems.clear();
             self.queued_melee = None;
             self.combo_points = 0;
             self.combo_target_spawn_id = None;
@@ -3058,7 +3179,36 @@ impl GameCore {
                 self.cast_school = 0;
                 let target = self.cast_target_spawn_id.take();
                 let ally_target = self.cast_ally_spawn_id.take();
-                if let Some(entry) = self.cast_summon.take() {
+                if let Some((entry, behavior)) = self.cast_totem.take() {
+                    // A recast of the same totem (any rank) replaces the standing one; different
+                    // totems stand together.
+                    let name = summon::summon_template(entry).map(|template| template.name.as_str());
+                    if let Some(index) = self.totems.iter().position(|totem| {
+                        summon::summon_template(totem.creature_entry)
+                            .map(|template| totem_family(template.name.as_str()))
+                            == name.map(totem_family)
+                    }) {
+                        let previous = self.totems.remove(index);
+                        updates.push(CombatUpdate::TotemDismissed {
+                            spell_id: previous.spell_id,
+                            creature_entry: previous.creature_entry,
+                        });
+                    }
+                    self.totems.push(TotemState {
+                        spell_id,
+                        creature_entry: entry,
+                        buff_spell: behavior.buff_spell,
+                        pulse: behavior.pulse,
+                        pulse_ms: behavior.pulse_ms,
+                        pulse_remaining_ms: behavior.pulse_ms,
+                        remaining_ms: behavior.duration_ms,
+                    });
+                    updates.push(CombatUpdate::TotemSummoned {
+                        spell_id,
+                        creature_entry: entry,
+                        buff_spell: behavior.buff_spell,
+                    });
+                } else if let Some(entry) = self.cast_summon.take() {
                     // The summon replaces any current pet and joins its owner's target on the
                     // next swing.
                     if let Some(previous) = self.summon.take() {
@@ -3481,6 +3631,130 @@ impl GameCore {
             }
             self.summon = Some(pet);
         }
+        // A standing totem counts down its lifetime and fires its converted pulse at its owner's
+        // engaged target; it holds its fire while its owner is dead (RULES.md, "Totems").
+        let mut totems = std::mem::take(&mut self.totems);
+        for totem in &mut totems {
+            totem.remaining_ms = totem.remaining_ms.saturating_sub(elapsed_ms);
+            if totem.remaining_ms == 0 || self.active_health == 0 {
+                continue;
+            }
+            let mut pulse_elapsed = elapsed_ms;
+            while let Some(pulse) = totem.pulse {
+                if pulse_elapsed < totem.pulse_remaining_ms {
+                    totem.pulse_remaining_ms -= pulse_elapsed;
+                    break;
+                }
+                pulse_elapsed -= totem.pulse_remaining_ms;
+                totem.pulse_remaining_ms = totem.pulse_ms;
+                match pulse {
+                    TotemPulse::Damage { min, max, school } => {
+                        let Some(spawn_id) = self.melee_target_spawn_id.or(self.ranged_target_spawn_id)
+                        else {
+                            break;
+                        };
+                        let Some(id) = self.active.clone() else {
+                            break;
+                        };
+                        let damage = {
+                            let Some(snapshot) = self.snapshots.get_mut(&id) else {
+                                break;
+                            };
+                            roll_inclusive(snapshot, min, max)
+                        };
+                        let impact = self
+                            .hostiles
+                            .iter_mut()
+                            .find(|hostile| hostile.spawn_id == spawn_id && hostile.health > 0)
+                            .map(|hostile| {
+                                hostile.provoked = true;
+                                hostile.evading = false;
+                                hostile.health = hostile.health.saturating_sub(damage);
+                                let killed = hostile.health == 0;
+                                if killed {
+                                    hostile.respawn_remaining_ms = Some(HOSTILE_RESPAWN_MS);
+                                    clear_hostile_burn(hostile);
+                                }
+                                CastImpact {
+                                    spawn_id,
+                                    damage,
+                                    remaining_health: hostile.health,
+                                    killed,
+                                }
+                            });
+                        let Some(impact) = impact else {
+                            break;
+                        };
+                        updates.push(CombatUpdate::TotemImpact {
+                            spell_id: totem.spell_id,
+                            creature_entry: totem.creature_entry,
+                            school,
+                            impact,
+                        });
+                        if impact.killed {
+                            let creature_entry = self
+                                .hostiles
+                                .iter()
+                                .find(|hostile| hostile.spawn_id == spawn_id)
+                                .map_or(0, |hostile| hostile.creature_entry);
+                            updates.extend(self.record_creature_kill(spawn_id, creature_entry));
+                            break;
+                        }
+                    }
+                    TotemPulse::Heal { min, max } => {
+                        let Some(id) = self.active.clone() else {
+                            break;
+                        };
+                        let healed = {
+                            let Some(snapshot) = self.snapshots.get_mut(&id) else {
+                                break;
+                            };
+                            roll_inclusive(snapshot, min, max)
+                        };
+                        let healed = healed.min(PLAYER_MAX_HEALTH - self.active_health);
+                        self.active_health += healed;
+                        self.persist_active_vitals();
+                        updates.push(CombatUpdate::TotemHeal {
+                            spell_id: totem.spell_id,
+                            creature_entry: totem.creature_entry,
+                            amount: healed,
+                            remaining_health: self.active_health,
+                        });
+                    }
+                    TotemPulse::Control(control) => {
+                        // The sweep lands on every hostile its owner has provoked.
+                        for hostile in self
+                            .hostiles
+                            .iter_mut()
+                            .filter(|hostile| hostile.provoked && hostile.health > 0)
+                        {
+                            hostile.control = Some(control);
+                            hostile.control_remaining_ms = control.duration_ms;
+                            updates.push(CombatUpdate::TotemImpact {
+                                spell_id: totem.spell_id,
+                                creature_entry: totem.creature_entry,
+                                school: 0,
+                                impact: CastImpact {
+                                    spawn_id: hostile.spawn_id,
+                                    damage: 0,
+                                    remaining_health: hostile.health,
+                                    killed: false,
+                                },
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        let (expired, standing): (Vec<_>, Vec<_>) =
+            totems.into_iter().partition(|totem| totem.remaining_ms == 0);
+        for totem in expired {
+            updates.push(CombatUpdate::TotemDismissed {
+                spell_id: totem.spell_id,
+                creature_entry: totem.creature_entry,
+            });
+        }
+        self.totems = standing;
         // A running channel ticks its per-tick effect on its own cadence (Mind Flay, Drain Life,
         // Arcane Missiles): damage each tick, a drain heal beside it, and its control arm on the
         // first tick. Killing the target or spending the last tick ends it.
@@ -3975,8 +4249,10 @@ impl GameCore {
             cast_channel: None,
             cast_control: None,
             cast_summon: None,
+            cast_totem: None,
             active_channel: None,
             summon: None,
+            totems: Vec::new(),
             melee_target_spawn_id: None,
             melee_remaining_ms: 0,
             ranged_target_spawn_id: None,
@@ -4434,6 +4710,17 @@ fn equipped_ranged_weapon(snapshot: &CharacterSnapshot) -> Option<WeaponProfile>
 const RANGED_EQUIPMENT_SLOT: u8 = 17;
 
 /// Clear a hostile's active periodic-damage state (death bookkeeping).
+/// The totem's family key: its converted creature name with the source's rank suffix ("Searing
+/// Totem II") stripped, so one totem stands per totem rather than per rank. The spell rows carry
+/// no totem slot to key this properly (RULES.md, "Totems").
+fn totem_family(name: &str) -> &str {
+    let Some((base, suffix)) = name.rsplit_once(' ') else {
+        return name;
+    };
+    let roman = !suffix.is_empty() && suffix.chars().all(|c| matches!(c, 'I' | 'V' | 'X'));
+    if roman { base } else { name }
+}
+
 fn clear_hostile_burn(hostile: &mut HostileState) {
     hostile.burn_remaining_ms = 0;
     hostile.burn_tick_remaining_ms = 0;
@@ -7051,6 +7338,213 @@ mod tests {
         // An unconverted summon entry is a named blocker, not a silent nothing.
         assert_eq!(
             core.begin_cast(summon(900_090, 91_999)),
+            Err(CoreError::UnsupportedSpellEffect)
+        );
+    }
+
+    #[test]
+    fn a_totem_stands_pulses_replaces_its_rank_and_expires() {
+        let (mut core, id) = core_for(1, 8);
+        {
+            let snapshot = core.snapshots.get_mut(&id).unwrap();
+            snapshot
+                .known_spell_ids
+                .extend([900_092, 900_093, 900_094]);
+            snapshot.known_spell_ids.sort_unstable();
+        }
+        core.enter_world().unwrap();
+        core.update_active(core.hostile(HOSTILE_SPAWN_ID).unwrap().position, 0)
+            .unwrap();
+        let totem = |spell_id: u32, creature_entry: u32, behavior: TotemBehavior| CastRequest {
+            spell_id,
+            target: SpellTarget::SelfCharacter,
+            cost: PowerCost {
+                kind: PowerType::Mana,
+                amount: 0,
+            },
+            cast_time_ms: 0,
+            spell_cooldown_ms: 0,
+            cooldown_ms: 0,
+            range_yards: 0.0,
+            effect: DirectSpellEffect::Totem {
+                creature_entry,
+                behavior,
+            },
+            combo: ComboEffect::None,
+            on_next_swing: false,
+        };
+
+        // The Earthbind totem (2630) stands with its snare sweep on the converted cadence.
+        let snare = ControlEffect {
+            kind: ControlKind::Snare,
+            slow_percent: 50,
+            duration_ms: 5_000,
+        };
+        let behavior = TotemBehavior {
+            buff_spell: Some(6474),
+            pulse: Some(TotemPulse::Control(snare)),
+            pulse_ms: 3_000,
+            duration_ms: 45_000,
+        };
+        assert_eq!(
+            core.begin_cast(totem(900_092, 2630, behavior)),
+            Ok(CastOutcome::Cast)
+        );
+        let updates = core.advance_combat(1);
+        assert!(
+            matches!(
+                updates.as_slice(),
+                [CombatUpdate::TotemSummoned {
+                    spell_id: 900_092,
+                    creature_entry: 2630,
+                    buff_spell: Some(6474),
+                }]
+            ),
+            "{updates:?}"
+        );
+
+        // The sweep lands on the engaged hostile on its first cadence: the pulse falls at 3000ms
+        // from the cast's completion, counted through the creation advance.
+        core.start_auto_attack(HOSTILE_SPAWN_ID).unwrap();
+        core.stop_auto_attack().unwrap();
+        assert!(
+            core.advance_combat(2_998).is_empty(),
+            "the first pulse is one cadence out"
+        );
+        let updates = core.advance_combat(1);
+        let [CombatUpdate::TotemImpact {
+            spell_id: 900_092,
+            creature_entry: 2630,
+            impact,
+            ..
+        }] = updates.as_slice()
+        else {
+            panic!("the sweep lands: {updates:?}");
+        };
+        assert_eq!(impact.damage, 0);
+        let hostile = core.hostile(HOSTILE_SPAWN_ID).unwrap();
+        assert_eq!(hostile.control, Some(snare));
+        assert_eq!(hostile.control_remaining_ms, 5_000);
+
+        // The lifetime runs out on the row's own duration (45s from the cast's completion).
+        let updates = core.advance_combat(42_000);
+        assert!(
+            matches!(
+                updates.last(),
+                Some(CombatUpdate::TotemDismissed {
+                    spell_id: 900_092,
+                    creature_entry: 2630,
+                })
+            ),
+            "{updates:?}"
+        );
+        assert_eq!(core.totems().len(), 0);
+
+        // A damage totem bolts its owner's target, and the same totem's next rank replaces it.
+        let bolt = TotemBehavior {
+            buff_spell: None,
+            pulse: Some(TotemPulse::Damage {
+                min: 6,
+                max: 8,
+                school: 4,
+            }),
+            pulse_ms: 2_000,
+            duration_ms: 30_000,
+        };
+        assert_eq!(
+            core.begin_cast(totem(900_093, 3902, bolt)),
+            Ok(CastOutcome::Cast)
+        );
+        let updates = core.advance_combat(1);
+        assert!(
+            matches!(
+                updates.as_slice(),
+                [CombatUpdate::TotemSummoned {
+                    creature_entry: 3902,
+                    ..
+                }]
+            ),
+            "{updates:?}"
+        );
+        assert_eq!(
+            core.begin_cast(totem(900_093, 3903, bolt)),
+            Ok(CastOutcome::Cast)
+        );
+        let updates = core.advance_combat(1);
+        assert!(
+            matches!(
+                updates.as_slice(),
+                [
+                    CombatUpdate::TotemDismissed {
+                        creature_entry: 3902,
+                        ..
+                    },
+                    CombatUpdate::TotemSummoned {
+                        creature_entry: 3903,
+                        ..
+                    },
+                ]
+            ),
+            "Searing Totem III replaces Searing Totem II: {updates:?}"
+        );
+        core.start_auto_attack(HOSTILE_SPAWN_ID).unwrap();
+        let updates = core.advance_combat(2_000);
+        let impact = updates
+            .iter()
+            .find_map(|update| match update {
+                CombatUpdate::TotemImpact {
+                    creature_entry: 3903,
+                    school: 4,
+                    impact,
+                    ..
+                } => Some(*impact),
+                _ => None,
+            })
+            .expect("the bolt lands");
+        assert!((6..=8).contains(&impact.damage), "{impact:?}");
+        assert_eq!(
+            impact.remaining_health,
+            HOSTILE_MAX_HEALTH - impact.damage
+        );
+
+        // A heal tick overheals nothing at full health, and different totems stand together.
+        let heal = TotemBehavior {
+            buff_spell: None,
+            pulse: Some(TotemPulse::Heal { min: 6, max: 8 }),
+            pulse_ms: 2_000,
+            duration_ms: 30_000,
+        };
+        assert_eq!(
+            core.begin_cast(totem(900_094, 3906, heal)),
+            Ok(CastOutcome::Cast)
+        );
+        let _ = core.advance_combat(1);
+        let updates = core.advance_combat(2_000);
+        let healed = updates
+            .iter()
+            .find_map(|update| match update {
+                CombatUpdate::TotemHeal {
+                    spell_id: 900_094,
+                    creature_entry: 3906,
+                    amount,
+                    remaining_health,
+                } => Some((*amount, *remaining_health)),
+                _ => None,
+            })
+            .expect("the heal tick lands");
+        assert_eq!(healed, (0, PLAYER_MAX_HEALTH), "no overheal at full health");
+        assert_eq!(core.totems().len(), 2);
+        assert_eq!(
+            core.dismiss_totems()
+                .into_iter()
+                .map(|(spell_id, _)| spell_id)
+                .collect::<Vec<_>>(),
+            vec![900_093, 900_094]
+        );
+
+        // An unconverted totem entry is a named blocker, not a silent nothing.
+        assert_eq!(
+            core.begin_cast(totem(900_092, 91_998, behavior)),
             Err(CoreError::UnsupportedSpellEffect)
         );
     }

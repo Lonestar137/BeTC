@@ -81,12 +81,13 @@ fn channel_and_control_rows_match_build_8606_shapes() {
     );
     assert_eq!(flay.effect_amplitude, [1_000, 0, 0]);
 
-    // Arcane Missiles: the tick is the triggered spell's own damage on the amplitude.
+    // Arcane Missiles: the tick is the triggered spell's own damage on the amplitude. The first
+    // arm is the row's dummy (aura 4); the trigger rides the second arm.
     let missiles = cat.get(5143).expect("Arcane Missiles");
     assert!(missiles.tooltip_channeled());
     assert_eq!(
         missiles.effect_apply_aura,
-        [SPELL_AURA_PERIODIC_TRIGGER_SPELL, 23, 0]
+        [4, SPELL_AURA_PERIODIC_TRIGGER_SPELL, 0]
     );
     assert_eq!(missiles.effect_trigger_spell, [0, 7268, 0]);
     assert_eq!(missiles.effect_amplitude, [0, 1_000, 0]);
