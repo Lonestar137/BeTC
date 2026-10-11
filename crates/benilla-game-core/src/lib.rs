@@ -62,6 +62,13 @@ pub const ENERGY_REGEN_PER_TICK: u32 = 10;
 /// Out-of-combat rage decay: 1 point every 2,000 simulation ms, none during a fight.
 pub const RAGE_DECAY_TICK_MS: u32 = 2_000;
 pub const RAGE_DECAY_PER_TICK: u32 = 1;
+/// Out-of-combat health regen: [`HEALTH_REGEN_PER_TICK`] every [`HEALTH_REGEN_TICK_MS`], only
+/// after the fight — like the mana rule, a project-sized constant, not client data.
+pub const HEALTH_REGEN_TICK_MS: u32 = 2_000;
+pub const HEALTH_REGEN_PER_TICK: u32 = 5;
+/// A ranged white swing (Auto Shot 75, Shoot Bow, Throw, wand Shoot) reaches as far as the Auto
+/// Shot range row's maximum (35 yd); the row's 8-yard floor is not enforced in this slice.
+pub const RANGED_ATTACK_RANGE_YARDS: f32 = 35.0;
 /// Combo points cap (TBC builders add one per hit to five).
 pub const MAX_COMBO_POINTS: u8 = 5;
 /// The mana pool the starter Mage regens toward, out of combat; the snapshot models no gear or
@@ -216,6 +223,9 @@ pub struct HostileState {
     pub attacking: bool,
     pub evading: bool,
     pub attack_remaining_ms: u32,
+    /// One movement-control effect ([`ControlEffect`]) and its remaining duration.
+    pub control: Option<ControlEffect>,
+    pub control_remaining_ms: u32,
     pub spline_id: u32,
     /// One active periodic-damage effect's remaining duration and time to its next tick.
     pub burn_remaining_ms: u32,
@@ -395,6 +405,8 @@ pub enum DirectSpellEffect {
         max: u32,
         school: u32,
         periodic: Option<PeriodicDamage>,
+        /// A movement-control arm beside the damage (Frostbolt's snare, Frost Nova's root).
+        control: Option<ControlEffect>,
     },
     Heal {
         min: u32,
@@ -412,6 +424,40 @@ pub enum DirectSpellEffect {
         school: u32,
         periodic: Option<PeriodicDamage>,
     },
+    /// A channeled per-tick effect (Mind Flay, Drain Life, Arcane Missiles): the cast resolves
+    /// nothing at its end but arms a channel that lands `min..=max` every `tick_ms`, `ticks`
+    /// times, holding the caster. `drain` heals the caster for each tick's damage (Drain Life's
+    /// periodic leech), and `control` lands on the first tick (Mind Flay's snare).
+    Channel {
+        tick_ms: u32,
+        ticks: u32,
+        min: u32,
+        max: u32,
+        school: u32,
+        drain: bool,
+        control: Option<ControlEffect>,
+    },
+    /// A movement-control spell with no direct amount (Hammer of Justice's stun).
+    Control(ControlEffect),
+}
+
+/// A hostile movement-control arm and its duration. One control runs per hostile at a time and
+/// the creature's AI honors it: [`ControlKind::Stun`] freezes action, [`ControlKind::Root`] pins
+/// the creature in place (it still swings), [`ControlKind::Snare`] slows movement by
+/// `slow_percent` (Frostbolt's -40, resolved from the row's `EffectBasePoints`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ControlEffect {
+    pub kind: ControlKind,
+    /// The snare's slow percent (0..99); unused for stun and root.
+    pub slow_percent: u32,
+    pub duration_ms: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ControlKind {
+    Stun,
+    Root,
+    Snare,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -471,6 +517,35 @@ struct QueuedMelee {
     periodic: Option<PendingPeriodicDamage>,
 }
 
+/// A cast that resolves as a channel: it arms [`ActiveChannel`] instead of landing a direct
+/// amount when the cast time runs out. The per-tick amount is rolled once at cast start, so the
+/// channel's outcome is fixed when it begins (the linked-DoT rule).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PendingChannel {
+    tick_ms: u32,
+    ticks: u32,
+    min: u32,
+    max: u32,
+    school: u32,
+    drain: bool,
+    control: Option<ControlEffect>,
+    tick_damage: u32,
+}
+
+/// The running channel: its target, the time to the next tick, and the ticks left.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ActiveChannel {
+    spell_id: u32,
+    spawn_id: u32,
+    tick_ms: u32,
+    tick_remaining_ms: u32,
+    ticks_left: u32,
+    tick_damage: u32,
+    school: u32,
+    drain: bool,
+    control: Option<ControlEffect>,
+}
+
 /// The resolved damage shape of a cast, before its deterministic roll.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DamageShape {
@@ -517,6 +592,20 @@ pub enum CombatUpdate {
         spell_id: u32,
         school: u32,
         impact: CastImpact,
+    },
+    /// A ranged white swing (Auto Shot, Shoot, Throw) landing on a hostile.
+    RangedImpact {
+        spell_id: u32,
+        impact: CastImpact,
+    },
+    /// A channeled spell began ticking (its channel bar starts).
+    ChannelStart {
+        spell_id: u32,
+        duration_ms: u32,
+    },
+    /// A channeled spell's last tick landed (or its target died mid-channel).
+    ChannelEnd {
+        spell_id: u32,
     },
     /// A Fireball burn tick (periodic damage) on a living hostile.
     DotImpact(CastImpact),
@@ -742,6 +831,8 @@ pub enum CoreError {
     ItemNotEquippable,
     WrongEquipSlot,
     BackpackFull,
+    /// A ranged white swing with nothing in the ranged slot (`EQUIPMENT_SLOT_RANGED` 17).
+    MissingRangedWeapon,
 }
 
 impl fmt::Display for CoreError {
@@ -773,6 +864,7 @@ impl fmt::Display for CoreError {
             Self::ItemNotEquippable => "the item cannot be equipped",
             Self::WrongEquipSlot => "the item does not fit that equipment slot",
             Self::BackpackFull => "the backpack has no free slot",
+            Self::MissingRangedWeapon => "the ranged slot carries no weapon to shoot",
         })
     }
 }
@@ -830,8 +922,16 @@ pub struct GameCore {
     cast_is_heal: bool,
     cast_school: u32,
     cast_periodic: Option<PendingPeriodicDamage>,
+    cast_channel: Option<PendingChannel>,
+    cast_control: Option<ControlEffect>,
+    active_channel: Option<ActiveChannel>,
     melee_target_spawn_id: Option<u32>,
     melee_remaining_ms: u32,
+    /// The ranged white attack (Auto Shot, Shoot, Throw): its target, its own swing timer, and
+    /// the shot spell carrying presentation.
+    ranged_target_spawn_id: Option<u32>,
+    ranged_remaining_ms: u32,
+    ranged_spell_id: u32,
     active_mana: u32,
     active_health: u32,
     active_rage: u32,
@@ -839,6 +939,7 @@ pub struct GameCore {
     active_focus: u32,
     mana_regen_remainder_ms: u32,
     energy_regen_remainder_ms: u32,
+    health_regen_remainder_ms: u32,
     rage_decay_remainder_ms: u32,
     queued_melee: Option<QueuedMelee>,
     combo_points: u8,
@@ -1802,11 +1903,18 @@ impl GameCore {
         self.cast_is_heal = false;
         self.cast_school = 0;
         self.cast_periodic = None;
+        self.cast_channel = None;
+        self.cast_control = None;
+        self.active_channel = None;
         self.melee_target_spawn_id = None;
         self.melee_remaining_ms = 0;
         self.mana_regen_remainder_ms = 0;
         self.energy_regen_remainder_ms = 0;
+        self.health_regen_remainder_ms = 0;
         self.rage_decay_remainder_ms = 0;
+        self.ranged_target_spawn_id = None;
+        self.ranged_remaining_ms = 0;
+        self.ranged_spell_id = 0;
         self.queued_melee = None;
         self.combo_points = 0;
         self.combo_target_spawn_id = None;
@@ -2167,7 +2275,11 @@ impl GameCore {
         self.active_focus = snapshot.focus;
         self.mana_regen_remainder_ms = 0;
         self.energy_regen_remainder_ms = 0;
+        self.health_regen_remainder_ms = 0;
         self.rage_decay_remainder_ms = 0;
+        self.ranged_target_spawn_id = None;
+        self.ranged_remaining_ms = 0;
+        self.ranged_spell_id = 0;
         self.queued_melee = None;
         self.combo_points = 0;
         self.combo_target_spawn_id = None;
@@ -2182,6 +2294,9 @@ impl GameCore {
         self.cast_is_heal = false;
         self.cast_school = 0;
         self.cast_periodic = None;
+        self.cast_channel = None;
+        self.cast_control = None;
+        self.active_channel = None;
         self.stop_auto_attack();
         for hostile in &mut self.hostiles {
             hostile.provoked = false;
@@ -2229,6 +2344,56 @@ impl GameCore {
         self.melee_target_spawn_id.take()
     }
 
+    /// Start the ranged white attack (Auto Shot, Shoot Bow, Throw, wand Shoot) against a living
+    /// hostile within [`RANGED_ATTACK_RANGE_YARDS`]. The shot spell (`75`, `2480`, `2764`,
+    /// `5019`) is the white carrier: only the common Attack pseudo-spell is gated on, exactly as
+    /// the melee swing is, and the ranged slot's converted weapon sets the cadence and damage.
+    pub fn start_auto_shot(&mut self, spell_id: u32, spawn_id: u32) -> Result<(), CoreError> {
+        let id = self.active.as_ref().ok_or(CoreError::NoCharacterSelected)?;
+        if self.active_health == 0 {
+            return Err(CoreError::CharacterDead);
+        }
+        let snapshot = self.snapshots.get(id).ok_or(CoreError::CharacterNotFound)?;
+        if !snapshot.known_spell_ids.contains(&ATTACK_SPELL_ID) {
+            return Err(CoreError::UnknownAbility);
+        }
+        let weapon = equipped_ranged_weapon(snapshot).ok_or(CoreError::MissingRangedWeapon)?;
+        let hostile = self
+            .hostiles
+            .iter_mut()
+            .find(|hostile| hostile.spawn_id == spawn_id && hostile.health > 0)
+            .ok_or(CoreError::InvalidTarget)?;
+        if snapshot.position.map_id != hostile.position.map_id
+            || distance_squared(snapshot.position, hostile.position)
+                > RANGED_ATTACK_RANGE_YARDS * RANGED_ATTACK_RANGE_YARDS
+        {
+            return Err(CoreError::OutOfRange);
+        }
+        hostile.provoked = true;
+        hostile.evading = false;
+        self.ranged_target_spawn_id = Some(spawn_id);
+        self.ranged_remaining_ms = weapon.swing_ms;
+        self.ranged_spell_id = spell_id;
+        Ok(())
+    }
+
+    /// Stop the ranged white attack and report its target so presentation can clear the edge.
+    pub fn stop_auto_shot(&mut self) -> Option<u32> {
+        self.ranged_remaining_ms = 0;
+        self.ranged_spell_id = 0;
+        self.ranged_target_spawn_id.take()
+    }
+
+    /// The running channeled spell's id, if one holds the caster.
+    pub fn active_channel_spell(&self) -> Option<u32> {
+        self.active_channel.map(|channel| channel.spell_id)
+    }
+
+    /// Cancel the running channeled spell and report its id, so presentation can end the channel.
+    pub fn cancel_channel(&mut self) -> Option<u32> {
+        self.active_channel.take().map(|channel| channel.spell_id)
+    }
+
     /// Begin the starter Mage's Fireball against an authored hostile spawn.
     /// Begin Fireball using the rank's unscaled inclusive damage values from the client spell
     /// record. The roll is deterministic and persisted in the character snapshot.
@@ -2261,6 +2426,7 @@ impl GameCore {
                     tick_ms: FIREBALL_BURN_TICK_MS,
                     duration_ms: FIREBALL_BURN_MS,
                 }),
+                control: None,
             },
         )
     }
@@ -2321,6 +2487,45 @@ impl GameCore {
         if !range_yards.is_finite() || range_yards < 0.0 {
             return Err(CoreError::UnsupportedSpellEffect);
         }
+        // A channeled cast resolves its per-tick mechanics on the cast's completion; a control arm
+        // (Hammer of Justice's stun, Frostbolt's snare) lands with the direct amount.
+        let channel = match effect {
+            DirectSpellEffect::Channel {
+                tick_ms,
+                ticks,
+                min,
+                max,
+                school,
+                drain,
+                control,
+            } => {
+                if tick_ms == 0 || ticks == 0 || min > max {
+                    return Err(CoreError::UnsupportedSpellEffect);
+                }
+                Some(PendingChannel {
+                    tick_ms,
+                    ticks,
+                    min,
+                    max,
+                    school,
+                    drain,
+                    control,
+                    tick_damage: 0,
+                })
+            }
+            _ => None,
+        };
+        let control = match effect {
+            DirectSpellEffect::Control(control) => {
+                if control.duration_ms == 0 {
+                    return Err(CoreError::UnsupportedSpellEffect);
+                }
+                Some(control)
+            }
+            DirectSpellEffect::Damage { control, .. } => control,
+            DirectSpellEffect::Channel { control, .. } => control,
+            _ => None,
+        };
         let (shape, target_spawn_id, ally_spawn_id, is_heal, school, periodic) =
             match (effect, target) {
                 (
@@ -2329,6 +2534,7 @@ impl GameCore {
                         max,
                         school,
                         periodic,
+                        control: _,
                     },
                     SpellTarget::Hostile(spawn_id),
                 ) => (
@@ -2374,6 +2580,12 @@ impl GameCore {
                 (DirectSpellEffect::Aura { school, .. }, SpellTarget::Hostile(spawn_id)) => {
                     (DamageShape::None, Some(spawn_id), None, false, school, None)
                 }
+                // A channel or a bare control lands its mechanics through its own state; the
+                // direct arm is empty.
+                (
+                    DirectSpellEffect::Channel { .. } | DirectSpellEffect::Control(_),
+                    SpellTarget::Hostile(spawn_id),
+                ) => (DamageShape::None, Some(spawn_id), None, false, 0, None),
                 // Friendly fire and weapon damage against a friendly unit are not modeled.
                 _ => return Err(CoreError::UnsupportedSpellEffect),
             };
@@ -2399,7 +2611,7 @@ impl GameCore {
         {
             return Err(CoreError::UnknownAbility);
         }
-        if self.cast_spell_id != 0 {
+        if self.cast_spell_id != 0 || self.active_channel.is_some() {
             return Err(CoreError::CastInProgress);
         }
         if self.cooldown_remaining_ms > 0
@@ -2458,7 +2670,7 @@ impl GameCore {
             }
             _ => 0,
         };
-        let (amount, periodic) = {
+        let (amount, periodic, channel) = {
             let weapon = self
                 .snapshots
                 .get(&id)
@@ -2496,7 +2708,13 @@ impl GameCore {
                 tick_ms: dot.tick_ms,
                 duration_ms: dot.duration_ms,
             });
-            (amount, periodic)
+            // The channel's per-tick amount is rolled once at cast start: its outcome is fixed
+            // when it begins (the linked-DoT rule).
+            let channel = channel.map(|mut channel| {
+                channel.tick_damage = roll_inclusive(snapshot, channel.min, channel.max);
+                channel
+            });
+            (amount, periodic, channel)
         };
         self.cast_remaining_ms = cast_time_ms;
         self.cooldown_remaining_ms = cooldown_ms;
@@ -2527,6 +2745,8 @@ impl GameCore {
         self.cast_is_heal = is_heal;
         self.cast_school = school;
         self.cast_periodic = periodic;
+        self.cast_channel = channel;
+        self.cast_control = control;
         self.persist_active_vitals();
         Ok(CastOutcome::Cast)
     }
@@ -2585,6 +2805,9 @@ impl GameCore {
         self.cast_school = 0;
         self.cast_combo = ComboEffect::None;
         self.cast_periodic = None;
+        self.cast_channel = None;
+        self.cast_control = None;
+        self.active_channel = None;
         true
     }
 
@@ -2608,9 +2831,10 @@ impl GameCore {
     /// Advance out-of-combat power regeneration from caller-supplied time: mana toward
     /// [`PLAYER_MAX_MANA`] at [`MANA_REGEN_PER_TICK`] per [`MANA_REGEN_TICK_MS`] (paused while a
     /// spell is casting, the five-second rule's cast half), energy at [`ENERGY_REGEN_PER_TICK`]
-    /// per [`ENERGY_REGEN_TICK_MS`] uninterrupted, and rage decaying at [`RAGE_DECAY_PER_TICK`]
-    /// per [`RAGE_DECAY_TICK_MS`] only outside a fight. Returns `true` when a pool moved, so the
-    /// caller can echo the descriptor pools.
+    /// per [`ENERGY_REGEN_TICK_MS`] uninterrupted, rage decaying at [`RAGE_DECAY_PER_TICK`] per
+    /// [`RAGE_DECAY_TICK_MS`] only outside a fight, and health catching up at
+    /// [`HEALTH_REGEN_PER_TICK`] per [`HEALTH_REGEN_TICK_MS`], also only outside a fight. Returns
+    /// `true` when a pool moved, so the caller can echo the descriptor pools.
     pub fn advance_power_regen(&mut self, elapsed_ms: u32) -> bool {
         if self.active.is_none() || self.active_health == 0 {
             return false;
@@ -2621,7 +2845,7 @@ impl GameCore {
             .and_then(|id| self.snapshots.get(id))
             .map_or(0, |snapshot| snapshot.appearance.class);
         let mut changed = false;
-        if self.cast_spell_id == 0 {
+        if self.cast_spell_id == 0 && self.active_channel.is_none() {
             self.mana_regen_remainder_ms = self.mana_regen_remainder_ms.saturating_add(elapsed_ms);
             while self.mana_regen_remainder_ms >= MANA_REGEN_TICK_MS {
                 self.mana_regen_remainder_ms -= MANA_REGEN_TICK_MS;
@@ -2642,6 +2866,7 @@ impl GameCore {
             }
         }
         let in_combat = self.melee_target_spawn_id.is_some()
+            || self.ranged_target_spawn_id.is_some()
             || self
                 .hostiles
                 .iter()
@@ -2652,6 +2877,17 @@ impl GameCore {
                 self.rage_decay_remainder_ms -= RAGE_DECAY_TICK_MS;
                 if self.active_rage > 0 {
                     self.active_rage = self.active_rage.saturating_sub(RAGE_DECAY_PER_TICK);
+                    changed = true;
+                }
+            }
+            // Passive health regen is out-of-combat only: nothing ticks back during a fight.
+            if self.active_health < PLAYER_MAX_HEALTH {
+                self.health_regen_remainder_ms =
+                    self.health_regen_remainder_ms.saturating_add(elapsed_ms);
+                while self.health_regen_remainder_ms >= HEALTH_REGEN_TICK_MS {
+                    self.health_regen_remainder_ms -= HEALTH_REGEN_TICK_MS;
+                    self.active_health =
+                        (self.active_health + HEALTH_REGEN_PER_TICK).min(PLAYER_MAX_HEALTH);
                     changed = true;
                 }
             }
@@ -2686,6 +2922,8 @@ impl GameCore {
                     hostile.attacking = false;
                     hostile.evading = false;
                     hostile.attack_remaining_ms = 0;
+                    hostile.control = None;
+                    hostile.control_remaining_ms = 0;
                     updates.push(CombatUpdate::Respawned {
                         spawn_id: hostile.spawn_id,
                     });
@@ -2705,6 +2943,9 @@ impl GameCore {
             self.cast_school = 0;
             self.cast_combo = ComboEffect::None;
             self.cast_periodic = None;
+        self.cast_channel = None;
+        self.cast_control = None;
+        self.active_channel = None;
             self.queued_melee = None;
             self.combo_points = 0;
             self.combo_target_spawn_id = None;
@@ -2736,7 +2977,28 @@ impl GameCore {
                 self.cast_school = 0;
                 let target = self.cast_target_spawn_id.take();
                 let ally_target = self.cast_ally_spawn_id.take();
-                if let Some(spawn_id) = ally_target {
+                if let Some(channel) = self.cast_channel.take() {
+                    // A channeled cast lands nothing at its end: it arms the channel that ticks
+                    // the effect while the caster's attention is held.
+                    self.cast_control = None;
+                    if let Some(spawn_id) = target {
+                        self.active_channel = Some(ActiveChannel {
+                            spell_id,
+                            spawn_id,
+                            tick_ms: channel.tick_ms,
+                            tick_remaining_ms: channel.tick_ms,
+                            ticks_left: channel.ticks,
+                            tick_damage: channel.tick_damage,
+                            school: channel.school,
+                            drain: channel.drain,
+                            control: channel.control,
+                        });
+                        updates.push(CombatUpdate::ChannelStart {
+                            spell_id,
+                            duration_ms: channel.tick_ms * channel.ticks,
+                        });
+                    }
+                } else if let Some(spawn_id) = ally_target {
                     if damage == 0 {
                         // A friendly buff/debuff lands on the ally: recorded and reported, with no
                         // direct amount. Its duration runs while the character is played.
@@ -2781,6 +3043,9 @@ impl GameCore {
                         remaining_health: self.active_health,
                     });
                 } else if let Some(spawn_id) = target {
+                    // A movement-control arm (Hammer of Justice's stun, Frostbolt's snare) lands
+                    // on the same hit as the direct amount.
+                    let control = self.cast_control.take();
                     let impact = self
                         .hostiles
                         .iter_mut()
@@ -2790,6 +3055,10 @@ impl GameCore {
                             // The hit is what provokes a neutral mob, not the cast that preceded it.
                             hostile.provoked = true;
                             hostile.evading = false;
+                            if let Some(control) = control {
+                                hostile.control = Some(control);
+                                hostile.control_remaining_ms = control.duration_ms;
+                            }
                             hostile.health = hostile.health.saturating_sub(damage);
                             let killed = hostile.health == 0;
                             if killed {
@@ -2823,16 +3092,19 @@ impl GameCore {
                             )
                         });
                     if let Some((impact, killed_entry)) = impact {
-                        updates.push(if spell_id == FIREBALL_SPELL_ID {
-                            CombatUpdate::Impact(impact)
-                        } else {
-                            CombatUpdate::SpellImpact {
-                                spell_id,
-                                school,
-                                impact,
-                            }
-                        });
-                        if combo == ComboEffect::Build && !impact.killed {
+                        // A bare control cast lands no impact of its own.
+                        if damage > 0 || periodic.is_some() {
+                            updates.push(if spell_id == FIREBALL_SPELL_ID {
+                                CombatUpdate::Impact(impact)
+                            } else {
+                                CombatUpdate::SpellImpact {
+                                    spell_id,
+                                    school,
+                                    impact,
+                                }
+                            });
+                        }
+                        if combo == ComboEffect::Build && !impact.killed && damage > 0 {
                             self.add_combo_point(spawn_id);
                         }
                         if let Some(entry) = killed_entry {
@@ -2964,6 +3236,172 @@ impl GameCore {
                 self.melee_remaining_ms = swing_ms;
             }
         }
+        // The ranged white swing (Auto Shot, Shoot, Throw) runs its own timer and weapon, and
+        // keeps firing until stopped, the target dies, or the shot leaves range.
+        let mut elapsed = elapsed_ms;
+        while let Some(spawn_id) = self.ranged_target_spawn_id {
+            if elapsed < self.ranged_remaining_ms {
+                self.ranged_remaining_ms -= elapsed;
+                break;
+            }
+            elapsed -= self.ranged_remaining_ms;
+            let Some(id) = self.active.as_ref().cloned() else {
+                self.stop_auto_shot();
+                break;
+            };
+            let Some(weapon) = self.snapshots.get(&id).and_then(equipped_ranged_weapon) else {
+                self.stop_auto_shot();
+                break;
+            };
+            let Some(shooter_position) = self.snapshots.get(&id).map(|snapshot| snapshot.position)
+            else {
+                self.stop_auto_shot();
+                break;
+            };
+            let damage = {
+                let snapshot = self
+                    .snapshots
+                    .get_mut(&id)
+                    .expect("the snapshot was just read");
+                roll_inclusive(snapshot, weapon.min, weapon.max)
+            };
+            let Some(hostile) = self
+                .hostiles
+                .iter()
+                .find(|hostile| hostile.spawn_id == spawn_id && hostile.health > 0)
+            else {
+                self.stop_auto_shot();
+                break;
+            };
+            if shooter_position.map_id != hostile.position.map_id
+                || distance_squared(shooter_position, hostile.position)
+                    > RANGED_ATTACK_RANGE_YARDS * RANGED_ATTACK_RANGE_YARDS
+            {
+                self.stop_auto_shot();
+                break;
+            }
+            let impact = self
+                .hostiles
+                .iter_mut()
+                .find(|hostile| hostile.spawn_id == spawn_id)
+                .filter(|hostile| hostile.health > 0)
+                .map(|hostile| {
+                    hostile.provoked = true;
+                    hostile.evading = false;
+                    hostile.health = hostile.health.saturating_sub(damage);
+                    let killed = hostile.health == 0;
+                    if killed {
+                        hostile.respawn_remaining_ms = Some(HOSTILE_RESPAWN_MS);
+                        clear_hostile_burn(hostile);
+                    }
+                    CastImpact {
+                        spawn_id: hostile.spawn_id,
+                        damage,
+                        remaining_health: hostile.health,
+                        killed,
+                    }
+                });
+            let Some(impact) = impact else {
+                self.stop_auto_shot();
+                break;
+            };
+            updates.push(CombatUpdate::RangedImpact {
+                spell_id: self.ranged_spell_id,
+                impact,
+            });
+            if impact.killed {
+                let creature_entry = self
+                    .hostiles
+                    .iter()
+                    .find(|hostile| hostile.spawn_id == spawn_id)
+                    .map_or(0, |hostile| hostile.creature_entry);
+                self.stop_auto_shot();
+                updates.extend(self.record_creature_kill(spawn_id, creature_entry));
+            } else {
+                self.ranged_remaining_ms = weapon.swing_ms;
+            }
+        }
+        // A running channel ticks its per-tick effect on its own cadence (Mind Flay, Drain Life,
+        // Arcane Missiles): damage each tick, a drain heal beside it, and its control arm on the
+        // first tick. Killing the target or spending the last tick ends it.
+        if let Some(mut channel) = self.active_channel {
+            let mut elapsed = elapsed_ms;
+            while channel.ticks_left > 0 {
+                if elapsed < channel.tick_remaining_ms {
+                    channel.tick_remaining_ms -= elapsed;
+                    break;
+                }
+                elapsed -= channel.tick_remaining_ms;
+                channel.tick_remaining_ms = channel.tick_ms;
+                channel.ticks_left -= 1;
+                let spell_id = channel.spell_id;
+                let spawn_id = channel.spawn_id;
+                if let Some(control) = channel.control.take() {
+                    if let Some(hostile) =
+                        self.hostiles.iter_mut().find(|hostile| hostile.spawn_id == spawn_id)
+                    {
+                        hostile.control = Some(control);
+                        hostile.control_remaining_ms = control.duration_ms;
+                    }
+                }
+                let damage = channel.tick_damage;
+                let impact = self
+                    .hostiles
+                    .iter_mut()
+                    .find(|hostile| hostile.spawn_id == spawn_id && hostile.health > 0)
+                    .map(|hostile| {
+                        hostile.provoked = true;
+                        hostile.evading = false;
+                        hostile.health = hostile.health.saturating_sub(damage);
+                        let killed = hostile.health == 0;
+                        if killed {
+                            hostile.respawn_remaining_ms = Some(HOSTILE_RESPAWN_MS);
+                            clear_hostile_burn(hostile);
+                        }
+                        CastImpact {
+                            spawn_id: hostile.spawn_id,
+                            damage,
+                            remaining_health: hostile.health,
+                            killed,
+                        }
+                    });
+                let Some(impact) = impact else {
+                    // The target is gone: the channel ends early.
+                    channel.ticks_left = 0;
+                    break;
+                };
+                updates.push(CombatUpdate::PeriodicImpact {
+                    spell_id,
+                    school: channel.school,
+                    impact,
+                });
+                if channel.drain {
+                    let heal = damage.min(PLAYER_MAX_HEALTH - self.active_health);
+                    self.active_health += heal;
+                    self.persist_active_vitals();
+                    updates.push(CombatUpdate::SpellHeal {
+                        spell_id,
+                        amount: heal,
+                        remaining_health: self.active_health,
+                    });
+                }
+                if impact.killed {
+                    let creature_entry = self
+                        .hostiles
+                        .iter()
+                        .find(|hostile| hostile.spawn_id == spawn_id)
+                        .map_or(0, |hostile| hostile.creature_entry);
+                    updates.extend(self.record_creature_kill(spawn_id, creature_entry));
+                    channel.ticks_left = 0;
+                }
+            }
+            if channel.ticks_left == 0 {
+                updates.push(CombatUpdate::ChannelEnd {
+                    spell_id: channel.spell_id,
+                });
+            }
+            self.active_channel = (channel.ticks_left > 0).then_some(channel);
+        }
         // One periodic school-damage aura per hostile for this initial spell slice.
         let mut killed_entries = Vec::new();
         for hostile in &mut self.hostiles {
@@ -3093,14 +3531,33 @@ impl GameCore {
                 continue;
             }
 
+            // Movement control: stun freezes the creature outright (no aggro, no movement, no
+            // swings), root pins it in place (it still swings), snare halves its movement. The
+            // control's clock runs on the same call.
+            if hostile.control_remaining_ms > 0 {
+                hostile.control_remaining_ms =
+                    hostile.control_remaining_ms.saturating_sub(elapsed_ms);
+                if hostile.control_remaining_ms == 0 {
+                    hostile.control = None;
+                }
+            }
+            let control_kind = hostile.control.map(|control| control.kind);
+            if control_kind == Some(ControlKind::Stun) {
+                continue;
+            }
+            let rooted = control_kind == Some(ControlKind::Root);
+            // A snare slows the chase by its percent (Frostbolt's 40).
+            let move_ms = hostile
+                .control
+                .filter(|control| control.kind == ControlKind::Snare)
+                .map_or(elapsed_ms, |control| {
+                    elapsed_ms.saturating_mul(100 - control.slow_percent.min(99)) / 100
+                });
+
             if hostile.evading {
-                append_creature_move(
-                    hostile,
-                    hostile.spawn_position,
-                    0.25,
-                    elapsed_ms,
-                    &mut updates,
-                );
+                if !rooted {
+                    append_creature_move(hostile, hostile.spawn_position, 0.25, move_ms, &mut updates);
+                }
                 if horizontal_distance_squared(hostile.position, hostile.spawn_position)
                     <= 0.25 * 0.25
                 {
@@ -3143,13 +3600,15 @@ impl GameCore {
                         spawn_id: hostile.spawn_id,
                     });
                 }
-                append_creature_move(
-                    hostile,
-                    hostile.spawn_position,
-                    0.25,
-                    elapsed_ms,
-                    &mut updates,
-                );
+                if !rooted {
+                    append_creature_move(
+                        hostile,
+                        hostile.spawn_position,
+                        0.25,
+                        move_ms,
+                        &mut updates,
+                    );
+                }
                 continue;
             }
 
@@ -3162,13 +3621,15 @@ impl GameCore {
                         spawn_id: hostile.spawn_id,
                     });
                 }
-                append_creature_move(
-                    hostile,
-                    player_position,
-                    CREATURE_ATTACK_RANGE_YARDS,
-                    elapsed_ms,
-                    &mut updates,
-                );
+                if !rooted {
+                    append_creature_move(
+                        hostile,
+                        player_position,
+                        CREATURE_ATTACK_RANGE_YARDS,
+                        move_ms,
+                        &mut updates,
+                    );
+                }
                 continue;
             }
 
@@ -3251,7 +3712,11 @@ impl GameCore {
         self.active_focus = 0;
         self.mana_regen_remainder_ms = 0;
         self.energy_regen_remainder_ms = 0;
+        self.health_regen_remainder_ms = 0;
         self.rage_decay_remainder_ms = 0;
+        self.ranged_target_spawn_id = None;
+        self.ranged_remaining_ms = 0;
+        self.ranged_spell_id = 0;
         self.queued_melee = None;
         self.combo_points = 0;
         self.combo_target_spawn_id = None;
@@ -3347,8 +3812,14 @@ impl GameCore {
             cast_is_heal: false,
             cast_school: 0,
             cast_periodic: None,
+            cast_channel: None,
+            cast_control: None,
+            active_channel: None,
             melee_target_spawn_id: None,
             melee_remaining_ms: 0,
+            ranged_target_spawn_id: None,
+            ranged_remaining_ms: 0,
+            ranged_spell_id: 0,
             active_mana: 0,
             active_health: 0,
             active_rage: 0,
@@ -3356,6 +3827,7 @@ impl GameCore {
             active_focus: 0,
             mana_regen_remainder_ms: 0,
             energy_regen_remainder_ms: 0,
+            health_regen_remainder_ms: 0,
             rage_decay_remainder_ms: 0,
             queued_melee: None,
             combo_points: 0,
@@ -3780,6 +4252,36 @@ fn equipped_weapon(snapshot: &CharacterSnapshot) -> Option<WeaponProfile> {
 /// Worn equipment slot of the main hand (`INV_SLOT` 15).
 const MAIN_HAND_EQUIPMENT_SLOT: u8 = 15;
 
+/// The equipped ranged slot's converted swing numbers (slot 17, the client's
+/// `EQUIPMENT_SLOT_RANGED`: bows, guns, crossbows, thrown and wands); `None` for an empty slot or
+/// a statless item. The template may come from either converted pack.
+fn equipped_ranged_weapon(snapshot: &CharacterSnapshot) -> Option<WeaponProfile> {
+    let item = snapshot
+        .equipment
+        .iter()
+        .find(|item| item.slot == RANGED_EQUIPMENT_SLOT)?;
+    let template = quest::item_template(item.entry).or_else(|| loot::item_template(item.entry))?;
+    (template.dmg_max > 0 && template.delay > 0).then_some(WeaponProfile {
+        min: template.dmg_min.min(template.dmg_max),
+        max: template.dmg_max,
+        swing_ms: template.delay,
+    })
+}
+
+/// Worn equipment slot of the ranged weapon (`INV_SLOT` 17).
+const RANGED_EQUIPMENT_SLOT: u8 = 17;
+
+/// Clear a hostile's active periodic-damage state (death bookkeeping).
+fn clear_hostile_burn(hostile: &mut HostileState) {
+    hostile.burn_remaining_ms = 0;
+    hostile.burn_tick_remaining_ms = 0;
+    hostile.burn_damage = 0;
+    hostile.burn_spell_id = 0;
+    hostile.burn_school = 0;
+    hostile.burn_tick_ms = 0;
+    hostile.burn_level = 0;
+}
+
 fn maximum_mana(class: u8) -> u32 {
     matches!(class, 2 | 3 | 5 | 7 | 8 | 9 | 11)
         .then_some(PLAYER_MAX_MANA)
@@ -3942,6 +4444,8 @@ fn hostile_from_spawn(
         attacking: false,
         evading: false,
         attack_remaining_ms: 0,
+        control: None,
+        control_remaining_ms: 0,
         spline_id: 0,
         burn_remaining_ms: 0,
         burn_tick_remaining_ms: 0,
@@ -3973,6 +4477,8 @@ fn hostile_relative_to(player: WorldPosition, spawn_id: u32, dx: f32, dy: f32) -
         attacking: false,
         evading: false,
         attack_remaining_ms: 0,
+        control: None,
+        control_remaining_ms: 0,
         spline_id: 0,
         burn_remaining_ms: 0,
         burn_tick_remaining_ms: 0,
@@ -5241,6 +5747,7 @@ mod tests {
                     tick_ms: 100,
                     duration_ms: 200,
                 }),
+                control: None,
             },
         )
         .unwrap();
@@ -5310,6 +5817,7 @@ mod tests {
                     max: 1,
                     school: 4,
                     periodic: None,
+                    control: None,
                 },
             ),
             Err(CoreError::AbilityOnCooldown),
@@ -5959,6 +6467,345 @@ mod tests {
     }
 
     #[test]
+    fn a_ranged_white_swing_lands_with_the_ranged_weapon_until_it_stops() {
+        // A Blood Elf hunter starts with the converted Warder's Shortbow: 5-10 damage every
+        // 2,300 ms, and the Sunstrider population supplies the target.
+        let (mut core, id) = core_for(10, 3);
+        core.enter_world().unwrap();
+        let weapon = core
+            .snapshots
+            .get(&id)
+            .map(equipped_ranged_weapon)
+            .unwrap()
+            .expect("the starter bow carries converted swing numbers");
+        assert_eq!(
+            weapon,
+            WeaponProfile {
+                min: 5,
+                max: 10,
+                swing_ms: 2_300,
+            }
+        );
+        let spawn_id = core.hostiles().first().expect("imported target").spawn_id;
+        core.update_active(core.hostile(spawn_id).unwrap().position, 0)
+            .unwrap();
+        core.start_auto_shot(75, spawn_id).unwrap();
+        assert!(
+            core.advance_combat(2_299).is_empty(),
+            "the bow draws before it shoots"
+        );
+        let updates = core.advance_combat(1);
+        let [CombatUpdate::RangedImpact {
+            spell_id: 75,
+            impact,
+        }] = updates.as_slice()
+        else {
+            panic!("one shot lands: {updates:?}");
+        };
+        assert!(
+            (5..=10).contains(&impact.damage),
+            "the converted bow range, got {}",
+            impact.damage
+        );
+        assert!(core.hostile(spawn_id).unwrap().health < core.hostile(spawn_id).unwrap().max_health);
+
+        // The shot repeats on its own timer until it is stopped.
+        assert!(core.advance_combat(2_300).iter().any(|update| matches!(
+            update,
+            CombatUpdate::RangedImpact { spell_id: 75, .. }
+        )));
+        assert_eq!(core.stop_auto_shot(), Some(spawn_id));
+        assert!(
+            core.advance_combat(10_000).is_empty(),
+            "a stopped shot stays stopped"
+        );
+
+        // The white shot needs its weapon, exactly as the melee swing needs a hand.
+        core.snapshots
+            .get_mut(&id)
+            .unwrap()
+            .equipment
+            .iter_mut()
+            .for_each(|item| {
+                if item.slot == RANGED_EQUIPMENT_SLOT {
+                    item.slot = 0;
+                }
+            });
+        assert_eq!(
+            core.start_auto_shot(75, spawn_id),
+            Err(CoreError::MissingRangedWeapon)
+        );
+    }
+
+    #[test]
+    fn passive_health_regen_ticks_only_out_of_a_fight() {
+        let (mut core, _id) = core_for(1, 1);
+        core.enter_world().unwrap();
+        core.active_health = 40;
+        assert!(
+            core.advance_power_regen(HEALTH_REGEN_TICK_MS * 2),
+            "wounded, the pool catches up out of combat"
+        );
+        assert_eq!(core.active_health(), 40 + 2 * HEALTH_REGEN_PER_TICK);
+
+        // In a fight nothing ticks back; the recovery waits for the fight to end.
+        core.melee_target_spawn_id = Some(HOSTILE_SPAWN_ID);
+        assert!(!core.advance_power_regen(HEALTH_REGEN_TICK_MS * 20));
+        assert_eq!(core.active_health(), 40 + 2 * HEALTH_REGEN_PER_TICK);
+        core.stop_auto_attack();
+        core.advance_power_regen(HEALTH_REGEN_TICK_MS);
+        assert_eq!(core.active_health(), 40 + 3 * HEALTH_REGEN_PER_TICK);
+
+        // Full health holds.
+        core.active_health = PLAYER_MAX_HEALTH;
+        assert!(!core.advance_power_regen(HEALTH_REGEN_TICK_MS * 20));
+        assert_eq!(core.active_health(), PLAYER_MAX_HEALTH);
+    }
+
+    #[test]
+    fn a_channel_ticks_its_effect_and_ends_or_cancels() {
+        let (mut core, id) = core_for(1, 8);
+        {
+            let snapshot = core.snapshots.get_mut(&id).unwrap();
+            snapshot.known_spell_ids.push(900_080);
+            snapshot.known_spell_ids.sort_unstable();
+        }
+        core.enter_world().unwrap();
+        core.update_active(core.hostile(HOSTILE_SPAWN_ID).unwrap().position, 0)
+            .unwrap();
+        core.active_health = 50;
+        let request = CastRequest {
+            spell_id: 900_080,
+            target: SpellTarget::Hostile(HOSTILE_SPAWN_ID),
+            cost: PowerCost {
+                kind: PowerType::Mana,
+                amount: 20,
+            },
+            cast_time_ms: 0,
+            spell_cooldown_ms: 0,
+            cooldown_ms: 0,
+            range_yards: 30.0,
+            effect: DirectSpellEffect::Channel {
+                tick_ms: 1_000,
+                ticks: 3,
+                min: 5,
+                max: 5,
+                school: 32,
+                drain: true,
+                control: Some(ControlEffect {
+                    kind: ControlKind::Snare,
+                    slow_percent: 40,
+                    duration_ms: 4_000,
+                }),
+            },
+            combo: ComboEffect::None,
+            on_next_swing: false,
+        };
+        assert_eq!(core.begin_cast(request), Ok(CastOutcome::Cast));
+        assert!(
+            matches!(
+                core.advance_combat(1).as_slice(),
+                [CombatUpdate::ChannelStart {
+                    spell_id: 900_080,
+                    duration_ms: 3_000,
+                }]
+            ),
+            "a channeled cast lands no direct amount; it arms the channel"
+        );
+        assert_eq!(core.active_channel_spell(), Some(900_080));
+
+        // The first tick lands its damage, its drain heal and its control arm together.
+        let updates = core.advance_combat(999);
+        assert!(
+            matches!(
+                updates.as_slice(),
+                [
+                    CombatUpdate::PeriodicImpact {
+                        spell_id: 900_080,
+                        ..
+                    },
+                    CombatUpdate::SpellHeal {
+                        spell_id: 900_080,
+                        amount: 5,
+                        ..
+                    },
+                ]
+            ),
+            "tick one: {updates:?}"
+        );
+        assert_eq!(
+            core.hostile(HOSTILE_SPAWN_ID).unwrap().control,
+            Some(ControlEffect {
+                kind: ControlKind::Snare,
+                slow_percent: 40,
+                duration_ms: 4_000,
+            })
+        );
+        assert_eq!(core.active_health(), 55, "the drain heals the caster per tick");
+
+        // The last two ticks land on the cadence and the channel ends.
+        let updates = core.advance_combat(2_000);
+        assert_eq!(
+            updates
+                .iter()
+                .filter(|update| matches!(update, CombatUpdate::PeriodicImpact { .. }))
+                .count(),
+            2
+        );
+        assert!(
+            matches!(updates.last(), Some(CombatUpdate::ChannelEnd { spell_id: 900_080 })),
+            "the channel ends after its last tick: {updates:?}"
+        );
+        assert_eq!(core.active_channel_spell(), None);
+        assert_eq!(core.active_health(), 65);
+        assert_eq!(
+            core.hostile(HOSTILE_SPAWN_ID).unwrap().health,
+            HOSTILE_MAX_HEALTH - 15
+        );
+
+        // A cancelled channel stops ticking and stays quiet.
+        assert_eq!(core.begin_cast(request), Ok(CastOutcome::Cast));
+        core.advance_combat(1);
+        assert_eq!(core.active_channel_spell(), Some(900_080));
+        assert_eq!(core.cancel_channel(), Some(900_080));
+        assert!(
+            core.advance_combat(10_000).is_empty(),
+            "a cancelled channel stays quiet"
+        );
+    }
+
+    #[test]
+    fn stun_root_and_snare_gate_creature_actions() {
+        let (mut core, _id) = core_for(1, 1);
+        core.enter_world().unwrap();
+        let spawn_id = HOSTILE_SPAWN_ID;
+        let spawn_position = core.hostile(spawn_id).unwrap().spawn_position;
+        let step_out = |core: &mut GameCore, yards: f32| {
+            core.update_active(
+                WorldPosition {
+                    x: spawn_position.x + yards,
+                    ..spawn_position
+                },
+                0,
+            )
+            .unwrap();
+        };
+        let set_control = |core: &mut GameCore, effect: Option<ControlEffect>| {
+            let hostile = core
+                .hostiles
+                .iter_mut()
+                .find(|hostile| hostile.spawn_id == spawn_id)
+                .unwrap();
+            hostile.control_remaining_ms = effect.map_or(0, |effect| effect.duration_ms);
+            hostile.control = effect;
+            hostile.position = spawn_position;
+        };
+
+        // Provoked and out of reach, the creature closes the gap.
+        step_out(&mut core, 10.0);
+        set_control(&mut core, None);
+        core.hostiles
+            .iter_mut()
+            .find(|hostile| hostile.spawn_id == spawn_id)
+            .unwrap()
+            .provoked = true;
+        let updates = core.advance_creature_ai(CREATURE_SWING_MS);
+        assert!(
+            updates.iter().any(|update| matches!(update, CreatureAiUpdate::Move { .. })),
+            "the provoked creature chases: {updates:?}"
+        );
+
+        // A stun freezes everything until its clock runs out.
+        set_control(
+            &mut core,
+            Some(ControlEffect {
+                kind: ControlKind::Stun,
+                slow_percent: 0,
+                duration_ms: 5_000,
+            }),
+        );
+        for _ in 0..2 {
+            assert!(
+                core.advance_creature_ai(CREATURE_SWING_MS).is_empty(),
+                "a stunned creature does nothing"
+            );
+        }
+        assert!(
+            core.advance_creature_ai(CREATURE_SWING_MS)
+                .iter()
+                .any(|update| matches!(update, CreatureAiUpdate::Move { .. })),
+            "the stun expires and the chase resumes"
+        );
+
+        // A root pins the creature in place: it cannot close, but it still swings in reach.
+        set_control(
+            &mut core,
+            Some(ControlEffect {
+                kind: ControlKind::Root,
+                slow_percent: 0,
+                duration_ms: 60_000,
+            }),
+        );
+        assert!(
+            core.advance_creature_ai(CREATURE_SWING_MS)
+                .iter()
+                .all(|update| !matches!(update, CreatureAiUpdate::Move { .. })),
+            "a rooted creature stays put"
+        );
+        step_out(&mut core, 1.0);
+        set_control(
+            &mut core,
+            Some(ControlEffect {
+                kind: ControlKind::Root,
+                slow_percent: 0,
+                duration_ms: 60_000,
+            }),
+        );
+        core.hostiles
+            .iter_mut()
+            .find(|hostile| hostile.spawn_id == spawn_id)
+            .unwrap()
+            .provoked = true;
+        let updates = core.advance_creature_ai(CREATURE_SWING_MS);
+        assert!(
+            updates
+                .iter()
+                .any(|update| matches!(update, CreatureAiUpdate::AttackStart { .. })),
+            "a rooted creature still swings in reach: {updates:?}"
+        );
+
+        // A snare slows the chase by its percent (50 here): two seconds closes 7 yards of an
+        // 8-yard gap instead of the full run speed's 14.
+        step_out(&mut core, 10.0);
+        set_control(
+            &mut core,
+            Some(ControlEffect {
+                kind: ControlKind::Snare,
+                slow_percent: 50,
+                duration_ms: 60_000,
+            }),
+        );
+        core.hostiles
+            .iter_mut()
+            .find(|hostile| hostile.spawn_id == spawn_id)
+            .unwrap()
+            .provoked = true;
+        let updates = core.advance_creature_ai(CREATURE_SWING_MS);
+        let closed = updates.iter().find_map(|update| match update {
+            CreatureAiUpdate::Move { end, .. } => Some(end.x),
+            _ => None,
+        });
+        let Some(closed) = closed else {
+            panic!("the snared creature still moves: {updates:?}");
+        };
+        assert!(
+            (closed - spawn_position.x - 7.0).abs() < 0.01,
+            "half of the run speed, got {} yards",
+            closed - spawn_position.x
+        );
+    }
+
+    #[test]
     fn a_next_swing_melee_ability_takes_over_one_swing_and_spends_rage() {
         let (mut core, id) = core_for(1, 1);
         {
@@ -6113,6 +6960,7 @@ mod tests {
                 max: 10,
                 school: 1,
                 periodic: None,
+                control: None,
             },
             combo: ComboEffect::Finisher { per_point: 5 },
             on_next_swing: false,
@@ -6281,6 +7129,7 @@ mod tests {
                     max: 5,
                     school: 1,
                     periodic: None,
+                    control: None,
                 },
             ),
             Err(CoreError::UnsupportedSpellEffect)

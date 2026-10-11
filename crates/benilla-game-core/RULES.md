@@ -60,6 +60,10 @@ health costs are modeled. `ManaCostPercentage` counts against base mana only for
   rule. Rage decays 1 point every 2,000 simulation ms while no creature is engaged and the player
   is not swinging; it holds during a fight. The pool caps at 100 whole points, and the descriptor
   carries tenths (the client divides on read).
+- Health recovers 5 points every 2,000 simulation ms toward the pool, only outside a fight — a
+  project-sized cadence like the mana rule, since no client data exposes passive health regen and
+  the snapshot models no spirit. Nothing ticks back while a creature is engaged or a swing is
+  running.
 - Level-ups restore health and the class's pools to maximum, matching the established level rule.
 
 ## Melee, Weapons, And Combo Points
@@ -83,22 +87,41 @@ health costs are modeled. `ManaCostPercentage` counts against base mana only for
   finishing bit `0x500000`, Eviscerate) refuses with no point on the target,
   spends every point at cast start, and adds `EffectPointsPerComboPoint` damage per spent point to
   its roll.
+- The ranged white shot (Auto Shot 75, Shoot Bow, Throw, wand Shoot 5019 — the rows carrying
+  `AttributesEx3`'s melee-white bit or `AttributesEx2`'s auto-repeat bit) swings the equipped
+  ranged slot's converted weapon (slot 17: bows, guns, crossbows, thrown and wands) on its own
+  timer, repeating until `CancelAutoRepeat`, the target's death, or the shot leaving the Auto Shot
+  range row's 35-yard reach (the row's 8-yard floor is not enforced). It is gated by the common
+  Attack action exactly as the melee swing is, not by a shot spell in the book, and its damage
+  rides the shot spell's own go and damage log.
 
 ## Channels And Movement Effects
 
 - A channeled row (`AttributesEx & 0x44`, Mind Flay, Drain Life) resolves its effect once per
   `EffectAmplitude` tick for the row's duration, beginning one tick after the cast completes. The
-  tick amount is rolled once at cast start, so the channel's outcome is fixed when it begins.
-  Moving, a control effect, or `SpellStopCasting`/`CancelChannelling` ends the channel early; the
-  ticks already delivered stand. A channel whose target dies ends without further ticks.
-- Control/movement auras resolve from their build-8606 aura id and `EffectBasePoints`: stun
-  (`SPELL_AURA_MOD_STUN`, Gouge 1776) stops everything, root (`SPELL_AURA_MOD_ROOT`, Frost Nova
-  122) stops movement while actions continue, snare (`SPELL_AURA_MOD_DECREASE_SPEED`, Frostbolt's
-  -40%) slows chase movement, and confuse (`SPELL_AURA_MOD_CONFUSE`, Polymorph) behaves as a stun
-  here (wander behavior is not modeled). On a creature these gate acquisition, chase and swings for
-  their duration; on the player they gate movement through the descriptor flag the client reads.
-  Charge-like position changes (`SPELL_EFFECT_CHARGE`) and knockbacks are not modeled yet and are
+  tick amount is rolled once at cast start, so the channel's outcome is fixed when it begins (the
+  same rule as the linked DoT). The per-tick arm is the row's own: periodic damage
+  (`SPELL_AURA_PERIODIC_DAMAGE`, Mind Flay), periodic leech (`SPELL_AURA_PERIODIC_LEECH`, Drain
+  Life, healing the caster the tick's damage each tick), or the periodic trigger's own damage arm
+  (`SPELL_AURA_PERIODIC_TRIGGER_SPELL`, Arcane Missiles 5143's trigger 7268). The channel holds
+  the caster: no new cast starts and mana regen pauses. `CancelChannelling` (the client sends it
+  on any local cancel, including movement) ends the channel early; the ticks already delivered
+  stand. A channel whose target dies ends without further ticks. Area channels whose tick lives on
+  a location (Blizzard 10) and mana leech (`SPELL_AURA_PERIODIC_MANA_LEECH`, Drain Mana 5138) are
   explicit unsupported blockers.
+- Control/movement auras resolve from their build-8606 aura id and `EffectBasePoints`: stun
+  (`SPELL_AURA_MOD_STUN`, Hammer of Justice 853) stops everything, root (`SPELL_AURA_MOD_ROOT`,
+  Frost Nova 122) stops movement while actions continue, snare (`SPELL_AURA_MOD_DECREASE_SPEED`,
+  Frostbolt's -40%) slows chase movement by its percent for its duration, and the disorient
+  families — confuse (`SPELL_AURA_MOD_CONFUSE`, Polymorph 118) and fear (`SPELL_AURA_MOD_FEAR`,
+  Fear 5782) — behave as a stun here, since wander and flee behavior are not modeled. On a
+  creature these gate acquisition, chase and swings for their duration (one control runs per
+  creature at a time); a control arm beside a direct amount lands on the same hit (Frostbolt's
+  snare) and a bare control casts on its own (Hammer of Justice). The player-side half of the
+  rule — controlled movement through the descriptor flag the client reads — is not exercised yet:
+  no creature casts a control spell in this slice. Charge-like position changes
+  (`SPELL_EFFECT_CHARGE`) and knockbacks are not modeled yet and are explicit unsupported
+  blockers.
 - Friendly spell effects (heals, buffs, debuffs) may target the player or a friendly unit; the
   friendly unit's health and active effects live in the simulation for the session and are not
   saved (the source creatures respawn from content, so their state is not part of the character's
@@ -113,13 +136,15 @@ frames and combat-log naming in the presentation remain wired for the future pet
 ## Spell Effect Coverage
 
 The direct-cast resolver reads build-8606 `Spell.dbc` effect rows and resolves these families:
-school damage, heal, the four weapon-damage arms, aura-only buffs and debuffs, and one linked
-periodic-damage aura (DoT). Secondary mechanics beside the direct arm are named and carried:
+school damage, heal, the four weapon-damage arms, aura-only buffs and debuffs, one linked
+periodic-damage aura (DoT), channeled per-tick effects, and movement-control arms. Secondary
+mechanics beside the direct arm are named and carried:
 builder combo points, the interrupt's school lockout (Shield Bash, Pummel; no caster to interrupt
 yet, so the lockout is presentation), and a trigger (`EffectTriggerSpell`). Periodic damage ticks
 as the linked DoT. Effect families that nothing models yet — mana burn (`SPELL_EFFECT_MANA_BURN`),
-resource restore (`SPELL_EFFECT_ENERGIZE`), dummy-armed damage (Execute), health-cost casts, and
-triggered spells whose trigger is the whole mechanic (Charge's stun) — are explicit unsupported
+resource restore (`SPELL_EFFECT_ENERGIZE`), dummy-armed damage (Execute), health-cost casts,
+triggered spells whose trigger is the whole mechanic (Charge's stun), area channels (Blizzard 10),
+and mana-leech channels (Drain Mana 5138) — are explicit unsupported
 blockers: the cast refuses with a named reason
 and the coverage audit counts them. The runtime must not treat a spellbook entry as proof its
 effect works.

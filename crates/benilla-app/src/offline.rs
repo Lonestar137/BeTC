@@ -1637,7 +1637,8 @@ fn plan_direct_effect(effects: [u32; 3], auras: [u32; 3]) -> Option<EffectPlan> 
                 }
             }
             SPELL_EFFECT_APPLY_AURA => {
-                // Auras resolve: periodic damage is the DoT, the rest is buff/debuff state.
+                // Auras resolve: periodic damage is the DoT, the movement-control auras become
+                // control arms, the rest is buff/debuff state.
                 has_aura = true;
             }
             effect if is_secondary_mechanic(effect) => {}
@@ -1813,6 +1814,15 @@ fn drive_offline_gameplay(
                 stop_offline_auto_attack(&mut core.0, &channels);
                 continue;
             }
+            crate::net::ClientCommand::CancelAutoRepeat => {
+                core.0.stop_auto_shot();
+                continue;
+            }
+            crate::net::ClientCommand::CancelChannelling { spell_id: _ } => {
+                // The client cancels its own channel bar; the simulation stops ticking.
+                core.0.cancel_channel();
+                continue;
+            }
             crate::net::ClientCommand::RepopRequest => {
                 respawn_offline_character(&mut core.0, &mut persistence, &channels);
                 continue;
@@ -1887,6 +1897,19 @@ fn drive_offline_gameplay(
             }
             continue;
         }
+        // The white ranged shots (Auto Shot 75, Shoot Bow, Throw, wand Shoot) are the ranged auto
+        // attack: the client animates the draw, the simulation swings the ranged slot's weapon.
+        if let crate::net::ClientCommand::CastSpell { spell_id, target } = &command {
+            let white_shot = spells.as_deref().is_some_and(|spells| {
+                spells.catalog.get(*spell_id).is_some_and(|spell| {
+                    spell.melee_white_damage() || spell.auto_repeat()
+                })
+            });
+            if white_shot {
+                start_offline_auto_shot(&mut core.0, &channels, *spell_id, *target);
+                continue;
+            }
+        }
         let cast_data = match &command {
             crate::net::ClientCommand::CastSpell { spell_id, .. } => spells
                 .as_deref()
@@ -1938,7 +1961,110 @@ fn drive_offline_gameplay(
                             },
                         )
                     });
-                    let effect = match plan.direct {
+                    // Movement control rides the row's aura arms: stun (Hammer of Justice), root
+                    // (Frost Nova) or snare (Frostbolt's -40), for the row's duration. The
+                    // disorient families act as a stun here (wander and flee are not modeled),
+                    // and the strongest arm of the row wins.
+                    let mut control: Option<benilla_game_core::ControlEffect> = None;
+                    let rank = |kind: benilla_game_core::ControlKind| match kind {
+                        benilla_game_core::ControlKind::Stun => 2,
+                        benilla_game_core::ControlKind::Root => 1,
+                        benilla_game_core::ControlKind::Snare => 0,
+                    };
+                    for slot in 0..3 {
+                        let kind = match spell.effect_apply_aura[slot] {
+                            benilla_formats::SPELL_AURA_MOD_STUN
+                            | benilla_formats::SPELL_AURA_MOD_CONFUSE
+                            | benilla_formats::SPELL_AURA_MOD_FEAR => {
+                                benilla_game_core::ControlKind::Stun
+                            }
+                            benilla_formats::SPELL_AURA_MOD_ROOT => {
+                                benilla_game_core::ControlKind::Root
+                            }
+                            benilla_formats::SPELL_AURA_MOD_DECREASE_SPEED => {
+                                benilla_game_core::ControlKind::Snare
+                            }
+                            _ => continue,
+                        };
+                        let Ok(duration_ms) =
+                            u32::try_from(spells.durations.get(spell.duration_index)?.base_ms)
+                        else {
+                            continue;
+                        };
+                        // A snare's strength is the row's own percent (Frostbolt's -40).
+                        let slow_percent = if kind == benilla_game_core::ControlKind::Snare {
+                            spell
+                                .base_effect_range(slot)
+                                .map(|(min, _)| min.saturating_neg().clamp(1, 99) as u32)
+                                .unwrap_or(50)
+                        } else {
+                            0
+                        };
+                        let candidate = benilla_game_core::ControlEffect {
+                            kind,
+                            slow_percent,
+                            duration_ms,
+                        };
+                        if duration_ms > 0
+                            && control
+                                .is_none_or(|current| rank(candidate.kind) > rank(current.kind))
+                        {
+                            control = Some(candidate);
+                        }
+                    }
+                    // A channeled row ticks its per-tick arm instead of landing a direct amount:
+                    // periodic damage (Mind Flay), periodic leech (Drain Life), or the periodic
+                    // trigger's own damage arm (Arcane Missiles 5143's trigger 7268).
+                    let channel_effect = spell
+                        .tooltip_channeled()
+                        .then(|| {
+                            (0..3).find_map(|slot| {
+                                let tick_ms = spell.effect_amplitude[slot];
+                                let (min, max) = match spell.effect_apply_aura[slot] {
+                                    benilla_formats::SPELL_AURA_PERIODIC_DAMAGE
+                                    | benilla_formats::SPELL_AURA_PERIODIC_LEECH => {
+                                        spell.base_effect_range(slot)?
+                                    }
+                                    benilla_formats::SPELL_AURA_PERIODIC_TRIGGER_SPELL => {
+                                        let trigger =
+                                            spells.catalog.get(spell.effect_trigger_spell[slot])?;
+                                        (0..3).find_map(|arm| {
+                                            (trigger.effects[arm]
+                                                == benilla_formats::SPELL_EFFECT_SCHOOL_DAMAGE)
+                                                .then(|| trigger.base_effect_range(arm))
+                                                .flatten()
+                                        })?
+                                    }
+                                    _ => return None,
+                                };
+                                let duration_ms =
+                                    u32::try_from(spells.durations.get(spell.duration_index)?.base_ms)
+                                        .ok()?;
+                                let ticks = if tick_ms > 0 && duration_ms >= tick_ms {
+                                    duration_ms / tick_ms
+                                } else {
+                                    0
+                                };
+                                (ticks > 0).then_some(benilla_game_core::DirectSpellEffect::Channel {
+                                    tick_ms,
+                                    ticks,
+                                    min: u32::try_from(min).ok()?,
+                                    max: u32::try_from(max).ok()?,
+                                    school: 1_u32.checked_shl(spell.school)?,
+                                    drain: spell.effect_apply_aura[slot]
+                                        == benilla_formats::SPELL_AURA_PERIODIC_LEECH,
+                                    control,
+                                })
+                            })
+                        })
+                        .flatten();
+                    let effect = if let Some(channel) = channel_effect {
+                        channel
+                    } else if let Some(control) = control.filter(|_| plan.direct.is_none()) {
+                        // A bare control spell (Hammer of Justice's stun) lands its control arm.
+                        benilla_game_core::DirectSpellEffect::Control(control)
+                    } else {
+                        match plan.direct {
                         Some(slot) if spell.effects[slot] == benilla_formats::SPELL_EFFECT_HEAL => {
                             let (min, max) = spell.base_effect_range(slot)?;
                             benilla_game_core::DirectSpellEffect::Heal {
@@ -1980,6 +2106,7 @@ fn drive_offline_gameplay(
                                     max,
                                     school,
                                     periodic,
+                                    control,
                                 }
                             }
                         }
@@ -1987,6 +2114,7 @@ fn drive_offline_gameplay(
                             school: 1_u32.checked_shl(spell.school).unwrap_or(1),
                             periodic: None,
                         },
+                    }
                     };
                     // Rogue mechanics: a finishing move spends the target's points, adding
                     // `EffectPointsPerComboPoint` each; a builder effect awards one per hit.
@@ -2049,6 +2177,7 @@ fn drive_offline_gameplay(
                                 tick_ms: benilla_game_core::FIREBALL_BURN_TICK_MS,
                                 duration_ms: benilla_game_core::FIREBALL_BURN_MS,
                             }),
+                            control: None,
                         },
                         benilla_game_core::ComboEffect::None,
                         false,
@@ -3065,7 +3194,9 @@ fn start_offline_cast(
     let player_guid = id.presentation_guid();
     let (presentation_target, cast_target) = match effect {
         benilla_game_core::DirectSpellEffect::Damage { .. }
-        | benilla_game_core::DirectSpellEffect::WeaponDamage { .. } => {
+        | benilla_game_core::DirectSpellEffect::WeaponDamage { .. }
+        | benilla_game_core::DirectSpellEffect::Channel { .. }
+        | benilla_game_core::DirectSpellEffect::Control(_) => {
             let Some(target) = target else { return false };
             let Some(spawn_id) = core
                 .hostiles()
@@ -3181,6 +3312,7 @@ fn player_power_events(guid: u64, core: &GameCore) -> [SessionEvent; 1] {
     [SessionEvent::ObjectValues {
         guid,
         fields: ObjectFields::from_pairs(&[
+            (22, core.active_health()),
             (23, core.active_mana()),
             (24, core.active_rage().saturating_mul(10)),
             (25, core.active_focus()),
@@ -3210,6 +3342,44 @@ fn start_offline_auto_attack(core: &mut GameCore, channels: &OfflineChannels, ta
             }],
         ),
         Err(error) => debug!("offline gameplay: rejected auto-attack at {target:#x}: {error}"),
+    }
+}
+
+fn start_offline_auto_shot(
+    core: &mut GameCore,
+    channels: &OfflineChannels,
+    spell_id: u32,
+    target: Option<u64>,
+) {
+    let Some(id) = core.active().cloned() else {
+        return;
+    };
+    let Some(target) = target else {
+        return;
+    };
+    let Some(spawn_id) = core
+        .hostiles()
+        .iter()
+        .find(|hostile| combat_target_guid(hostile) == Some(target))
+        .map(|hostile| hostile.spawn_id)
+    else {
+        return;
+    };
+    match core.start_auto_shot(spell_id, spawn_id) {
+        Ok(()) => send_gameplay_events(
+            channels,
+            [SessionEvent::SpellStart {
+                caster: id.presentation_guid(),
+                spell_id,
+                cast_flags: 0x2,
+                cast_time_ms: 0,
+                target: Some(target),
+                ammo_display_id: None,
+            }],
+        ),
+        Err(error) => {
+            debug!("offline gameplay: rejected ranged shot {spell_id} at {target:#x}: {error}")
+        }
     }
 }
 
@@ -3511,6 +3681,73 @@ fn advance_offline_combat_with_talents(
                     impact.killed.then_some(spell_id),
                 ));
                 send_gameplay_events(channels, events);
+            }
+            CombatUpdate::RangedImpact {
+                spell_id,
+                impact,
+            } => {
+                // A ranged white swing (Auto Shot, Shoot, Throw): the shot's own go and damage
+                // log rides the white shot spell, not the melee attacker state.
+                changed = true;
+                let Some(id) = core.active() else {
+                    continue;
+                };
+                let Some(hostile) = core.hostile(impact.spawn_id) else {
+                    continue;
+                };
+                let Some(guid) = combat_target_guid(&hostile) else {
+                    continue;
+                };
+                let mut events = vec![
+                    SessionEvent::SpellGo {
+                        caster: id.presentation_guid(),
+                        spell_id,
+                        cast_flags: 0x100,
+                        hits: vec![guid],
+                        misses: Vec::new(),
+                        target: Some(guid),
+                        go_target: None,
+                        dest: None,
+                        ammo_display_id: None,
+                        item_caster: None,
+                    },
+                    SessionEvent::SpellDamageLog(benilla_protocol::messages::SpellDamageLog {
+                        target: guid,
+                        attacker: id.presentation_guid(),
+                        spell_id,
+                        damage: impact.damage,
+                        school: 0,
+                        absorb: 0,
+                        resist: 0,
+                        periodic: false,
+                        blocked: 0,
+                        hit_info: 0,
+                    }),
+                ];
+                events.extend(hostile_spell_state_events(
+                    guid,
+                    &hostile,
+                    impact.killed.then_some(spell_id),
+                ));
+                send_gameplay_events(channels, events);
+            }
+            CombatUpdate::ChannelStart {
+                spell_id,
+                duration_ms,
+            } => {
+                // The channel bar runs on the client's own timer from this start event.
+                changed = true;
+                send_gameplay_events(
+                    channels,
+                    [SessionEvent::ChannelStart {
+                        spell_id,
+                        duration_ms,
+                    }],
+                );
+            }
+            CombatUpdate::ChannelEnd { spell_id } => {
+                changed = true;
+                let _ = spell_id;
             }
             CombatUpdate::MeleeImpact(impact) => {
                 let Some(id) = core.active() else {
@@ -4234,6 +4471,97 @@ mod tests {
             blockers.is_empty(),
             "castable starter spells without a handler (a spellbook entry is not proof its \
              effect works): {blockers:?}"
+        );
+    }
+
+    /// The audit's acquisition slice: every trainer-offered and talent-learned spell resolves
+    /// through a named handler, or every effect it carries names one of these explicit
+    /// unsupported families. The pinned list is the only way a player-acquirable spell may fall
+    /// through, so the coverage can only shrink knowingly.
+    #[test]
+    fn trainer_and_talent_spells_resolve_or_name_an_unsupported_family() {
+        fn unaccounted_families(
+            catalog: &benilla_formats::SpellCatalog,
+            spell_id: u32,
+            unaccounted: &mut Vec<(u32, String, u32)>,
+        ) -> usize {
+            let Some(spell) = catalog.get(spell_id) else {
+                unaccounted.push((spell_id, String::from("missing row"), 0));
+                return 1;
+            };
+            if spell.passive || spell.cast_ui != 0 || spell_id == benilla_game_core::ATTACK_SPELL_ID
+            {
+                return 0;
+            }
+            if plan_direct_effect(spell.effects, spell.effect_apply_aura).is_none() {
+                for effect in spell.effects.into_iter().filter(|effect| *effect != 0) {
+                    if !BLOCKERS.contains(&effect) {
+                        unaccounted.push((spell_id, spell.name.clone(), effect));
+                    }
+                }
+            }
+            1
+        }
+
+        // Explicit unsupported effect families (RULES.md "Spell Effect Coverage"): dummy-armed
+        // and health-cost mechanics, mana burn and resource restore, charge-like movement,
+        // summons and totems, the area and mana-leech channel arms, and the acquisition and tool
+        // families the trainer and profession systems own.
+        const BLOCKERS: &[u32] = &[
+            benilla_formats::SPELL_EFFECT_DUMMY,
+            benilla_formats::SPELL_EFFECT_ENERGIZE,
+            benilla_formats::SPELL_EFFECT_MANA_BURN,
+            benilla_formats::SPELL_EFFECT_CHARGE,
+            benilla_formats::SPELL_EFFECT_CREATE_ITEM,
+            benilla_formats::SPELL_EFFECT_ENCHANT_ITEM,
+            benilla_formats::SPELL_EFFECT_ENCHANT_ITEM_TEMPORARY,
+            benilla_formats::SPELL_EFFECT_LEARN_SPELL,
+            benilla_formats::SPELL_EFFECT_LEARN_PET_SPELL,
+            benilla_formats::SPELL_EFFECT_SKILL_STEP,
+            benilla_formats::SPELL_EFFECT_SKINNING,
+            benilla_formats::SPELL_EFFECT_TRADE_SKILL,
+            benilla_formats::SPELL_EFFECT_PROSPECTING,
+            39, // SPELL_EFFECT_LANGUAGE (the language-learning family)
+            5,  // SPELL_EFFECT_TELEPORT_UNITS (Hearthstone 8690)
+            27, // SPELL_EFFECT_PERSISTENT_AREA_AURA (Blizzard 10's area arm)
+            33, // SPELL_EFFECT_OPEN_LOCK (Pick Lock 1804)
+            76, // SPELL_EFFECT_SUMMON (the summon family; not modeled)
+        ];
+        let data = benilla_formats::wow_data_or_skip!();
+        let mut chain = benilla_formats::open_chain(&data).expect("open chain");
+        let catalog = benilla_formats::load_spell_catalog(&mut chain).expect("spell catalog");
+        let talent_catalog =
+            benilla_formats::load_talent_catalog(&mut chain).expect("load Talent/TalentTab");
+        let mut audited = 0usize;
+        let mut unaccounted = Vec::new();
+        for offer in benilla_game_core::progression::progression_data()
+            .trainer_spell
+            .iter()
+        {
+            let taught = catalog
+                .learned_spell(offer.spell_id)
+                .unwrap_or(offer.spell_id);
+            audited += unaccounted_families(&catalog, taught, &mut unaccounted);
+        }
+        for race in 1..=11 {
+            for class in 1..=11 {
+                for tab in talent_catalog.tabs_for_class(race, class) {
+                    for talent in talent_catalog.talents_in_tab(tab.id) {
+                        for spell_id in talent.ranks.iter().copied().filter(|id| *id != 0) {
+                            audited += unaccounted_families(&catalog, spell_id, &mut unaccounted);
+                        }
+                    }
+                }
+            }
+        }
+        assert!(
+            audited > 100,
+            "acquisition spells audited through the resolver: {audited}"
+        );
+        assert!(
+            unaccounted.is_empty(),
+            "player-acquirable spells without a handler (the pinned families are the only \
+             allowed blockers): {unaccounted:?}"
         );
     }
 
@@ -5336,6 +5664,7 @@ mod tests {
                 max: 30,
                 school: 4,
                 periodic: None,
+                control: None,
             },
             benilla_game_core::ComboEffect::None,
             false,
@@ -5420,6 +5749,7 @@ mod tests {
                     max: 30,
                     school: 4,
                     periodic: None,
+                    control: None,
                 },
                 benilla_game_core::ComboEffect::None,
                 false,
@@ -5757,6 +6087,7 @@ mod tests {
                     max: 30,
                     school: 4,
                     periodic: None,
+                    control: None,
                 },
                 benilla_game_core::ComboEffect::None,
                 false,
@@ -5925,6 +6256,111 @@ mod tests {
         assert!(
             received.try_iter().next().is_none(),
             "stopped attacks do no more damage"
+        );
+    }
+
+    /// Acceptance: a hunter's bow is a working weapon. Auto Shot (75) is the white ranged swing:
+    /// the shot lands with the converted Warder's Shortbow's numbers (5-10 every 2,300 ms) and
+    /// keeps shooting until the client cancels the auto-repeat.
+    #[test]
+    fn offline_ranged_auto_shot_shoots_the_target_with_the_converted_bow() {
+        let Some(spells) = crate::ui_action::real_spells() else {
+            return;
+        };
+        let id = CharacterId::parse("00000000000000000000000000000006").unwrap();
+        let appearance = Appearance {
+            race: 10,
+            class: 3,
+            gender: 0,
+            skin: 0,
+            face: 0,
+            hair_style: 0,
+            hair_color: 0,
+            facial_hair: 0,
+        };
+        let mut core = GameCore::default();
+        core.create_character(
+            id.clone(),
+            "Vellas",
+            appearance,
+            starting_position(10).unwrap(),
+        )
+        .unwrap();
+        core.enter_world().unwrap();
+        let hostile = core.hostiles().first().copied().expect("imported target");
+        core.update_active(
+            WorldPosition {
+                x: hostile.position.x + 10.0,
+                ..hostile.position
+            },
+            0,
+        )
+        .unwrap();
+
+        let (_pick_tx, picks) = crossbeam_channel::unbounded();
+        let (events, received) = crossbeam_channel::unbounded();
+        let (commands, command_receiver) = crossbeam_channel::unbounded();
+        let mut app = App::new();
+        app.insert_resource(OfflineChannels {
+            picks,
+            events,
+            commands: command_receiver,
+        })
+        .insert_resource(OfflineGameCore(core))
+        .insert_resource(OfflinePersistence::new(false))
+        .insert_resource(Time::<()>::default())
+        .insert_resource(spells);
+
+        let target = hostile_guid(hostile.spawn_id);
+        commands
+            .send(crate::net::ClientCommand::CastSpell {
+                spell_id: 75,
+                target: Some(target),
+            })
+            .unwrap();
+        app.world_mut()
+            .run_system_once(drive_offline_gameplay)
+            .expect("the white shot command is handled");
+        assert!(matches!(
+            received.try_recv().unwrap(),
+            SessionEvent::SpellStart { spell_id: 75, target: Some(guid), .. } if guid == target
+        ));
+
+        // The bow draws its converted 2,300 ms and then the shot lands.
+        let channels = app.world().resource::<OfflineChannels>().clone();
+        {
+            let core = &mut app.world_mut().resource_mut::<OfflineGameCore>().0;
+            advance_offline_combat(core, &channels, 2_299);
+            assert!(received.try_iter().next().is_none(), "the bow draws first");
+            advance_offline_combat(core, &channels, 1);
+        }
+        let shot: Vec<_> = received.try_iter().collect();
+        assert!(shot.iter().any(|event| matches!(
+            event,
+            SessionEvent::SpellGo { spell_id: 75, hits, .. } if hits.as_slice() == [target]
+        )));
+        assert!(shot.iter().any(|event| matches!(
+            event,
+            SessionEvent::SpellDamageLog(log)
+                if log.spell_id == 75
+                    && log.target == target
+                    && (5..=10).contains(&log.damage)
+        )));
+
+        // The client cancels the auto-repeat and the shooting stops.
+        commands
+            .send(crate::net::ClientCommand::CancelAutoRepeat)
+            .unwrap();
+        app.world_mut()
+            .run_system_once(drive_offline_gameplay)
+            .expect("the auto-repeat cancel is handled");
+        {
+            let core = &mut app.world_mut().resource_mut::<OfflineGameCore>().0;
+            advance_offline_combat(core, &channels, 2_300);
+        }
+        assert!(
+            received.try_iter().next().is_none(),
+            "a cancelled shot stays quiet"
         );
     }
 

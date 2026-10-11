@@ -148,13 +148,22 @@ const COL_SPELL_LEVEL: usize = 29;
 const COL_EFFECT_APPLY_AURA_1: usize = 91;
 /// `SPELL_AURA_MOD_SHAPESHIFT`: its `EffectMiscValue` is the `SpellShapeshiftForm.dbc` id.
 const SPELL_AURA_MOD_SHAPESHIFT: u32 = 36;
-/// `SPELL_AURA_PERIODIC_DAMAGE`: a damage-over-time aura (Immolate, Corruption).
+/// `SPELL_AURA_PERIODIC_DAMAGE`: a damage-over-time aura (Immolate, Corruption). Also a channel's
+/// per-tick arm (Mind Flay 15407's first effect).
 pub const SPELL_AURA_PERIODIC_DAMAGE: u32 = 3;
+/// `SPELL_AURA_PERIODIC_TRIGGER_SPELL`: the tick is the triggered spell's own effect (Arcane
+/// Missiles 5143 triggers 7268 on its amplitude).
+pub const SPELL_AURA_PERIODIC_TRIGGER_SPELL: u32 = 4;
+/// `SPELL_AURA_PERIODIC_LEECH`: a periodic hit that heals the caster for its damage (Drain Life
+/// 689's only effect).
+pub const SPELL_AURA_PERIODIC_LEECH: u32 = 53;
 /// `SPELL_AURA_PERIODIC_HEAL`: a heal-over-time aura (Renew, Rejuvenation).
 pub const SPELL_AURA_PERIODIC_HEAL: u32 = 8;
 /// `SPELL_AURA_MOD_CONFUSE`: disorient; the unit wanders and loses control (Polymorph 118,
 /// Blind 2094).
 pub const SPELL_AURA_MOD_CONFUSE: u32 = 5;
+/// `SPELL_AURA_MOD_FEAR`: the unit flees (Fear 5782's first effect).
+pub const SPELL_AURA_MOD_FEAR: u32 = 7;
 /// `SPELL_AURA_MOD_STUN`: incapacitate; no movement, no actions (Gouge 1776's third effect).
 pub const SPELL_AURA_MOD_STUN: u32 = 12;
 /// `SPELL_AURA_MOD_ROOT`: immobilize; no movement, actions free (Frost Nova 122's second effect).
@@ -250,6 +259,9 @@ const ATTR_EX_EXCLUDE_CASTER: u32 = 0x0008_0000;
 const SPELL_EFFECT_ATTACK: u32 = 78;
 /// `SPELL_EFFECT_SCHOOL_DAMAGE`, a direct school-damage effect (Fireball 133's first effect).
 pub const SPELL_EFFECT_SCHOOL_DAMAGE: u32 = 2;
+/// `SPELL_EFFECT_APPLY_AURA`, the arm carrying an `EffectApplyAuraName` (Frostbolt 116's snare
+/// arm, Mind Flay 15407's channel tick).
+pub const SPELL_EFFECT_APPLY_AURA: u32 = 6;
 /// `SPELL_EFFECT_DUMMY`: row-specific behavior named by the tooltip (Eviscerate 2098's damage
 /// arm, Charge 100's rage grant). No general rule resolves it.
 pub const SPELL_EFFECT_DUMMY: u32 = 3;
