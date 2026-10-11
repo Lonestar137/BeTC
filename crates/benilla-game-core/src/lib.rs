@@ -1991,45 +1991,7 @@ impl GameCore {
         if snapshot.position.map_id == SUNSTRIDER_MAP_ID {
             self.hostiles = Vec::new();
             self.allies = Vec::new();
-            if snapshot.appearance.race == 10 {
-                let content = content::starting_zone_content();
-                for spawn in content.spawns_near(
-                    snapshot.position.map_id,
-                    snapshot.position.x,
-                    snapshot.position.y,
-                    SUNSTRIDER_CONTENT_RADIUS_YARDS,
-                ) {
-                    let Some(template) = content.template(spawn.entry) else {
-                        continue;
-                    };
-                    let position = WorldPosition {
-                        map_id: spawn.map_id,
-                        x: spawn.x,
-                        y: spawn.y,
-                        z: spawn.z,
-                        orientation: spawn.orientation,
-                    };
-                    if is_sunstrider_attackable_faction(template.faction) {
-                        self.hostiles.push(hostile_from_spawn(
-                            spawn.source_guid,
-                            spawn.entry,
-                            position,
-                            SUNSTRIDER_AGGRESSIVE_FACTION_TEMPLATES.contains(&template.faction),
-                        ));
-                    } else {
-                        // Friendly templates share the unit presentation and receive friendly
-                        // spells; they never enter combat.
-                        self.allies.push(AllyState {
-                            spawn_id: spawn.source_guid,
-                            creature_entry: spawn.entry,
-                            position,
-                            health: FRIENDLY_MAX_HEALTH,
-                            max_health: FRIENDLY_MAX_HEALTH,
-                            auras: Vec::new(),
-                        });
-                    }
-                }
-            }
+            self.populate_near(snapshot.position, SUNSTRIDER_CONTENT_RADIUS_YARDS);
         } else {
             // The combat harness still supports the inherited non-Sunstrider starting anchors;
             // authored NPC content is intentionally scoped to the Blood Elf zone.
@@ -2107,6 +2069,62 @@ impl GameCore {
 
     pub fn ally(&self, spawn_id: u32) -> Option<&AllyState> {
         self.allies.iter().find(|ally| ally.spawn_id == spawn_id)
+    }
+
+    /// Extend the Sunstrider population around `position`, returning the source spawn ids added.
+    /// Spawns stream in only (project decision): a creature already in `hostiles` or `allies` is
+    /// left alone, and nothing is ever removed. `enter_world` seeds with it and the adapter
+    /// repeats it as the player travels, so simulation and presentation agree on the set.
+    pub fn populate_near(&mut self, position: WorldPosition, radius_yards: f32) -> Vec<u32> {
+        if position.map_id != SUNSTRIDER_MAP_ID {
+            return Vec::new();
+        }
+        let content = content::starting_zone_content();
+        let mut added = Vec::new();
+        for spawn in content.spawns_near(position.map_id, position.x, position.y, radius_yards) {
+            if self
+                .hostiles
+                .iter()
+                .any(|hostile| hostile.spawn_id == spawn.source_guid)
+                || self
+                    .allies
+                    .iter()
+                    .any(|ally| ally.spawn_id == spawn.source_guid)
+            {
+                continue;
+            }
+            let Some(template) = content.template(spawn.entry) else {
+                continue;
+            };
+            let spawn_position = WorldPosition {
+                map_id: spawn.map_id,
+                x: spawn.x,
+                y: spawn.y,
+                z: spawn.z,
+                orientation: spawn.orientation,
+            };
+            if is_sunstrider_attackable_faction(template.faction) {
+                self.hostiles.push(hostile_from_spawn(
+                    spawn.source_guid,
+                    spawn.entry,
+                    spawn_position,
+                    SUNSTRIDER_AGGRESSIVE_FACTION_TEMPLATES.contains(&template.faction),
+                ));
+            } else {
+                // Friendly templates share the unit presentation and receive friendly spells;
+                // they never enter combat.
+                self.allies.push(AllyState {
+                    spawn_id: spawn.source_guid,
+                    creature_entry: spawn.entry,
+                    position: spawn_position,
+                    health: FRIENDLY_MAX_HEALTH,
+                    max_health: FRIENDLY_MAX_HEALTH,
+                    auras: Vec::new(),
+                });
+            }
+            added.push(spawn.source_guid);
+        }
+        added
     }
 
     pub fn open_corpse_loot(&mut self, spawn_id: u32) -> Result<loot::LootWindow, loot::LootError> {
@@ -6703,6 +6721,75 @@ mod tests {
             core.hostile(hostile_spawn.source_guid).unwrap().health,
             HOSTILE_MAX_HEALTH
         );
+    }
+
+    /// Spawns stream in as the player travels (project decision; nothing streams out):
+    /// `populate_near` grows the same set `enter_world` seeded, and the new hostile is targetable,
+    /// attackable and lootable like any other.
+    #[test]
+    fn mobs_streamed_in_after_travel_are_attackable_and_lootable() {
+        let (mut core, _, _) = core_with_two();
+        core.enter_world().unwrap();
+        disarm(&mut core);
+
+        let content = content::starting_zone_content();
+        let start = core
+            .active()
+            .and_then(|id| core.snapshot(id))
+            .map(|snapshot| snapshot.position)
+            .unwrap();
+        let far = content
+            .spawn
+            .iter()
+            .filter(|spawn| {
+                spawn.map_id == SUNSTRIDER_MAP_ID
+                    && content
+                        .template(spawn.entry)
+                        .is_some_and(|template| is_sunstrider_attackable_faction(template.faction))
+            })
+            .max_by(|a, b| {
+                let index = |spawn: &content::CreatureSpawn| {
+                    (spawn.x - start.x).powi(2) + (spawn.y - start.y).powi(2)
+                };
+                index(a).total_cmp(&index(b))
+            })
+            .expect("a converted attackable spawn");
+        let far_position = WorldPosition {
+            map_id: far.map_id,
+            x: far.x,
+            y: far.y,
+            z: far.z,
+            orientation: far.orientation,
+        };
+        assert!(
+            core.hostile(far.source_guid).is_none(),
+            "the far spawn is outside the entry radius, unseen until travel"
+        );
+
+        let added = core.populate_near(far_position, SUNSTRIDER_CONTENT_RADIUS_YARDS);
+        assert!(
+            added.contains(&far.source_guid),
+            "the query at the new position streams the far spawn into combat state"
+        );
+        let hostile = core.hostile(far.source_guid).expect("streamed hostile");
+        core.update_active(hostile.position, 0).unwrap();
+        core.start_auto_attack(hostile.spawn_id).unwrap();
+
+        let mut killed = false;
+        for _ in 0..64 {
+            if core.advance_combat(MELEE_SWING_MS).iter().any(|update| {
+                matches!(update, CombatUpdate::MeleeImpact(impact)
+                    if impact.spawn_id == far.source_guid && impact.killed)
+            }) {
+                killed = true;
+                break;
+            }
+        }
+        assert!(killed, "a streamed mob takes hits and dies");
+        assert_eq!(core.stop_auto_attack(), None, "the swing stops at the kill");
+        assert_eq!(core.hostile(far.source_guid).unwrap().health, 0);
+        core.open_corpse_loot(far.source_guid)
+            .expect("a streamed corpse opens for loot");
     }
 
     #[test]

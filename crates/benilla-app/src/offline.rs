@@ -26,6 +26,14 @@ const OFFLINE_INTERACTION_RANGE_YARDS: f32 = 5.5556;
 #[derive(Resource, Default)]
 struct OfflinePatrols(BTreeMap<u64, ActivePatrol>);
 
+/// The presentation GUIDs streamed into the session so far (world entry included), so a travel
+/// re-query emits only what is new. Project decision: spawns stream in, nothing streams out.
+#[derive(Resource, Default)]
+struct OfflineStreamedSpawns(std::collections::HashSet<u64>);
+
+/// Re-run the population query once the player has travelled this far, rather than every frame.
+const OFFLINE_STREAM_STEP_YARDS: f32 = 20.0;
+
 struct ActivePatrol {
     waypoints: Vec<benilla_game_core::content::CreatureWaypoint>,
     waypoint_index: usize,
@@ -57,6 +65,7 @@ impl Plugin for OfflineGamePlugin {
             .insert_resource(OfflinePersistence::new(writable))
             .init_resource::<crate::body_shape::BodyProportionRoster>()
             .init_resource::<OfflinePatrols>()
+            .init_resource::<OfflineStreamedSpawns>()
             .add_systems(Startup, publish_local_roster)
             .add_systems(Startup, publish_body_proportions)
             .add_systems(
@@ -91,6 +100,13 @@ impl Plugin for OfflineGamePlugin {
                 tick_offline_creature_ai
                     .in_set(benilla_world::schedule::WorldStage::Net)
                     .after(advance_offline_patrols)
+                    .before(crate::net::apply_net_updates),
+            )
+            .add_systems(
+                Update,
+                stream_offline_spawns
+                    .in_set(benilla_world::schedule::WorldStage::Net)
+                    .after(tick_offline_creature_ai)
                     .before(crate::net::apply_net_updates),
             )
             .add_systems(
@@ -272,6 +288,7 @@ fn drive_local_requests(
     talents: Option<Res<crate::ui_talent::Talents>>,
     mut names: ResMut<crate::names::NameCache>,
     mut patrols: ResMut<OfflinePatrols>,
+    mut streamed: ResMut<OfflineStreamedSpawns>,
     mut roster: MessageWriter<CharListMessage>,
     mut action_results: MessageWriter<CharActionResultMessage>,
 ) {
@@ -297,6 +314,7 @@ fn drive_local_requests(
                             talents.as_deref(),
                             &mut names,
                             &mut patrols,
+                            &mut streamed.0,
                         );
                         save_after_command(&core.0, &mut persistence);
                     }
@@ -459,8 +477,18 @@ fn emit_world_entry(
     names: &mut crate::names::NameCache,
     patrols: &mut OfflinePatrols,
 ) {
+    let mut streamed = std::collections::HashSet::new();
     emit_world_entry_with_talents(
-        channels, snapshot, hostiles, catalog, creatures, factions, None, names, patrols,
+        channels,
+        snapshot,
+        hostiles,
+        catalog,
+        creatures,
+        factions,
+        None,
+        names,
+        patrols,
+        &mut streamed,
     );
 }
 
@@ -474,8 +502,10 @@ fn emit_world_entry_with_talents(
     talents: Option<&crate::ui_talent::Talents>,
     names: &mut crate::names::NameCache,
     patrols: &mut OfflinePatrols,
+    streamed: &mut std::collections::HashSet<u64>,
 ) {
     patrols.0.clear();
+    streamed.clear();
     // The summoned pets' identities join the creature-name cache at world entry, so a summon's
     // unit, pet tab and combat log resolve whenever one appears.
     for template in benilla_game_core::summon::summons() {
@@ -682,122 +712,17 @@ fn emit_world_entry_with_talents(
         snapshot.position.y,
         OFFLINE_CONTENT_RADIUS_YARDS,
     ) {
-        let template = content
-            .template(spawn.entry)
-            .expect("converted spawn template was validated by the content loader");
-        if is_dnd_test_creature(template) {
-            continue;
-        }
-        let waypoint_path: Vec<_> = content.waypoints_for(spawn.source_guid).copied().collect();
-        let scale = creatures
-            .and_then(|catalog| catalog.model_scale(template.display_id))
-            .unwrap_or(1.0)
-            * template.scale;
-        names.insert_creature(
-            template.entry,
-            Some(crate::names::CreatureRecord {
-                name: template.name.clone(),
-                subname: (!template.subname.is_empty()).then(|| template.subname.clone()),
-                creature_type: template.creature_type,
-                pet_family: 0,
-                rank: 0,
-                type_flags: 0,
-                civilian: false,
-                racial_leader: false,
-                display_id: template.display_id,
-            }),
-        );
-        let guid = imported_guid(template.entry, spawn.source_guid);
-        let combat_state = hostiles.iter().find(|hostile| {
-            hostile.position.map_id == spawn.map_id && hostile.spawn_id == spawn.source_guid
-        });
-        let health = combat_state.map_or(100, |hostile| hostile.health);
-        let max_health = combat_state.map_or(100, |hostile| hostile.max_health);
-        let mut fields = vec![
-            (2, 0x9),
-            (3, template.entry),
-            (4, scale.to_bits()),
-            (22, health),
-            (28, max_health),
-            (34, u32::from(template.level)),
-            (35, template.faction),
-            (147, template.npc_flags),
-            (130, 1.5f32.to_bits()),
-            (131, template.display_id),
-            (132, template.display_id),
-        ];
-        if combat_state.is_some_and(|hostile| hostile.health == 0) {
-            let has_loot = snapshot
-                .corpse_loot
-                .iter()
-                .find(|corpse| corpse.spawn_id == spawn.source_guid)
-                .is_some_and(|corpse| {
-                    (!corpse.money_looted && corpse.loot.gold > 0)
-                        || corpse
-                            .loot
-                            .items
-                            .iter()
-                            .zip(&corpse.looted_items)
-                            .any(|(_, looted)| !looted)
-                });
-            fields.push((143, u32::from(has_loot)));
-        }
-        if let Some(addon) = content.addon_for(spawn.source_guid) {
-            if addon.stand_state != 0 {
-                fields.push((138, u32::from(addon.stand_state)));
-            }
-            if addon.emote != 0 {
-                fields.push((148, addon.emote));
-            }
-            if addon.sheath_state != 0 {
-                fields.push((164, u32::from(addon.sheath_state)));
-            }
-        }
-        if let Some(gender) = benilla_game_core::quest::quest_pack()
-            .quest
-            .iter()
-            .find(|quest| quest.giver_creature_entries.contains(&template.entry))
-            .map(|quest| quest.gossip_npc_gender)
-        {
-            fields.push((36, u32::from(gender) << 16));
-        }
-        let fields = ObjectFields::from_pairs(&fields)
-            .into_created(benilla_protocol::messages::ObjectType::Unit);
-        events.push(SessionEvent::ObjectCreate {
-            guid,
-            kind: EntityKind::Unit,
-            display_id: Some(template.display_id),
-            position: [spawn.x, spawn.y, spawn.z],
-            orientation: spawn.orientation,
-            scale,
-            speeds: None,
-            mover: None,
-            transport_progress: None,
-            transport: None,
-            spline: None,
-            fields,
-        });
-        if spawn.movement_type == 2 {
-            if let Some(first) = waypoint_path.first().copied() {
-                let start = [spawn.x, spawn.y, spawn.z];
-                let target = [first.x, first.y, first.z];
-                let duration_ms = patrol_leg_duration_ms(start, target);
-                events.push(patrol_move(guid, start, target, 1, duration_ms));
-                patrols.0.insert(
-                    guid,
-                    ActivePatrol {
-                        waypoints: waypoint_path,
-                        waypoint_index: 0,
-                        leg_start: start,
-                        position: target,
-                        current_position: start,
-                        leg_duration_ms: duration_ms,
-                        wait_ms: first.wait_ms,
-                        remaining_ms: duration_ms.saturating_add(first.wait_ms),
-                        spline_id: 1,
-                    },
-                );
-            }
+        if let Some(guid) = emit_imported_spawn(
+            &mut events,
+            content,
+            spawn,
+            creatures,
+            hostiles,
+            &snapshot.corpse_loot,
+            names,
+            patrols,
+        ) {
+            streamed.insert(guid);
         }
     }
     events.push(SessionEvent::TimeSpeed {
@@ -812,6 +737,140 @@ fn emit_world_entry_with_talents(
             break;
         }
     }
+}
+
+/// Emit one converted creature spawn into `events`: its name-cache record, the `ObjectCreate`
+/// carrying its combat state, and the patrol spline when the row's `movement_type` is 2. Returns
+/// the presentation GUID, or `None` for a `[DND]` test template the converter carries but no
+/// spawn should show. Shared by world entry and the travel stream so both emit identically.
+#[allow(clippy::too_many_arguments)]
+fn emit_imported_spawn(
+    events: &mut Vec<SessionEvent>,
+    content: &benilla_game_core::content::StartingZoneContent,
+    spawn: &benilla_game_core::content::CreatureSpawn,
+    creatures: Option<&crate::entities::Creatures>,
+    hostiles: &[HostileState],
+    corpse_loot: &[benilla_game_core::loot::CorpseLoot],
+    names: &mut crate::names::NameCache,
+    patrols: &mut OfflinePatrols,
+) -> Option<u64> {
+    let template = content
+        .template(spawn.entry)
+        .expect("converted spawn template was validated by the content loader");
+    if is_dnd_test_creature(template) {
+        return None;
+    }
+    let waypoint_path: Vec<_> = content.waypoints_for(spawn.source_guid).copied().collect();
+    let scale = creatures
+        .and_then(|catalog| catalog.model_scale(template.display_id))
+        .unwrap_or(1.0)
+        * template.scale;
+    names.insert_creature(
+        template.entry,
+        Some(crate::names::CreatureRecord {
+            name: template.name.clone(),
+            subname: (!template.subname.is_empty()).then(|| template.subname.clone()),
+            creature_type: template.creature_type,
+            pet_family: 0,
+            rank: 0,
+            type_flags: 0,
+            civilian: false,
+            racial_leader: false,
+            display_id: template.display_id,
+        }),
+    );
+    let guid = imported_guid(template.entry, spawn.source_guid);
+    let combat_state = hostiles.iter().find(|hostile| {
+        hostile.position.map_id == spawn.map_id && hostile.spawn_id == spawn.source_guid
+    });
+    let health = combat_state.map_or(100, |hostile| hostile.health);
+    let max_health = combat_state.map_or(100, |hostile| hostile.max_health);
+    let mut fields = vec![
+        (2, 0x9),
+        (3, template.entry),
+        (4, scale.to_bits()),
+        (22, health),
+        (28, max_health),
+        (34, u32::from(template.level)),
+        (35, template.faction),
+        (147, template.npc_flags),
+        (130, 1.5f32.to_bits()),
+        (131, template.display_id),
+        (132, template.display_id),
+    ];
+    if combat_state.is_some_and(|hostile| hostile.health == 0) {
+        let has_loot = corpse_loot
+            .iter()
+            .find(|corpse| corpse.spawn_id == spawn.source_guid)
+            .is_some_and(|corpse| {
+                (!corpse.money_looted && corpse.loot.gold > 0)
+                    || corpse
+                        .loot
+                        .items
+                        .iter()
+                        .zip(&corpse.looted_items)
+                        .any(|(_, looted)| !looted)
+            });
+        fields.push((143, u32::from(has_loot)));
+    }
+    if let Some(addon) = content.addon_for(spawn.source_guid) {
+        if addon.stand_state != 0 {
+            fields.push((138, u32::from(addon.stand_state)));
+        }
+        if addon.emote != 0 {
+            fields.push((148, addon.emote));
+        }
+        if addon.sheath_state != 0 {
+            fields.push((164, u32::from(addon.sheath_state)));
+        }
+    }
+    if let Some(gender) = benilla_game_core::quest::quest_pack()
+        .quest
+        .iter()
+        .find(|quest| quest.giver_creature_entries.contains(&template.entry))
+        .map(|quest| quest.gossip_npc_gender)
+    {
+        fields.push((36, u32::from(gender) << 16));
+    }
+    let fields =
+        ObjectFields::from_pairs(&fields).into_created(benilla_protocol::messages::ObjectType::Unit);
+    events.push(SessionEvent::ObjectCreate {
+        guid,
+        kind: EntityKind::Unit,
+        display_id: Some(template.display_id),
+        position: [spawn.x, spawn.y, spawn.z],
+        orientation: spawn.orientation,
+        scale,
+        speeds: None,
+        mover: None,
+        transport_progress: None,
+        transport: None,
+        spline: None,
+        fields,
+    });
+    if spawn.movement_type == 2 {
+        if let Some(first) = waypoint_path.first().copied() {
+            let start = [spawn.x, spawn.y, spawn.z];
+            let target = [first.x, first.y, first.z];
+            let duration_ms = patrol_leg_duration_ms(start, target);
+            events.push(patrol_move(guid, start, target, 1, duration_ms));
+            patrols.0.insert(
+                guid,
+                ActivePatrol {
+                    waypoints: waypoint_path,
+                    waypoint_index: 0,
+                    leg_start: start,
+                    position: target,
+                    current_position: start,
+                    leg_duration_ms: duration_ms,
+                    wait_ms: first.wait_ms,
+                    remaining_ms: duration_ms.saturating_add(first.wait_ms),
+                    spline_id: 1,
+                },
+            );
+        }
+    }
+    Some(guid)
 }
 
 fn character_aura_field_pairs(auras: &[CharacterAura]) -> Vec<(u16, u32)> {
@@ -4632,6 +4691,69 @@ fn save_on_exit(core: Res<OfflineGameCore>, mut persistence: ResMut<OfflinePersi
     persistence.finish();
 }
 
+/// Stream the converted population in as the player travels: once the pose has moved
+/// [`OFFLINE_STREAM_STEP_YARDS`], extend the simulation with `populate_near` and emit an
+/// `ObjectCreate` (plus its patrol) for every spawn not yet streamed. Nothing is removed
+/// (project decision): a mob stays once seen.
+fn stream_offline_spawns(
+    channels: Res<OfflineChannels>,
+    mut core: ResMut<OfflineGameCore>,
+    creatures: Option<Res<crate::entities::Creatures>>,
+    mut names: ResMut<crate::names::NameCache>,
+    mut patrols: ResMut<OfflinePatrols>,
+    mut streamed: ResMut<OfflineStreamedSpawns>,
+    mut last: Local<Option<WorldPosition>>,
+) {
+    let Some(id) = core.0.active().cloned() else {
+        *last = None;
+        return;
+    };
+    let Some(position) = core.0.snapshot(&id).map(|snapshot| snapshot.position) else {
+        return;
+    };
+    if position.map_id != 530 {
+        return;
+    }
+    let moved = last.is_none_or(|last| {
+        (last.x - position.x).powi(2) + (last.y - position.y).powi(2)
+            > OFFLINE_STREAM_STEP_YARDS * OFFLINE_STREAM_STEP_YARDS
+    });
+    if !moved {
+        return;
+    }
+    *last = Some(position);
+    core.0
+        .populate_near(position, OFFLINE_CONTENT_RADIUS_YARDS);
+    let content = benilla_game_core::content::starting_zone_content();
+    let mut events = Vec::new();
+    for spawn in content.spawns_near(
+        position.map_id,
+        position.x,
+        position.y,
+        OFFLINE_CONTENT_RADIUS_YARDS,
+    ) {
+        if streamed
+            .0
+            .contains(&imported_guid(spawn.entry, spawn.source_guid))
+        {
+            continue;
+        }
+        if let Some(guid) = emit_imported_spawn(
+            &mut events,
+            content,
+            spawn,
+            creatures.as_deref(),
+            core.0.hostiles(),
+            &[],
+            &mut names,
+            &mut patrols,
+        ) {
+            streamed.0.insert(guid);
+        }
+    }
+    send_gameplay_events(&channels, events);
+}
+
 fn update_local_player(
     time: Res<Time>,
     player: Res<crate::player::Player>,
@@ -5546,7 +5668,8 @@ mod tests {
             let (_command_tx, commands) = crossbeam_channel::unbounded();
             let mut names = crate::names::NameCache::default();
             let mut patrols = OfflinePatrols::default();
-            emit_world_entry(
+            let mut streamed = std::collections::HashSet::new();
+            emit_world_entry_with_talents(
                 &OfflineChannels {
                     picks,
                     events,
@@ -5557,8 +5680,10 @@ mod tests {
                 None,
                 None,
                 None,
+                None,
                 &mut names,
                 &mut patrols,
+                &mut streamed,
             );
             let events: Vec<_> = received.try_iter().collect();
 
@@ -5651,6 +5776,100 @@ mod tests {
                 );
             }
             assert!(patrols.0.values().any(|patrol| patrol.waypoints.len() > 1));
+
+            if snapshot.position.map_id == 530 {
+                // Travel beyond the entry radius: the next query streams the newly-near spawns
+                // and never repeats a GUID the entry already emitted.
+                let entry_guids: std::collections::HashSet<u64> = events
+                    .iter()
+                    .filter_map(|event| match event {
+                        SessionEvent::ObjectCreate {
+                            guid,
+                            kind: EntityKind::Unit,
+                            ..
+                        } => Some(*guid),
+                        _ => None,
+                    })
+                    .collect();
+                let distance = |spawn: &benilla_game_core::content::CreatureSpawn| {
+                    (spawn.x - snapshot.position.x).powi(2)
+                        + (spawn.y - snapshot.position.y).powi(2)
+                };
+                let far = content
+                    .spawn
+                    .iter()
+                    .filter(|spawn| {
+                        spawn.map_id == 530
+                            && content
+                                .template(spawn.entry)
+                                .is_some_and(|template| !is_dnd_test_creature(template))
+                            && distance(spawn)
+                                > OFFLINE_CONTENT_RADIUS_YARDS * OFFLINE_CONTENT_RADIUS_YARDS
+                    })
+                    .min_by(|a, b| distance(a).total_cmp(&distance(b)))
+                    .expect("a converted spawn beyond the entry radius");
+                core.update_active(
+                    WorldPosition {
+                        map_id: far.map_id,
+                        x: far.x,
+                        y: far.y,
+                        z: far.z,
+                        orientation: far.orientation,
+                    },
+                    0,
+                )
+                .unwrap();
+
+                let (_pick_tx, picks) = crossbeam_channel::unbounded();
+                let (events, received) = crossbeam_channel::unbounded();
+                let (_command_tx, commands) = crossbeam_channel::unbounded();
+                let mut app = App::new();
+                app.insert_resource(OfflineChannels {
+                    picks,
+                    events,
+                    commands,
+                })
+                .insert_resource(OfflineGameCore(core))
+                .insert_resource(OfflineStreamedSpawns(streamed.clone()))
+                .insert_resource(patrols)
+                .insert_resource(names);
+                app.world_mut()
+                    .run_system_once(stream_offline_spawns)
+                    .expect("the travel stream runs");
+                let streamed_events: Vec<_> = received.try_iter().collect();
+                let fresh: Vec<_> = streamed_events
+                    .iter()
+                    .filter_map(|event| match event {
+                        SessionEvent::ObjectCreate {
+                            guid,
+                            kind: EntityKind::Unit,
+                            fields,
+                            ..
+                        } => fields
+                            .object_entry()
+                            .filter(|entry| template_entries.contains(entry))
+                            .map(|entry| (*guid, entry)),
+                        _ => None,
+                    })
+                    .collect();
+                assert!(
+                    !fresh.is_empty(),
+                    "travel shows population the entry radius never reached"
+                );
+                assert!(
+                    fresh.iter().all(|(guid, _)| !entry_guids.contains(guid)),
+                    "streaming must not re-create what the entry already showed"
+                );
+                let unique: std::collections::HashSet<u64> =
+                    fresh.iter().map(|(guid, _)| *guid).collect();
+                assert_eq!(unique.len(), fresh.len(), "no duplicate creates in one stream");
+                assert!(
+                    fresh
+                        .iter()
+                        .any(|(guid, _)| *guid == imported_guid(far.entry, far.source_guid)),
+                    "the spawn the player travelled toward is among the streamed creates"
+                );
+            }
         }
     }
 
