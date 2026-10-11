@@ -501,9 +501,12 @@ fn emit_world_entry_with_talents(
         snapshot.position.z,
     ];
     let appearance = snapshot.appearance;
+    // Byte 3 of UNIT_FIELD_BYTES_0 is the power type: the client picks the power bar from it, so
+    // a warrior declared mana would show an eternally empty mana-style bar.
     let race_class_gender = u32::from(appearance.race)
         | (u32::from(appearance.class) << 8)
-        | (u32::from(appearance.gender) << 16);
+        | (u32::from(appearance.gender) << 16)
+        | (u32::from(benilla_game_core::PowerType::of_class(appearance.class).wire()) << 24);
     let player_bytes = u32::from(appearance.skin)
         | (u32::from(appearance.face) << 8)
         | (u32::from(appearance.hair_style) << 16)
@@ -4402,6 +4405,24 @@ fn advance_offline_combat_with_talents(
                     );
                 }
             }
+            CombatUpdate::AttackStopped { spawn_id } => {
+                // The client stays engaged until this echo; without it the reference's
+                // already-attacking skip keeps it from ever sending another swing — the state a
+                // kill leaves behind.
+                changed = true;
+                let victim = core
+                    .hostile(spawn_id)
+                    .and_then(|hostile| combat_target_guid(&hostile));
+                if let (Some(victim), Some(id)) = (victim, core.active().cloned()) {
+                    send_gameplay_events(
+                        channels,
+                        [SessionEvent::AttackStop {
+                            attacker: id.presentation_guid(),
+                            victim,
+                        }],
+                    );
+                }
+            }
         }
     }
     let _ = core.advance_power_regen(elapsed_ms);
@@ -7306,6 +7327,105 @@ mod tests {
                             .is_some_and(|health| health < benilla_game_core::PLAYER_MAX_HEALTH)
             )),
             "the taken hit's rage reaches the bar: {hit:?}"
+        );
+    }
+
+    /// Acceptance: a kill releases the client. The killing swing's stop echoes as `AttackStop` —
+    /// the reference client stays engaged until it hears one and sends no further swings while
+    /// engaged — and the next mob accepts the attack right away.
+    #[test]
+    fn offline_killing_a_mob_echoes_the_stop_and_the_next_mob_accepts_the_attack() {
+        let Some(spells) = crate::ui_action::real_spells() else {
+            return;
+        };
+        let id = CharacterId::parse("0000000000000000000000000000000b").unwrap();
+        let appearance = Appearance {
+            race: 10,
+            class: 1,
+            gender: 0,
+            skin: 0,
+            face: 0,
+            hair_style: 0,
+            hair_color: 0,
+            facial_hair: 0,
+        };
+        let mut core = GameCore::default();
+        core.create_character(
+            id.clone(),
+            "Braddok",
+            appearance,
+            starting_position(10).unwrap(),
+        )
+        .unwrap();
+        core.enter_world().unwrap();
+        let first = core.hostiles()[0];
+        let second = core.hostiles()[1];
+        core.update_active(first.position, 0).unwrap();
+
+        let (_pick_tx, picks) = crossbeam_channel::unbounded();
+        let (events, received) = crossbeam_channel::unbounded();
+        let (commands, command_receiver) = crossbeam_channel::unbounded();
+        let mut app = App::new();
+        app.insert_resource(OfflineChannels {
+            picks,
+            events,
+            commands: command_receiver,
+        })
+        .insert_resource(OfflineGameCore(core))
+        .insert_resource(OfflinePersistence::new(false))
+        .insert_resource(Time::<()>::default())
+        .insert_resource(spells);
+
+        commands
+            .send(crate::net::ClientCommand::AttackSwing {
+                guid: hostile_guid(first.spawn_id),
+            })
+            .unwrap();
+        app.world_mut()
+            .run_system_once(drive_offline_gameplay)
+            .expect("the attack command is handled");
+        let channels = app.world().resource::<OfflineChannels>().clone();
+        let mut stopped = false;
+        for _ in 0..200 {
+            {
+                let core = &mut app.world_mut().resource_mut::<OfflineGameCore>().0;
+                advance_offline_combat(core, &channels, benilla_game_core::MELEE_SWING_MS);
+            }
+            let events: Vec<_> = received.try_iter().collect();
+            if events.iter().any(|event| {
+                matches!(
+                    event,
+                    SessionEvent::AttackStop { victim, .. }
+                        if *victim == hostile_guid(first.spawn_id)
+                )
+            }) {
+                stopped = true;
+                break;
+            }
+        }
+        assert!(stopped, "the killing swing echoes the attack stop");
+
+        // The next mob accepts the attack right away: the client is no longer engaged.
+        {
+            let core = &mut app.world_mut().resource_mut::<OfflineGameCore>().0;
+            core.update_active(second.position, 0).unwrap();
+        }
+        commands
+            .send(crate::net::ClientCommand::AttackSwing {
+                guid: hostile_guid(second.spawn_id),
+            })
+            .unwrap();
+        app.world_mut()
+            .run_system_once(drive_offline_gameplay)
+            .expect("the second attack command is handled");
+        let events: Vec<_> = received.try_iter().collect();
+        assert!(
+            events.iter().any(|event| matches!(
+                event,
+                SessionEvent::AttackStart { victim, .. }
+                    if *victim == hostile_guid(second.spawn_id)
+            )),
+            "the second mob takes the attack: {events:?}"
         );
     }
 

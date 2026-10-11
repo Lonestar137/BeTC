@@ -313,6 +313,17 @@ impl PowerType {
             _ => Self::Mana,
         }
     }
+
+    /// The wire value for `UNIT_FIELD_BYTES_0` byte 3 — the client picks the power bar from it —
+    /// the same numbering as the `powerType` column.
+    pub fn wire(self) -> u8 {
+        match self {
+            Self::Mana => 0,
+            Self::Rage => 1,
+            Self::Focus => 2,
+            Self::Energy => 3,
+        }
+    }
 }
 
 /// A resolved spell cost in its own power's units (rage costs already divided by ten, as the
@@ -730,6 +741,12 @@ pub enum CombatUpdate {
         spell_id: u32,
         slot: u8,
         remaining_ms: Option<u32>,
+    },
+    /// The player's melee auto-attack dropped on its own (the killing swing, a lost target). The
+    /// presentation must echo it, or the client stays engaged and — like the reference's
+    /// already-attacking skip — never sends another swing.
+    AttackStopped {
+        spawn_id: u32,
     },
     /// A Fireball burn tick (periodic damage) on a living hostile.
     DotImpact(CastImpact),
@@ -3134,6 +3151,7 @@ impl GameCore {
 
     /// Advance the active cast and deterministic hostile respawn clock by caller-supplied time.
     pub fn advance_combat(&mut self, elapsed_ms: u32) -> Vec<CombatUpdate> {
+        let melee_before = self.melee_target_spawn_id;
         self.cooldown_remaining_ms = self.cooldown_remaining_ms.saturating_sub(elapsed_ms);
         self.spell_cooldowns.retain(|_, remaining| {
             *remaining = remaining.saturating_sub(elapsed_ms);
@@ -3959,6 +3977,12 @@ impl GameCore {
         }
         for (spawn_id, entry) in killed_entries {
             updates.extend(self.record_creature_kill(spawn_id, entry));
+        }
+        // An auto-attack that dropped on its own (the killing swing, a lost target) must be
+        // echoed to the presentation: the client stays engaged until it hears the stop, and an
+        // engaged client never sends another swing.
+        if let Some(spawn_id) = melee_before.filter(|_| self.melee_target_spawn_id.is_none()) {
+            updates.push(CombatUpdate::AttackStopped { spawn_id });
         }
         updates
     }
@@ -7647,6 +7671,29 @@ mod tests {
         );
         // Each landed hit pays its own per-hit floor.
         assert_eq!(core.active_rage(), rage_from_damage(CREATURE_DAMAGE, 1, true));
+    }
+
+    #[test]
+    fn a_killing_swing_stops_the_auto_attack_for_the_presentation() {
+        let (mut core, _id) = core_for(1, 8);
+        core.enter_world().unwrap();
+        core.update_active(core.hostile(HOSTILE_SPAWN_ID).unwrap().position, 0)
+            .unwrap();
+        core.start_auto_attack(HOSTILE_SPAWN_ID).unwrap();
+        let mut stopped = None;
+        for _ in 0..200 {
+            let updates = core.advance_combat(MELEE_SWING_MS);
+            if let Some(spawn_id) = updates.iter().find_map(|update| match update {
+                CombatUpdate::AttackStopped { spawn_id } => Some(*spawn_id),
+                _ => None,
+            }) {
+                stopped = Some(spawn_id);
+                break;
+            }
+        }
+        // The swing that kills the target drops the auto-attack, and the drop is echoed so the
+        // presentation can leave its engaged state behind.
+        assert_eq!(stopped, Some(HOSTILE_SPAWN_ID));
     }
 
     #[test]

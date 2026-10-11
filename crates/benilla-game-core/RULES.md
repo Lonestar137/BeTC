@@ -65,6 +65,11 @@ health costs are modeled. `ManaCostPercentage` counts against base mana only for
   the snapshot models no spirit. Nothing ticks back while a creature is engaged or a swing is
   running.
 - Level-ups restore health and the class's pools to maximum, matching the established level rule.
+- The player object declares its class's power type in `UNIT_FIELD_BYTES_0` byte 3 (the same
+  numbering as the `powerType` column): the client picks the power bar from that byte, so a
+  warrior declared mana draws an eternally empty mana-style bar. The pools republish to the
+  client whenever they change — every swing, spend, taken hit and regen tick — so the bars always
+  follow the simulation.
 
 ## Melee, Weapons, And Combo Points
 
@@ -94,6 +99,10 @@ health costs are modeled. `ManaCostPercentage` counts against base mana only for
   range row's 35-yard reach (the row's 8-yard floor is not enforced). It is gated by the common
   Attack action exactly as the melee swing is, not by a shot spell in the book, and its damage
   rides the shot spell's own go and damage log.
+- A melee auto-attack that drops on its own — the killing swing, the target leaving reach — echoes
+  `AttackStop`, because the reference client stays engaged until it hears one (`0x624e40`) and,
+  while engaged, its attack send is skipped (`0x5eccfd`): without the echo the client wedges and
+  never swings at a second target again.
 
 ## Channels And Movement Effects
 
@@ -132,9 +141,7 @@ health costs are modeled. `ManaCostPercentage` counts against base mana only for
   in play. The buff's numbers are not modeled — the simulation carries no stat model — so a buff
   shows and counts down without changing combat math. Debuffs on the player would occupy the
   block's negative half (slots 32..47), but no creature casts at the player yet; a hostile's own
-  debuff (the Fireball burn) rides that unit's aura block instead. The power pools republish to
-  the client whenever they change — every swing, spend, taken hit and regen tick — so the bars
-  always follow the simulation.
+  debuff (the Fireball burn) rides that unit's aura block instead.
 
 ## Summons
 
