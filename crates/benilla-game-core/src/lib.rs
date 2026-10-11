@@ -5,6 +5,7 @@ pub mod loot;
 pub mod progression;
 pub mod quest;
 pub mod summon;
+pub mod vendor;
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -972,6 +973,10 @@ pub enum CoreError {
     ItemNotEquippable,
     WrongEquipSlot,
     BackpackFull,
+    /// A vendor trade the purse cannot cover.
+    NotEnoughMoney,
+    /// A credit that would overflow the u32 copper purse.
+    MoneyOverflow,
     /// A ranged white swing with nothing in the ranged slot (`EQUIPMENT_SLOT_RANGED` 17).
     MissingRangedWeapon,
 }
@@ -1005,6 +1010,8 @@ impl fmt::Display for CoreError {
             Self::ItemNotEquippable => "the item cannot be equipped",
             Self::WrongEquipSlot => "the item does not fit that equipment slot",
             Self::BackpackFull => "the backpack has no free slot",
+            Self::NotEnoughMoney => "the purse does not cover the price",
+            Self::MoneyOverflow => "the coinage would overflow",
             Self::MissingRangedWeapon => "the ranged slot carries no weapon to shoot",
         })
     }
@@ -1274,6 +1281,102 @@ impl GameCore {
             }
         }
         Ok(())
+    }
+
+    /// Grant `count` of `entry` to the active character: `at` when it names an empty backpack
+    /// slot, else the first free one. Returns the item as stored.
+    pub fn grant_item(
+        &mut self,
+        entry: u32,
+        count: u32,
+        at: Option<ItemSlot>,
+    ) -> Result<quest::InventoryItem, CoreError> {
+        if count == 0 {
+            return Err(CoreError::UnknownItem);
+        }
+        let id = self.active.clone().ok_or(CoreError::NoCharacterSelected)?;
+        let snapshot = self
+            .snapshots
+            .get_mut(&id)
+            .ok_or(CoreError::NoCharacterSelected)?;
+        let slot = match at {
+            Some(ItemSlot::Backpack(slot))
+                if !snapshot.inventory.iter().any(|item| item.slot == slot) =>
+            {
+                slot
+            }
+            _ => (0..quest::BACKPACK_SLOTS)
+                .find(|slot| !snapshot.inventory.iter().any(|item| item.slot == *slot))
+                .ok_or(CoreError::BackpackFull)?,
+        };
+        let instance_id = next_instance_id(snapshot).ok_or(CoreError::BackpackFull)?;
+        let item = quest::InventoryItem {
+            instance_id,
+            entry,
+            count,
+            slot,
+        };
+        snapshot.inventory.push(item.clone());
+        snapshot.inventory.sort_by_key(|item| item.slot);
+        Ok(item)
+    }
+
+    /// Remove the item at `at` from the character and return it (the whole stack).
+    pub fn take_item(&mut self, at: ItemSlot) -> Result<quest::InventoryItem, CoreError> {
+        let id = self.active.clone().ok_or(CoreError::NoCharacterSelected)?;
+        let snapshot = self
+            .snapshots
+            .get_mut(&id)
+            .ok_or(CoreError::NoCharacterSelected)?;
+        let removed = match at {
+            ItemSlot::Backpack(slot) => {
+                let index = snapshot
+                    .inventory
+                    .iter()
+                    .position(|item| item.slot == slot)
+                    .ok_or(CoreError::UnknownItem)?;
+                snapshot.inventory.remove(index)
+            }
+            ItemSlot::Equipment(slot) => {
+                let index = snapshot
+                    .equipment
+                    .iter()
+                    .position(|item| item.slot == slot)
+                    .ok_or(CoreError::UnknownItem)?;
+                snapshot.equipment.remove(index)
+            }
+        };
+        Ok(removed)
+    }
+
+    /// Spend `amount` copper on the active character, returning the new balance.
+    pub fn spend_money(&mut self, amount: u32) -> Result<u32, CoreError> {
+        let id = self.active.clone().ok_or(CoreError::NoCharacterSelected)?;
+        let snapshot = self
+            .snapshots
+            .get_mut(&id)
+            .ok_or(CoreError::NoCharacterSelected)?;
+        let balance = snapshot
+            .money_copper
+            .checked_sub(amount)
+            .ok_or(CoreError::NotEnoughMoney)?;
+        snapshot.money_copper = balance;
+        Ok(balance)
+    }
+
+    /// Credit `amount` copper to the active character, returning the new balance.
+    pub fn credit_money(&mut self, amount: u32) -> Result<u32, CoreError> {
+        let id = self.active.clone().ok_or(CoreError::NoCharacterSelected)?;
+        let snapshot = self
+            .snapshots
+            .get_mut(&id)
+            .ok_or(CoreError::NoCharacterSelected)?;
+        let balance = snapshot
+            .money_copper
+            .checked_add(amount)
+            .ok_or(CoreError::MoneyOverflow)?;
+        snapshot.money_copper = balance;
+        Ok(balance)
     }
 
     pub fn active_quest_journal(&self) -> Option<&quest::QuestJournal> {

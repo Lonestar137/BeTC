@@ -243,7 +243,7 @@ display_id = 5728
 faction = 12
 scale = 1
 creature_type = 7
-npc_flags = 128
+npc_flags = 132
 
 [[template]]
 entry = 352
@@ -529,7 +529,7 @@ display_id = 1512
 faction = 12
 scale = 1
 creature_type = 7
-npc_flags = 4225
+npc_flags = 4229
 
 [[template]]
 entry = 1325
@@ -914,7 +914,7 @@ display_id = 5086
 faction = 12
 scale = 1
 creature_type = 7
-npc_flags = 128
+npc_flags = 132
 
 [[template]]
 entry = 6368
@@ -1277,7 +1277,7 @@ display_id = 15526
 faction = 1604
 scale = 1
 creature_type = 7
-npc_flags = 4224
+npc_flags = 4228
 
 [[template]]
 entry = 15291
@@ -1288,7 +1288,7 @@ display_id = 15529
 faction = 1604
 scale = 1
 creature_type = 7
-npc_flags = 4224
+npc_flags = 4228
 
 [[template]]
 entry = 15292
@@ -1299,7 +1299,7 @@ display_id = 15510
 faction = 1604
 scale = 1
 creature_type = 7
-npc_flags = 4224
+npc_flags = 4228
 
 [[template]]
 entry = 15294
@@ -1442,7 +1442,7 @@ display_id = 15530
 faction = 1604
 scale = 1
 creature_type = 7
-npc_flags = 66179
+npc_flags = 66183
 
 [[template]]
 entry = 15468
@@ -1607,7 +1607,7 @@ display_id = 16058
 faction = 1604
 scale = 1
 creature_type = 7
-npc_flags = 131
+npc_flags = 135
 
 [[template]]
 entry = 16221
@@ -1673,7 +1673,7 @@ display_id = 16705
 faction = 1604
 scale = 1
 creature_type = 7
-npc_flags = 128
+npc_flags = 132
 
 [[template]]
 entry = 16266
@@ -1816,7 +1816,7 @@ display_id = 16182
 faction = 1604
 scale = 1
 creature_type = 7
-npc_flags = 641
+npc_flags = 645
 
 [[template]]
 entry = 16568
@@ -1849,7 +1849,7 @@ display_id = 16801
 faction = 1604
 scale = 1
 creature_type = 7
-npc_flags = 128
+npc_flags = 132
 
 [[template]]
 entry = 16612
@@ -1860,7 +1860,7 @@ display_id = 16780
 faction = 1604
 scale = 1
 creature_type = 7
-npc_flags = 2176
+npc_flags = 2180
 
 [[template]]
 entry = 16613
@@ -1871,7 +1871,7 @@ display_id = 16822
 faction = 1604
 scale = 1
 creature_type = 7
-npc_flags = 128
+npc_flags = 132
 
 [[template]]
 entry = 16618
@@ -1926,7 +1926,7 @@ display_id = 16760
 faction = 1604
 scale = 1
 creature_type = 7
-npc_flags = 4224
+npc_flags = 4228
 
 [[template]]
 entry = 16633
@@ -1959,7 +1959,7 @@ display_id = 16765
 faction = 1604
 scale = 1
 creature_type = 7
-npc_flags = 128
+npc_flags = 132
 
 [[template]]
 entry = 16636
@@ -1992,7 +1992,7 @@ display_id = 16797
 faction = 1604
 scale = 1
 creature_type = 7
-npc_flags = 128
+npc_flags = 132
 
 [[template]]
 entry = 16639
@@ -2025,7 +2025,7 @@ display_id = 16769
 faction = 1604
 scale = 1
 creature_type = 7
-npc_flags = 128
+npc_flags = 132
 
 [[template]]
 entry = 16642
@@ -2289,7 +2289,7 @@ display_id = 16772
 faction = 1604
 scale = 1
 creature_type = 7
-npc_flags = 4224
+npc_flags = 4228
 
 [[template]]
 entry = 16671
@@ -2366,7 +2366,7 @@ display_id = 16796
 faction = 1604
 scale = 1
 creature_type = 7
-npc_flags = 1152
+npc_flags = 1156
 
 [[template]]
 entry = 16684
@@ -2432,7 +2432,7 @@ display_id = 16828
 faction = 1604
 scale = 1
 creature_type = 7
-npc_flags = 4224
+npc_flags = 4228
 
 [[template]]
 entry = 16780
@@ -2465,7 +2465,7 @@ display_id = 16830
 faction = 1604
 scale = 1
 creature_type = 7
-npc_flags = 130
+npc_flags = 134
 
 [[template]]
 entry = 16800
@@ -2641,7 +2641,7 @@ display_id = 16753
 faction = 1604
 scale = 1
 creature_type = 7
-npc_flags = 66177
+npc_flags = 66181
 
 [[template]]
 entry = 17631
@@ -3125,7 +3125,7 @@ display_id = 18335
 faction = 1604
 scale = 1
 creature_type = 7
-npc_flags = 128
+npc_flags = 132
 
 [[template]]
 entry = 19169
@@ -3345,7 +3345,7 @@ display_id = 22395
 faction = 774
 scale = 1
 creature_type = 7
-npc_flags = 129
+npc_flags = 133
 
 [[template]]
 entry = 23507
@@ -3367,7 +3367,7 @@ display_id = 22397
 faction = 774
 scale = 1
 creature_type = 7
-npc_flags = 129
+npc_flags = 133
 
 [[template]]
 entry = 23511
@@ -3378,7 +3378,7 @@ display_id = 22628
 faction = 35
 scale = 1
 creature_type = 7
-npc_flags = 129
+npc_flags = 133
 
 [[template]]
 entry = 23537

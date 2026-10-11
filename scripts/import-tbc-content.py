@@ -112,6 +112,13 @@ def main():
     if missing:
         raise SystemExit(f"missing creature templates for entries: {', '.join(missing)}")
 
+    # The pinned dump keeps vendor stock in `npc_vendor` and does not carry
+    # `UNIT_NPC_FLAG_VENDOR` (0x4) in `creature_template.NpcFlags`: verified against the dump,
+    # none of the zone vendors' flags have the bit. The server derives the service from the
+    # `npc_vendor` join at load, so the converter ORs the bit in from the same join; without it
+    # the client's service ladder never offers Buy and an innkeeper arm wins instead.
+    vendor_entries = {row[0] for row in rows(args.source, "npc_vendor")}
+
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with args.output.open("w", encoding="utf-8") as output:
         output.write(f"schema_version = {SCHEMA_VERSION}\n")
@@ -129,7 +136,10 @@ def main():
             output.write(f"faction = {row[15]}\n")
             output.write(f"scale = {row[16]}\n")
             output.write(f"creature_type = {row[18]}\n")
-            output.write(f"npc_flags = {row[22]}\n\n")
+            npc_flags = int(row[22])
+            if entry in vendor_entries:
+                npc_flags |= 0x4  # UNIT_NPC_FLAG_VENDOR, from the npc_vendor join above
+            output.write(f"npc_flags = {npc_flags}\n\n")
         for row in sorted(spawns, key=lambda spawn: int(spawn[0])):
             guid, entry, map_id, x, y, z, orientation, respawn_min, respawn_max, distance, movement = row
             output.write("[[spawn]]\n")

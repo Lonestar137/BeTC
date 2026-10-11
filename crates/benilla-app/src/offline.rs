@@ -7,6 +7,7 @@ use benilla_game_core::{
     decode_profile, decode_snapshot, Appearance, CharacterAura, CharacterId, CombatUpdate,
     CreatureAiUpdate, GameCore, HostileState, SaveError, WorldPosition,
 };
+use benilla_protocol::messages::{buy_result, sell_result};
 use benilla_protocol::{CharAction, CharCreateReq, EntityKind, ObjectFields, SessionEvent};
 use bevy::prelude::*;
 
@@ -30,6 +31,82 @@ struct OfflinePatrols(BTreeMap<u64, ActivePatrol>);
 /// re-query emits only what is new. Project decision: spawns stream in, nothing streams out.
 #[derive(Resource, Default)]
 struct OfflineStreamedSpawns(std::collections::HashSet<u64>);
+
+/// The session's vendor buyback ledger: the last 12 items sold, oldest first, session-only (a
+/// relog clears it, as the reference's window does). Switching vendors clears it.
+#[derive(Resource, Default)]
+struct OfflineVendorBuyback {
+    vendor: Option<u64>,
+    sold: Vec<OfflineBuybackItem>,
+    next_timestamp: u32,
+}
+
+struct OfflineBuybackItem {
+    /// The presentation GUID the item had while carried; the buyback object keeps it.
+    guid: u64,
+    entry: u32,
+    count: u32,
+    price: u32,
+    timestamp: u32,
+}
+
+impl OfflineVendorBuyback {
+    /// Adopt `vendor`; a different vendor's visit starts a fresh ledger.
+    fn open_vendor(&mut self, vendor: u64) {
+        if self.vendor != Some(vendor) {
+            self.vendor = Some(vendor);
+            self.sold.clear();
+        }
+    }
+
+    fn push(&mut self, mut item: OfflineBuybackItem) {
+        if self.sold.len() == OfflineVendorBuyback::CAPACITY {
+            self.sold.remove(0);
+        }
+        self.next_timestamp = self.next_timestamp.saturating_add(1);
+        item.timestamp = self.next_timestamp;
+        self.sold.push(item);
+    }
+
+    fn take_slot(&mut self, index: usize) -> Option<OfflineBuybackItem> {
+        (index < self.sold.len()).then(|| self.sold.remove(index))
+    }
+
+    /// The 12 slots, prices and timestamps as a descriptor delta: every slot is written, so a
+    /// vacated one clears live.
+    fn field_pairs(&self) -> Vec<(u16, u32)> {
+        let mut pairs = Vec::with_capacity(48);
+        for index in 0..OfflineVendorBuyback::CAPACITY {
+            let item = self.sold.get(index);
+            let guid = item.map_or(0, |item| item.guid);
+            let slot = FIELD_PLAYER_VENDORBUYBACK_SLOT_1 + 2 * index as u16;
+            pairs.push((slot, guid as u32));
+            pairs.push((slot + 1, (guid >> 32) as u32));
+            pairs.push((
+                FIELD_PLAYER_BUYBACK_PRICE_1 + index as u16,
+                item.map_or(0, |item| item.price),
+            ));
+            pairs.push((
+                FIELD_PLAYER_BUYBACK_TIMESTAMP_1 + index as u16,
+                item.map_or(0, |item| item.timestamp),
+            ));
+        }
+        pairs
+    }
+
+    const CAPACITY: usize = 12;
+}
+
+/// `PLAYER_FIELD_VENDORBUYBACK_SLOT_1`: 12 guid pairs, indexed slot−69.
+const FIELD_PLAYER_VENDORBUYBACK_SLOT_1: u16 = 624;
+/// `PLAYER_BUYBACK_PRICE_1`: 12 u32 copper.
+const FIELD_PLAYER_BUYBACK_PRICE_1: u16 = 1226;
+/// `PLAYER_BUYBACK_TIMESTAMP_1`: 12 u32 sort keys.
+const FIELD_PLAYER_BUYBACK_TIMESTAMP_1: u16 = 1238;
+/// `BUYBACK_SLOT_START`: the first absolute buyback slot on the wire (69-80).
+const BUYBACK_SLOT_FIRST: u32 = 69;
+/// A vendor row's unlimited `current_count` (vmangos `ItemHandler.cpp:795`).
+const VENDOR_STOCK_UNLIMITED: u32 = 0xFFFF_FFFF;
 
 /// Re-run the population query once the player has travelled this far, rather than every frame.
 const OFFLINE_STREAM_STEP_YARDS: f32 = 20.0;
@@ -66,6 +143,7 @@ impl Plugin for OfflineGamePlugin {
             .init_resource::<crate::body_shape::BodyProportionRoster>()
             .init_resource::<OfflinePatrols>()
             .init_resource::<OfflineStreamedSpawns>()
+            .init_resource::<OfflineVendorBuyback>()
             .add_systems(Startup, publish_local_roster)
             .add_systems(Startup, publish_body_proportions)
             .add_systems(
@@ -1965,6 +2043,7 @@ fn drive_offline_gameplay(
     spells: Option<Res<crate::ui_action::Spells>>,
     skill_lines: Option<Res<crate::ui_spellbook::SkillLines>>,
     talents: Option<Res<crate::ui_talent::Talents>>,
+    mut buyback: Option<ResMut<OfflineVendorBuyback>>,
 ) {
     if let Some(player) = player.as_deref() {
         sync_offline_player_pose(&mut core.0, player);
@@ -2004,7 +2083,84 @@ fn drive_offline_gameplay(
                 continue;
             }
             crate::net::ClientCommand::GossipHello { guid } => {
-                send_offline_gossip_menu(&core.0, &channels, *guid);
+                send_offline_gossip_menu(
+                    &core.0,
+                    &channels,
+                    buyback.as_deref_mut(),
+                    *guid,
+                );
+                continue;
+            }
+            crate::net::ClientCommand::ListInventory { guid } => {
+                send_offline_vendor_inventory(
+                    &core.0,
+                    &channels,
+                    buyback.as_deref_mut(),
+                    *guid,
+                );
+                continue;
+            }
+            crate::net::ClientCommand::BuyItem {
+                vendor,
+                entry,
+                count,
+            } => {
+                buy_offline_vendor_item(
+                    &mut core.0,
+                    &mut persistence,
+                    &channels,
+                    buyback.as_deref_mut(),
+                    *vendor,
+                    *entry,
+                    *count,
+                    None,
+                );
+                continue;
+            }
+            crate::net::ClientCommand::BuyItemInSlot {
+                vendor,
+                entry,
+                bag_guid,
+                bag_slot,
+                count,
+            } => {
+                buy_offline_vendor_item(
+                    &mut core.0,
+                    &mut persistence,
+                    &channels,
+                    buyback.as_deref_mut(),
+                    *vendor,
+                    *entry,
+                    *count,
+                    Some((*bag_guid, *bag_slot)),
+                );
+                continue;
+            }
+            crate::net::ClientCommand::SellItem {
+                vendor,
+                item_guid,
+                count,
+            } => {
+                sell_offline_item(
+                    &mut core.0,
+                    &mut persistence,
+                    &channels,
+                    buyback.as_deref_mut(),
+                    *vendor,
+                    *item_guid,
+                    *count,
+                );
+                continue;
+            }
+            crate::net::ClientCommand::BuybackItem { vendor, slot } => {
+                buyback_offline_item(
+                    &mut core.0,
+                    &mut persistence,
+                    &channels,
+                    buyback.as_deref_mut(),
+                    *vendor,
+                    *slot,
+                );
                 continue;
             }
             crate::net::ClientCommand::NpcTextQuery { text_id, guid } => {
@@ -2732,7 +2888,12 @@ fn quest_gossip_rows(core: &GameCore, npc_entry: u32) -> Vec<(u32, u32, u32, Str
         .collect()
 }
 
-fn send_offline_gossip_menu(core: &GameCore, channels: &OfflineChannels, guid: u64) {
+fn send_offline_gossip_menu(
+    core: &GameCore,
+    channels: &OfflineChannels,
+    buyback: Option<&mut OfflineVendorBuyback>,
+    guid: u64,
+) {
     let Some(npc_entry) = quest_npc_entry(core, guid) else {
         return;
     };
@@ -2741,6 +2902,10 @@ fn send_offline_gossip_menu(core: &GameCore, channels: &OfflineChannels, guid: u
         .iter()
         .find(|quest| quest.giver_creature_entries.contains(&npc_entry))
     else {
+        // No quest for this NPC: an empty gossip frame would strand the player, so a vendor
+        // behind the GOSSIP bit falls through to its stock instead. The service ladder itself
+        // stays untouched: GOSSIP still outranks VENDOR when the NPC has something to say.
+        send_offline_vendor_inventory(core, channels, buyback, guid);
         return;
     };
     send_gameplay_events(
@@ -2752,6 +2917,462 @@ fn send_offline_gossip_menu(core: &GameCore, channels: &OfflineChannels, guid: u
             quests: quest_gossip_rows(core, npc_entry),
         }],
     );
+}
+
+/// The spawned NPC's converted template, for its service flags and vendor entry.
+fn imported_template_for_guid(
+    guid: u64,
+) -> Option<&'static benilla_game_core::content::CreatureTemplate> {
+    let spawn = imported_spawn_for_guid(guid)?;
+    benilla_game_core::content::starting_zone_content().template(spawn.entry)
+}
+
+/// Whether the guid's spawn is within the client's 5.5556 yd service range of the active player.
+fn offline_npc_in_range(core: &GameCore, guid: u64) -> bool {
+    let Some(spawn) = imported_spawn_for_guid(guid) else {
+        return false;
+    };
+    let Some(player) = core
+        .active()
+        .and_then(|id| core.snapshot(id))
+        .map(|snapshot| snapshot.position)
+    else {
+        return false;
+    };
+    player.map_id == spawn.map_id
+        && (player.x - spawn.x).powi(2)
+            + (player.y - spawn.y).powi(2)
+            + (player.z - spawn.z).powi(2)
+            <= OFFLINE_INTERACTION_RANGE_YARDS * OFFLINE_INTERACTION_RANGE_YARDS
+}
+
+/// The carried item `guid` names, as a core position (bag or worn slot).
+fn inventory_slot_for_guid(
+    snapshot: &benilla_game_core::CharacterSnapshot,
+    guid: u64,
+) -> Option<benilla_game_core::ItemSlot> {
+    snapshot
+        .inventory
+        .iter()
+        .find(|item| inventory_item_guid(snapshot, item) == guid)
+        .map(|item| benilla_game_core::ItemSlot::Backpack(item.slot))
+        .or_else(|| {
+            snapshot
+                .equipment
+                .iter()
+                .find(|item| inventory_item_guid(snapshot, item) == guid)
+                .map(|item| benilla_game_core::ItemSlot::Equipment(item.slot))
+        })
+}
+
+/// The descriptor delta a vendor trade publishes: the item slots, the purse, and the buyback
+/// ledger when the session has one.
+fn vendor_player_fields(
+    snapshot: &benilla_game_core::CharacterSnapshot,
+    buyback: Option<&OfflineVendorBuyback>,
+) -> Vec<(u16, u32)> {
+    let mut fields = player_item_field_pairs(snapshot);
+    fields.push((1176, snapshot.money_copper)); // PLAYER_FIELD_COINAGE
+    if let Some(state) = buyback {
+        fields.extend(state.field_pairs());
+    }
+    fields
+}
+
+/// `SMSG_LIST_INVENTORY`: the converted stock lines with `item_template` prices and display ids,
+/// plus the templates themselves so names resolve without a query round-trip.
+fn send_offline_vendor_inventory(
+    core: &GameCore,
+    channels: &OfflineChannels,
+    buyback: Option<&mut OfflineVendorBuyback>,
+    guid: u64,
+) {
+    let Some(template) = imported_template_for_guid(guid) else {
+        return;
+    };
+    let rows: Vec<_> = benilla_game_core::vendor::vendor_items(template.entry).collect();
+    if rows.is_empty() || !offline_npc_in_range(core, guid) {
+        return;
+    }
+    if let Some(state) = buyback {
+        state.open_vendor(guid);
+    }
+    let items: Vec<_> = rows
+        .iter()
+        .enumerate()
+        .map(|(index, row)| {
+            let item = benilla_game_core::quest::item_template(row.item);
+            benilla_protocol::messages::VendorItem {
+                slot: u32::try_from(index + 1).unwrap_or(u32::MAX),
+                entry: row.item,
+                display_id: item.map_or(0, |item| item.display_id),
+                current_count: VENDOR_STOCK_UNLIMITED,
+                price: item.map_or(0, |item| item.buy_price),
+                max_durability: item.map_or(0, |item| item.max_durability),
+                buy_count: row.buy_count.max(1),
+            }
+        })
+        .collect();
+    let mut events: Vec<_> = items
+        .iter()
+        .filter_map(|item| {
+            item_info(item.entry).map(|info| SessionEvent::ItemTemplate {
+                entry: item.entry,
+                info: Some(Box::new(info)),
+            })
+        })
+        .collect();
+    events.push(SessionEvent::VendorInventory {
+        vendor: guid,
+        items,
+    });
+    send_gameplay_events(channels, events);
+}
+
+/// A vendor row for `entry`, by its 1-based display slot.
+fn vendor_row_index(template_entry: u32, item: u32) -> Option<usize> {
+    benilla_game_core::vendor::vendor_items(template_entry)
+        .position(|row| row.item == item)
+}
+
+/// `CMSG_BUY_ITEM`/`CMSG_BUY_ITEM_IN_SLOT` offline: spend the purse, grant the item, and answer
+/// with the same events the server would (`SMSG_BUY_ITEM`, the item create, the coinage update).
+#[allow(clippy::too_many_arguments)]
+fn buy_offline_vendor_item(
+    core: &mut GameCore,
+    persistence: &mut OfflinePersistence,
+    channels: &OfflineChannels,
+    buyback: Option<&mut OfflineVendorBuyback>,
+    vendor: u64,
+    entry: u32,
+    count: u8,
+    at: Option<(u64, u8)>,
+) {
+    let fail = |channels: &OfflineChannels, reason: u8| {
+        send_gameplay_events(
+            channels,
+            [SessionEvent::VendorBuyFailed {
+                vendor,
+                item_entry: entry,
+                reason,
+            }],
+        );
+    };
+    let Some(template) = imported_template_for_guid(vendor) else {
+        return;
+    };
+    if !offline_npc_in_range(core, vendor) {
+        fail(channels, buy_result::DISTANCE_TOO_FAR);
+        return;
+    }
+    let Some(index) = vendor_row_index(template.entry, entry) else {
+        fail(channels, buy_result::CANT_FIND_ITEM);
+        return;
+    };
+    let Some(item_template) = benilla_game_core::quest::item_template(entry) else {
+        fail(channels, buy_result::CANT_FIND_ITEM);
+        return;
+    };
+    let buy_count = benilla_game_core::vendor::vendor_items(template.entry)
+        .nth(index)
+        .map_or(1, |row| row.buy_count.max(1));
+    let stacks = u32::from(count.max(1));
+    let units = stacks.saturating_mul(buy_count);
+    let price = item_template.buy_price.saturating_mul(stacks);
+    if core.spend_money(price).is_err() {
+        fail(channels, buy_result::NOT_ENOUGH_MONEY);
+        return;
+    }
+    // `CMSG_BUY_ITEM_IN_SLOT` names the target container's guid: ours for the player's own array
+    // (the bag byte itself is not on the command), so a bag we do not model buys into the first
+    // free slot instead.
+    let player_guid = core.active().map(|id| id.presentation_guid());
+    let at_slot = at.and_then(|(bag_guid, slot)| {
+        (Some(bag_guid) == player_guid)
+            .then(|| wire_item_slot(BAG_PLAYER_INVENTORY, slot))
+            .flatten()
+    });
+    let item = match core.grant_item(entry, units, at_slot) {
+        Ok(item) => item,
+        Err(_) => {
+            let _ = core.credit_money(price);
+            fail(channels, buy_result::CANT_CARRY_MORE);
+            return;
+        }
+    };
+    let Some(id) = core.active().cloned() else {
+        return;
+    };
+    let Some(snapshot) = core.snapshot(&id) else {
+        return;
+    };
+    let player_guid = id.presentation_guid();
+    let mut events = Vec::new();
+    if let Some(info) = item_info(entry) {
+        events.push(SessionEvent::ItemTemplate {
+            entry,
+            info: Some(Box::new(info)),
+        });
+    }
+    events.push(item_create_event(player_guid, snapshot, &item));
+    events.push(SessionEvent::ObjectValues {
+        guid: player_guid,
+        fields: ObjectFields::from_pairs(&vendor_player_fields(snapshot, buyback.as_deref())),
+    });
+    events.push(SessionEvent::ItemPushResult(
+        benilla_protocol::messages::ItemPushResult {
+            player_guid,
+            from_npc: false,
+            created: false,
+            show_in_chat: true,
+            bag_slot: BAG_PLAYER_INVENTORY,
+            item_slot: u32::from(item.slot),
+            item_entry: item.entry,
+            suffix_factor: 0,
+            random_property_id: 0,
+            count: item.count,
+        },
+    ));
+    events.push(SessionEvent::VendorBuyResult {
+        vendor,
+        slot: u32::try_from(index + 1).unwrap_or(u32::MAX),
+        new_count: VENDOR_STOCK_UNLIMITED,
+        purchase_count: units,
+    });
+    send_gameplay_events(channels, events);
+    save_after_command(core, persistence);
+}
+
+/// `CMSG_SELL_ITEM` offline: remove the stack (`count` 0) or part of it, credit
+/// `sell_price × units`, and keep the sold item on the buyback ledger.
+#[allow(clippy::too_many_arguments)]
+fn sell_offline_item(
+    core: &mut GameCore,
+    persistence: &mut OfflinePersistence,
+    channels: &OfflineChannels,
+    mut buyback: Option<&mut OfflineVendorBuyback>,
+    vendor: u64,
+    item_guid: u64,
+    count: u8,
+) {
+    let fail = |channels: &OfflineChannels, reason: u8| {
+        send_gameplay_events(
+            channels,
+            [SessionEvent::VendorSellFailed {
+                vendor,
+                item_guid,
+                reason,
+            }],
+        );
+    };
+    if imported_template_for_guid(vendor).is_none() {
+        return;
+    }
+    if !offline_npc_in_range(core, vendor) {
+        fail(channels, sell_result::CANT_FIND_VENDOR);
+        return;
+    }
+    let Some(id) = core.active().cloned() else {
+        return;
+    };
+    let Some(snapshot) = core.snapshot(&id) else {
+        return;
+    };
+    let Some(at) = inventory_slot_for_guid(snapshot, item_guid) else {
+        fail(channels, sell_result::CANT_FIND_ITEM);
+        return;
+    };
+    let Ok(item) = core.take_item(at) else {
+        fail(channels, sell_result::CANT_FIND_ITEM);
+        return;
+    };
+    let sold_units = if count == 0 {
+        item.count
+    } else {
+        u32::from(count).min(item.count)
+    };
+    if sold_units == 0 {
+        let _ = core.grant_item(item.entry, item.count, Some(at));
+        return;
+    }
+    let unit_price = benilla_game_core::quest::item_template(item.entry)
+        .map_or(0, |template| template.sell_price);
+    let proceeds = unit_price.saturating_mul(sold_units);
+    let remainder = (item.count > sold_units)
+        .then(|| core.grant_item(item.entry, item.count - sold_units, Some(at)).ok())
+        .flatten();
+    let _ = core.credit_money(proceeds);
+    if let Some(state) = buyback.as_deref_mut() {
+        state.open_vendor(vendor);
+        state.push(OfflineBuybackItem {
+            guid: item_guid,
+            entry: item.entry,
+            count: sold_units,
+            price: proceeds,
+            timestamp: 0,
+        });
+    }
+    let Some(snapshot) = core.snapshot(&id) else {
+        return;
+    };
+    let player_guid = id.presentation_guid();
+    let mut events = Vec::new();
+    if let Some(info) = item_info(item.entry) {
+        events.push(SessionEvent::ItemTemplate {
+            entry: item.entry,
+            info: Some(Box::new(info)),
+        });
+    }
+    if let Some(remainder) = &remainder {
+        events.push(item_create_event(player_guid, snapshot, remainder));
+    }
+    events.push(SessionEvent::ObjectValues {
+        guid: player_guid,
+        fields: ObjectFields::from_pairs(&vendor_player_fields(snapshot, buyback.as_deref())),
+    });
+    if buyback.as_deref().is_some() {
+        // The sold item's object stays streamed under its old GUID, carrying the sold count, so
+        // the buyback row resolves.
+        let max_durability = item_info(item.entry).map_or(0, |info| info.max_durability);
+        events.push(SessionEvent::ItemCreate {
+            guid: item_guid,
+            container: false,
+            fields: ObjectFields::from_pairs(&[
+                (2, 0x3),
+                (3, item.entry),
+                (4, 1.0f32.to_bits()),
+                (6, player_guid as u32),
+                (7, (player_guid >> 32) as u32),
+                (8, player_guid as u32),
+                (9, (player_guid >> 32) as u32),
+                (14, sold_units),
+                (46, max_durability),
+                (47, max_durability),
+            ])
+            .into_created(benilla_protocol::messages::ObjectType::Item),
+        });
+    }
+    send_gameplay_events(channels, events);
+    save_after_command(core, persistence);
+}
+
+/// `CMSG_BUYBACK_ITEM` offline: reclaim the slot's item at the price it sold for.
+fn buyback_offline_item(
+    core: &mut GameCore,
+    persistence: &mut OfflinePersistence,
+    channels: &OfflineChannels,
+    buyback: Option<&mut OfflineVendorBuyback>,
+    vendor: u64,
+    slot: u32,
+) {
+    let Some(state) = buyback else {
+        return;
+    };
+    if state.vendor != Some(vendor) {
+        return;
+    }
+    let Some(index) = slot
+        .checked_sub(BUYBACK_SLOT_FIRST)
+        .and_then(|index| usize::try_from(index).ok())
+    else {
+        return;
+    };
+    let Some(record) = state.take_slot(index) else {
+        return;
+    };
+    let OfflineBuybackItem {
+        guid,
+        entry,
+        count,
+        price,
+        ..
+    } = record;
+    if !offline_npc_in_range(core, vendor) {
+        state.push(OfflineBuybackItem {
+            guid,
+            entry,
+            count,
+            price,
+            timestamp: 0,
+        });
+        return;
+    }
+    if core.spend_money(price).is_err() {
+        state.push(OfflineBuybackItem {
+            guid,
+            entry,
+            count,
+            price,
+            timestamp: 0,
+        });
+        send_gameplay_events(
+            channels,
+            [SessionEvent::VendorBuyFailed {
+                vendor,
+                item_entry: entry,
+                reason: buy_result::NOT_ENOUGH_MONEY,
+            }],
+        );
+        return;
+    }
+    match core.grant_item(entry, count, None) {
+        Ok(item) => {
+            let Some(id) = core.active().cloned() else {
+                return;
+            };
+            let Some(snapshot) = core.snapshot(&id) else {
+                return;
+            };
+            let player_guid = id.presentation_guid();
+            let mut events = Vec::new();
+            if let Some(info) = item_info(entry) {
+                events.push(SessionEvent::ItemTemplate {
+                    entry,
+                    info: Some(Box::new(info)),
+                });
+            }
+            events.push(SessionEvent::ObjectDestroyed(guid));
+            events.push(item_create_event(player_guid, snapshot, &item));
+            events.push(SessionEvent::ObjectValues {
+                guid: player_guid,
+                fields: ObjectFields::from_pairs(&vendor_player_fields(snapshot, Some(state))),
+            });
+            events.push(SessionEvent::ItemPushResult(
+                benilla_protocol::messages::ItemPushResult {
+                    player_guid,
+                    from_npc: false,
+                    created: false,
+                    show_in_chat: true,
+                    bag_slot: BAG_PLAYER_INVENTORY,
+                    item_slot: u32::from(item.slot),
+                    item_entry: item.entry,
+                    suffix_factor: 0,
+                    random_property_id: 0,
+                    count: item.count,
+                },
+            ));
+            send_gameplay_events(channels, events);
+            save_after_command(core, persistence);
+        }
+        Err(_) => {
+            let _ = core.credit_money(price);
+            state.push(OfflineBuybackItem {
+                guid,
+                entry,
+                count,
+                price,
+                timestamp: 0,
+            });
+            send_gameplay_events(
+                channels,
+                [SessionEvent::VendorBuyFailed {
+                    vendor,
+                    item_entry: entry,
+                    reason: buy_result::CANT_CARRY_MORE,
+                }],
+            );
+        }
+    }
 }
 
 fn send_offline_npc_text(core: &GameCore, channels: &OfflineChannels, guid: u64, text_id: u32) {
@@ -6071,7 +6692,7 @@ mod tests {
                 if npc == erona_guid
                     && status == benilla_protocol::messages::dialog_status::AVAILABLE
         ));
-        send_offline_gossip_menu(&core, &channels, erona_guid);
+        send_offline_gossip_menu(&core, &channels, None, erona_guid);
         assert!(matches!(
             received.try_recv().unwrap(),
             SessionEvent::GossipMenu { npc, text_id: 7_781, quests, .. }
@@ -6198,6 +6819,253 @@ mod tests {
         assert_eq!(snapshot.experience, 50);
         assert_eq!(snapshot.money_copper, 30);
         assert_eq!(snapshot.inventory.len(), 1);
+    }
+
+    /// A blood elf standing on the converted vendor `entry`'s spawn, and its presentation guid.
+    fn vendor_at(entry: u32) -> (GameCore, CharacterId, u64) {
+        let spawn = benilla_game_core::content::starting_zone_content()
+            .spawn
+            .iter()
+            .find(|spawn| spawn.map_id == 530 && spawn.entry == entry)
+            .expect("converted vendor spawn");
+        let id = CharacterId::parse("00000000000000000000000000000007").unwrap();
+        let mut core = GameCore::default();
+        core.create_character(
+            id.clone(),
+            "Trades",
+            Appearance {
+                race: 10,
+                class: 8,
+                gender: 0,
+                skin: 0,
+                face: 0,
+                hair_style: 0,
+                hair_color: 0,
+                facial_hair: 0,
+            },
+            starting_position(10).unwrap(),
+        )
+        .unwrap();
+        core.enter_world().unwrap();
+        core.update_active(
+            WorldPosition {
+                map_id: spawn.map_id,
+                x: spawn.x,
+                y: spawn.y,
+                z: spawn.z,
+                orientation: spawn.orientation,
+            },
+            0,
+        )
+        .unwrap();
+        let guid = imported_guid(spawn.entry, spawn.source_guid);
+        (core, id, guid)
+    }
+
+    /// The offline gameplay system with the vendor ledger seated.
+    fn vendor_harness(
+        core: GameCore,
+    ) -> (
+        App,
+        crossbeam_channel::Receiver<SessionEvent>,
+        crossbeam_channel::Sender<crate::net::ClientCommand>,
+    ) {
+        let (_pick_tx, picks) = crossbeam_channel::unbounded();
+        let (events, received) = crossbeam_channel::unbounded();
+        let (command_tx, commands) = crossbeam_channel::unbounded();
+        let mut app = App::new();
+        app.insert_resource(OfflineChannels {
+            picks,
+            events,
+            commands,
+        })
+        .insert_resource(OfflineGameCore(core))
+        .insert_resource(OfflinePersistence::new(false))
+        .insert_resource(OfflineVendorBuyback::default())
+        .insert_resource(Time::<()>::default());
+        (app, received, command_tx)
+    }
+
+    #[test]
+    fn offline_list_inventory_serves_the_converted_vendor_stock() {
+        let (core, _, guid) = vendor_at(15_289);
+        let (mut app, received, command_tx) = vendor_harness(core);
+        command_tx
+            .send(crate::net::ClientCommand::ListInventory { guid })
+            .unwrap();
+        app.world_mut()
+            .run_system_once(drive_offline_gameplay)
+            .expect("list inventory handled");
+        let events: Vec<_> = received.try_iter().collect();
+        let listed = events
+            .iter()
+            .find_map(|event| match event {
+                SessionEvent::VendorInventory { vendor, items } if *vendor == guid => {
+                    Some(items.clone())
+                }
+                _ => None,
+            })
+            .expect("the vendor's stock list");
+        let expected = benilla_game_core::vendor::vendor_items(15_289).count();
+        assert_eq!(listed.len(), expected);
+        assert!(expected > 1);
+        for (index, row) in listed.iter().enumerate() {
+            assert_eq!(row.slot, index as u32 + 1, "1-based wire slot");
+            assert_eq!(row.current_count, VENDOR_STOCK_UNLIMITED);
+            let template =
+                benilla_game_core::quest::item_template(row.entry).expect("stock template");
+            assert_eq!(row.price, template.buy_price, "the row shows the buy price");
+            assert_eq!(row.display_id, template.display_id);
+            assert!(events.iter().any(|event| matches!(
+                event,
+                SessionEvent::ItemTemplate { entry, info: Some(_) } if *entry == row.entry
+            )));
+        }
+    }
+
+    #[test]
+    fn offline_buying_deducts_copper_grants_the_item_and_answers_the_stock() {
+        let (mut core, id, guid) = vendor_at(15_289);
+        core.credit_money(1_000_000).unwrap();
+        let row = *benilla_game_core::vendor::vendor_items(15_289)
+            .next()
+            .expect("stock row");
+        let template = benilla_game_core::quest::item_template(row.item).expect("template");
+        let (mut app, received, command_tx) = vendor_harness(core);
+        command_tx
+            .send(crate::net::ClientCommand::BuyItem {
+                vendor: guid,
+                entry: row.item,
+                count: 1,
+            })
+            .unwrap();
+        app.world_mut()
+            .run_system_once(drive_offline_gameplay)
+            .expect("buy handled");
+
+        let expected_money = 1_000_000 - template.buy_price;
+        let core = &app.world().resource::<OfflineGameCore>().0;
+        let snapshot = core.snapshot(&id).unwrap();
+        assert_eq!(snapshot.money_copper, expected_money);
+        let bought = snapshot
+            .inventory
+            .iter()
+            .find(|item| item.entry == row.item)
+            .expect("the bought item is carried");
+        assert_eq!(bought.count, row.buy_count, "BuyCount delivered per purchase");
+
+        let events: Vec<_> = received.try_iter().collect();
+        assert!(events.iter().any(|event| matches!(
+            event,
+            SessionEvent::VendorBuyResult { vendor, slot: 1, new_count, purchase_count }
+                if *vendor == guid
+                    && *new_count == VENDOR_STOCK_UNLIMITED
+                    && *purchase_count == row.buy_count
+        )));
+        assert!(events.iter().any(|event| matches!(
+            event,
+            SessionEvent::ObjectValues { fields, .. }
+                if fields.player_money() == Some(expected_money)
+        )));
+        assert!(events.iter().any(
+            |event| matches!(event, SessionEvent::ItemCreate { .. })
+        ));
+        assert!(events.iter().any(|event| matches!(
+            event,
+            SessionEvent::ItemPushResult(push)
+                if push.item_entry == row.item && push.count == row.buy_count
+        )));
+    }
+
+    #[test]
+    fn offline_selling_credits_the_price_and_buyback_reclaims_it() {
+        let (mut core, id, guid) = vendor_at(15_289);
+        // Refreshing Spring Water: a cheap stack with a known sell price.
+        let entry = 159;
+        let item = core.grant_item(entry, 5, None).unwrap();
+        let item_guid = inventory_item_guid(core.snapshot(&id).unwrap(), &item);
+        let sell_price = benilla_game_core::quest::item_template(entry)
+            .expect("template")
+            .sell_price;
+        let (mut app, received, command_tx) = vendor_harness(core);
+        command_tx
+            .send(crate::net::ClientCommand::SellItem {
+                vendor: guid,
+                item_guid,
+                count: 0,
+            })
+            .unwrap();
+        app.world_mut()
+            .run_system_once(drive_offline_gameplay)
+            .expect("sell handled");
+
+        let core = &app.world().resource::<OfflineGameCore>().0;
+        let snapshot = core.snapshot(&id).unwrap();
+        assert!(
+            snapshot.inventory.iter().all(|item| item.entry != entry),
+            "the sold stack left the bag"
+        );
+        assert_eq!(snapshot.money_copper, sell_price * 5);
+        let events: Vec<_> = received.try_iter().collect();
+        assert!(events.iter().any(|event| matches!(
+            event,
+            SessionEvent::ObjectValues { fields, .. }
+                if fields.player_buyback_slot(0).is_some_and(|guid| guid != 0)
+                    && fields.player_buyback_price(0) == Some(sell_price * 5)
+        )));
+
+        command_tx
+            .send(crate::net::ClientCommand::BuybackItem {
+                vendor: guid,
+                slot: BUYBACK_SLOT_FIRST,
+            })
+            .unwrap();
+        app.world_mut()
+            .run_system_once(drive_offline_gameplay)
+            .expect("buyback handled");
+        let core = &app.world().resource::<OfflineGameCore>().0;
+        let snapshot = core.snapshot(&id).unwrap();
+        assert_eq!(snapshot.money_copper, 0, "buyback costs what it sold for");
+        let reclaimed = snapshot
+            .inventory
+            .iter()
+            .find(|item| item.entry == entry)
+            .expect("the stack came back");
+        assert_eq!(reclaimed.count, 5);
+        let events: Vec<_> = received.try_iter().collect();
+        assert!(events
+            .iter()
+            .any(|event| matches!(event, SessionEvent::ObjectDestroyed(guid) if *guid == item_guid)));
+        assert!(events.iter().any(|event| matches!(
+            event,
+            SessionEvent::ObjectValues { fields, .. }
+                if fields.player_buyback_slot(0).is_none_or(|guid| guid == 0)
+        )));
+    }
+
+    /// Vinemaster Suntouched is GOSSIP|INNKEEPER with no quest in the pack: the ladder's gossip
+    /// arm opens no empty frame and the stock falls through instead.
+    #[test]
+    fn offline_empty_gossip_falls_through_to_the_vendor_stock() {
+        let (core, _, guid) = vendor_at(16_442);
+        let (mut app, received, command_tx) = vendor_harness(core);
+        command_tx
+            .send(crate::net::ClientCommand::GossipHello { guid })
+            .unwrap();
+        app.world_mut()
+            .run_system_once(drive_offline_gameplay)
+            .expect("gossip handled");
+        let events: Vec<_> = received.try_iter().collect();
+        assert!(
+            !events
+                .iter()
+                .any(|event| matches!(event, SessionEvent::GossipMenu { .. })),
+            "no quest, no empty gossip menu: {events:?}"
+        );
+        assert!(events.iter().any(|event| matches!(
+            event,
+            SessionEvent::VendorInventory { vendor, items } if *vendor == guid && !items.is_empty()
+        )));
     }
 
     #[test]

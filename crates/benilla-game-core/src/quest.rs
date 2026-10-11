@@ -277,6 +277,7 @@ pub fn item_template(entry: u32) -> Option<&'static QuestItemTemplate> {
         .iter()
         .chain(starting_gear_pack().item_template.iter())
         .chain(crate::loot::loot_data().item_template.iter())
+        .chain(crate::vendor::vendor_pack().item_template.iter())
         .find(|item| item.entry == entry)
 }
 

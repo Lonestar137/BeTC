@@ -1,0 +1,3890 @@
+schema_version = 1
+source = "https://github.com/cmangos/tbc-db"
+revision = "866723612d93791e442fb1b18d642118fa682edd"
+license = "GPL-3.0"
+extraction_command = "python3 scripts/import-tbc-vendor.py <TBC-DB full SQL dump> crates/benilla-game-core/content/tbc-starting-zones.toml crates/benilla-game-core/content/tbc-vendor.toml"
+
+[[vendor]]
+entry = 340
+item = 728
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 340
+item = 2697
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 340
+item = 2698
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 340
+item = 2699
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 340
+item = 2700
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 340
+item = 2701
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 340
+item = 2889
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 340
+item = 3678
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 340
+item = 3679
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 340
+item = 3680
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 340
+item = 3681
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 340
+item = 3682
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 340
+item = 3683
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 1324
+item = 2520
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 1324
+item = 2526
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 1324
+item = 2528
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 1324
+item = 2534
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 6367
+item = 8485
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 6367
+item = 8486
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 6367
+item = 8487
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 6367
+item = 8488
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 15289
+item = 20849
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 15289
+item = 20850
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 15289
+item = 20851
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 15289
+item = 20852
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 15289
+item = 20853
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 15289
+item = 20910
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 15291
+item = 20920
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 15291
+item = 20921
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 15291
+item = 20922
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 15291
+item = 20923
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 15291
+item = 20924
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 15291
+item = 20925
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 15291
+item = 20985
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 15291
+item = 20986
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 15291
+item = 20987
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 15291
+item = 20988
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 15291
+item = 20989
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 15291
+item = 20990
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 15292
+item = 20911
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 15292
+item = 20912
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 15292
+item = 20914
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 15292
+item = 20915
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 15292
+item = 20916
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 15292
+item = 20917
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 15292
+item = 20918
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 15292
+item = 20919
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 15433
+item = 159
+maxcount = 0
+incrtime = 0
+buy_count = 5
+
+[[vendor]]
+entry = 15433
+item = 1179
+maxcount = 0
+incrtime = 0
+buy_count = 5
+
+[[vendor]]
+entry = 15433
+item = 1205
+maxcount = 0
+incrtime = 0
+buy_count = 5
+
+[[vendor]]
+entry = 15433
+item = 1645
+maxcount = 0
+incrtime = 0
+buy_count = 5
+
+[[vendor]]
+entry = 15433
+item = 1708
+maxcount = 0
+incrtime = 0
+buy_count = 5
+
+[[vendor]]
+entry = 15433
+item = 4540
+maxcount = 0
+incrtime = 0
+buy_count = 5
+
+[[vendor]]
+entry = 15433
+item = 4541
+maxcount = 0
+incrtime = 0
+buy_count = 5
+
+[[vendor]]
+entry = 15433
+item = 4542
+maxcount = 0
+incrtime = 0
+buy_count = 5
+
+[[vendor]]
+entry = 15433
+item = 4544
+maxcount = 0
+incrtime = 0
+buy_count = 5
+
+[[vendor]]
+entry = 15433
+item = 4601
+maxcount = 0
+incrtime = 0
+buy_count = 5
+
+[[vendor]]
+entry = 15433
+item = 8766
+maxcount = 0
+incrtime = 0
+buy_count = 5
+
+[[vendor]]
+entry = 15433
+item = 8950
+maxcount = 0
+incrtime = 0
+buy_count = 5
+
+[[vendor]]
+entry = 16191
+item = 1179
+maxcount = 0
+incrtime = 0
+buy_count = 5
+
+[[vendor]]
+entry = 16191
+item = 4540
+maxcount = 0
+incrtime = 0
+buy_count = 5
+
+[[vendor]]
+entry = 16191
+item = 5042
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 16191
+item = 5048
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 16191
+item = 25861
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 16191
+item = 28979
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 16191
+item = 29008
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 16262
+item = 20815
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 16262
+item = 20824
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 16262
+item = 27685
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 16442
+item = 22775
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 16611
+item = 24286
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 16612
+item = 2455
+maxcount = 2
+incrtime = 43200
+buy_count = 1
+
+[[vendor]]
+entry = 16612
+item = 3371
+maxcount = 0
+incrtime = 0
+buy_count = 5
+
+[[vendor]]
+entry = 16612
+item = 3372
+maxcount = 0
+incrtime = 0
+buy_count = 5
+
+[[vendor]]
+entry = 16612
+item = 8925
+maxcount = 0
+incrtime = 0
+buy_count = 5
+
+[[vendor]]
+entry = 16612
+item = 18256
+maxcount = 0
+incrtime = 0
+buy_count = 5
+
+[[vendor]]
+entry = 16613
+item = 20815
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 16613
+item = 20824
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 16631
+item = 2589
+maxcount = 10
+incrtime = 43200
+buy_count = 1
+
+[[vendor]]
+entry = 16631
+item = 2592
+maxcount = 8
+incrtime = 43200
+buy_count = 1
+
+[[vendor]]
+entry = 16631
+item = 2996
+maxcount = 2
+incrtime = 43200
+buy_count = 1
+
+[[vendor]]
+entry = 16631
+item = 2997
+maxcount = 2
+incrtime = 43200
+buy_count = 1
+
+[[vendor]]
+entry = 16631
+item = 4305
+maxcount = 2
+incrtime = 43200
+buy_count = 1
+
+[[vendor]]
+entry = 16631
+item = 4306
+maxcount = 2
+incrtime = 43200
+buy_count = 1
+
+[[vendor]]
+entry = 16631
+item = 4338
+maxcount = 2
+incrtime = 43200
+buy_count = 1
+
+[[vendor]]
+entry = 16635
+item = 22562
+maxcount = 1
+incrtime = 1800
+buy_count = 1
+
+[[vendor]]
+entry = 16635
+item = 22563
+maxcount = 1
+incrtime = 1800
+buy_count = 1
+
+[[vendor]]
+entry = 16635
+item = 22565
+maxcount = 1
+incrtime = 1800
+buy_count = 1
+
+[[vendor]]
+entry = 16638
+item = 21892
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 16638
+item = 21894
+maxcount = 1
+incrtime = 43200
+buy_count = 1
+
+[[vendor]]
+entry = 16638
+item = 21896
+maxcount = 1
+incrtime = 43200
+buy_count = 1
+
+[[vendor]]
+entry = 16638
+item = 21897
+maxcount = 1
+incrtime = 43200
+buy_count = 1
+
+[[vendor]]
+entry = 16641
+item = 765
+maxcount = 3
+incrtime = 43200
+buy_count = 1
+
+[[vendor]]
+entry = 16641
+item = 3357
+maxcount = 1
+incrtime = 43200
+buy_count = 1
+
+[[vendor]]
+entry = 16641
+item = 22900
+maxcount = 1
+incrtime = 7200
+buy_count = 1
+
+[[vendor]]
+entry = 16641
+item = 23574
+maxcount = 1
+incrtime = 3600
+buy_count = 1
+
+[[vendor]]
+entry = 16670
+item = 2880
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 16670
+item = 2901
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 16670
+item = 3466
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 16670
+item = 3857
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 16670
+item = 5956
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 16670
+item = 18567
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 16670
+item = 23590
+maxcount = 1
+incrtime = 10800
+buy_count = 1
+
+[[vendor]]
+entry = 16670
+item = 23591
+maxcount = 1
+incrtime = 10800
+buy_count = 1
+
+[[vendor]]
+entry = 16670
+item = 23592
+maxcount = 1
+incrtime = 10800
+buy_count = 1
+
+[[vendor]]
+entry = 16670
+item = 23593
+maxcount = 1
+incrtime = 10800
+buy_count = 1
+
+[[vendor]]
+entry = 16683
+item = 24285
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 16693
+item = 1200
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 16693
+item = 1202
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 16693
+item = 2445
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 16693
+item = 2446
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 16693
+item = 17183
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 16693
+item = 17187
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 16693
+item = 17188
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 16693
+item = 17192
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 16782
+item = 23799
+maxcount = 1
+incrtime = 43200
+buy_count = 1
+
+[[vendor]]
+entry = 16782
+item = 23811
+maxcount = 1
+incrtime = 43200
+buy_count = 1
+
+[[vendor]]
+entry = 16782
+item = 23815
+maxcount = 1
+incrtime = 43200
+buy_count = 1
+
+[[vendor]]
+entry = 16782
+item = 23816
+maxcount = 1
+incrtime = 43200
+buy_count = 1
+
+[[vendor]]
+entry = 17630
+item = 4536
+maxcount = 0
+incrtime = 0
+buy_count = 5
+
+[[vendor]]
+entry = 17630
+item = 4537
+maxcount = 0
+incrtime = 0
+buy_count = 5
+
+[[vendor]]
+entry = 17630
+item = 4538
+maxcount = 0
+incrtime = 0
+buy_count = 5
+
+[[vendor]]
+entry = 17630
+item = 4539
+maxcount = 0
+incrtime = 0
+buy_count = 5
+
+[[vendor]]
+entry = 17630
+item = 4602
+maxcount = 0
+incrtime = 0
+buy_count = 5
+
+[[vendor]]
+entry = 17630
+item = 8953
+maxcount = 0
+incrtime = 0
+buy_count = 5
+
+[[vendor]]
+entry = 17630
+item = 27860
+maxcount = 0
+incrtime = 0
+buy_count = 5
+
+[[vendor]]
+entry = 17630
+item = 28399
+maxcount = 0
+incrtime = 0
+buy_count = 5
+
+[[vendor]]
+entry = 18929
+item = 2091
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 23482
+item = 33028
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 23482
+item = 33029
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 23482
+item = 33030
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 23510
+item = 33031
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 23510
+item = 33032
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 23510
+item = 33033
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 23511
+item = 33034
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 23511
+item = 33035
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[vendor]]
+entry = 23511
+item = 33036
+maxcount = 0
+incrtime = 0
+buy_count = 1
+
+[[item_template]]
+entry = 159
+class = 0
+subclass = 5
+name = "Refreshing Spring Water"
+display_id = 18084
+quality = 1
+buy_price = 25
+sell_price = 1
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 5
+stackable = 20
+armor = 0
+bonding = 0
+material = -1
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 728
+class = 9
+subclass = 5
+name = "Recipe: Westfall Stew"
+display_id = 1102
+quality = 1
+buy_price = 200
+sell_price = 50
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 15
+stackable = 1
+armor = 0
+bonding = 0
+material = 2
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 765
+class = 7
+subclass = 9
+name = "Silverleaf"
+display_id = 18088
+quality = 1
+buy_price = 40
+sell_price = 10
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 5
+stackable = 20
+armor = 0
+bonding = 0
+material = 2
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 1179
+class = 0
+subclass = 5
+name = "Ice Cold Milk"
+display_id = 18090
+quality = 1
+buy_price = 125
+sell_price = 6
+inventory_type = 0
+allowable_class = 32767
+allowable_race = -1
+item_level = 15
+stackable = 20
+armor = 0
+bonding = 0
+material = 7
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 1200
+class = 4
+subclass = 6
+name = "Large Wooden Shield"
+display_id = 18663
+quality = 1
+buy_price = 82
+sell_price = 16
+inventory_type = 14
+allowable_class = -1
+allowable_race = -1
+item_level = 5
+stackable = 1
+armor = 55
+bonding = 0
+material = 1
+max_durability = 35
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 1202
+class = 4
+subclass = 6
+name = "Wall Shield"
+display_id = 2329
+quality = 1
+buy_price = 1839
+sell_price = 367
+inventory_type = 14
+allowable_class = -1
+allowable_race = -1
+item_level = 17
+stackable = 1
+armor = 336
+bonding = 0
+material = 1
+max_durability = 60
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 1205
+class = 0
+subclass = 5
+name = "Melon Juice"
+display_id = 18078
+quality = 1
+buy_price = 500
+sell_price = 25
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 25
+stackable = 20
+armor = 0
+bonding = 0
+material = 7
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 1645
+class = 0
+subclass = 5
+name = "Moonberry Juice"
+display_id = 18060
+quality = 1
+buy_price = 2000
+sell_price = 100
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 45
+stackable = 20
+armor = 0
+bonding = 0
+material = 7
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 1708
+class = 0
+subclass = 5
+name = "Sweet Nectar"
+display_id = 18114
+quality = 1
+buy_price = 1000
+sell_price = 50
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 35
+stackable = 20
+armor = 0
+bonding = 0
+material = 3
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 2091
+class = 0
+subclass = 8
+name = "Magic Dust"
+display_id = 6396
+quality = 1
+buy_price = 855
+sell_price = 213
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 20
+stackable = 10
+armor = 0
+bonding = 0
+material = -1
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 2445
+class = 4
+subclass = 6
+name = "Large Metal Shield"
+display_id = 18749
+quality = 1
+buy_price = 3433
+sell_price = 686
+inventory_type = 14
+allowable_class = -1
+allowable_race = -1
+item_level = 22
+stackable = 1
+armor = 413
+bonding = 0
+material = 1
+max_durability = 70
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 2446
+class = 4
+subclass = 6
+name = "Kite Shield"
+display_id = 18733
+quality = 1
+buy_price = 6182
+sell_price = 1236
+inventory_type = 14
+allowable_class = -1
+allowable_race = -1
+item_level = 27
+stackable = 1
+armor = 491
+bonding = 0
+material = 1
+max_durability = 80
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 2455
+class = 0
+subclass = 1
+name = "Minor Mana Potion"
+display_id = 15715
+quality = 1
+buy_price = 40
+sell_price = 10
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 15
+stackable = 5
+armor = 0
+bonding = 0
+material = 3
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 2520
+class = 2
+subclass = 7
+name = "Broadsword"
+display_id = 22085
+quality = 1
+buy_price = 24629
+sell_price = 4925
+inventory_type = 21
+allowable_class = -1
+allowable_race = -1
+item_level = 36
+stackable = 1
+armor = 0
+bonding = 0
+material = 1
+max_durability = 75
+dmg_min = 28
+dmg_max = 53
+delay = 2300
+
+[[item_template]]
+entry = 2526
+class = 2
+subclass = 15
+name = "Main Gauche"
+display_id = 22141
+quality = 1
+buy_price = 19336
+sell_price = 3867
+inventory_type = 13
+allowable_class = -1
+allowable_race = -1
+item_level = 34
+stackable = 1
+armor = 0
+bonding = 0
+material = 1
+max_durability = 55
+dmg_min = 18
+dmg_max = 35
+delay = 1600
+
+[[item_template]]
+entry = 2528
+class = 2
+subclass = 7
+name = "Falchion"
+display_id = 22081
+quality = 1
+buy_price = 51836
+sell_price = 10367
+inventory_type = 21
+allowable_class = -1
+allowable_race = -1
+item_level = 46
+stackable = 1
+armor = 0
+bonding = 0
+material = 1
+max_durability = 75
+dmg_min = 39
+dmg_max = 74
+delay = 2200
+
+[[item_template]]
+entry = 2534
+class = 2
+subclass = 15
+name = "Rondel"
+display_id = 22140
+quality = 1
+buy_price = 45431
+sell_price = 9086
+inventory_type = 13
+allowable_class = -1
+allowable_race = -1
+item_level = 44
+stackable = 1
+armor = 0
+bonding = 0
+material = 1
+max_durability = 55
+dmg_min = 27
+dmg_max = 50
+delay = 1600
+
+[[item_template]]
+entry = 2589
+class = 7
+subclass = 5
+name = "Linen Cloth"
+display_id = 7383
+quality = 1
+buy_price = 55
+sell_price = 13
+inventory_type = 0
+allowable_class = 32767
+allowable_race = -1
+item_level = 5
+stackable = 20
+armor = 0
+bonding = 0
+material = 8
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 2592
+class = 7
+subclass = 5
+name = "Wool Cloth"
+display_id = 7418
+quality = 1
+buy_price = 135
+sell_price = 33
+inventory_type = 0
+allowable_class = 32767
+allowable_race = -1
+item_level = 15
+stackable = 20
+armor = 0
+bonding = 0
+material = 8
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 2697
+class = 9
+subclass = 5
+name = "Recipe: Goretusk Liver Pie"
+display_id = 1102
+quality = 1
+buy_price = 400
+sell_price = 100
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 15
+stackable = 1
+armor = 0
+bonding = 0
+material = 2
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 2698
+class = 9
+subclass = 5
+name = "Recipe: Cooked Crab Claw"
+display_id = 1102
+quality = 1
+buy_price = 400
+sell_price = 100
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 15
+stackable = 1
+armor = 0
+bonding = 0
+material = 2
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 2699
+class = 9
+subclass = 5
+name = "Recipe: Redridge Goulash"
+display_id = 1102
+quality = 1
+buy_price = 800
+sell_price = 200
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 20
+stackable = 1
+armor = 0
+bonding = 0
+material = 2
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 2700
+class = 9
+subclass = 5
+name = "Recipe: Succulent Pork Ribs"
+display_id = 1102
+quality = 1
+buy_price = 400
+sell_price = 100
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 20
+stackable = 1
+armor = 0
+bonding = 0
+material = 2
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 2701
+class = 9
+subclass = 5
+name = "Recipe: Seasoned Wolf Kabob"
+display_id = 1102
+quality = 1
+buy_price = 1600
+sell_price = 400
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 25
+stackable = 1
+armor = 0
+bonding = 0
+material = 2
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 2880
+class = 7
+subclass = 11
+name = "Weak Flux"
+display_id = 7417
+quality = 1
+buy_price = 100
+sell_price = 25
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 5
+stackable = 10
+armor = 0
+bonding = 0
+material = 7
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 2889
+class = 9
+subclass = 5
+name = "Recipe: Beer Basted Boar Ribs"
+display_id = 811
+quality = 1
+buy_price = 240
+sell_price = 60
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 8
+stackable = 1
+armor = 0
+bonding = 0
+material = -1
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 2901
+class = 2
+subclass = 14
+name = "Mining Pick"
+display_id = 6568
+quality = 1
+buy_price = 81
+sell_price = 16
+inventory_type = 21
+allowable_class = -1
+allowable_race = -1
+item_level = 4
+stackable = 1
+armor = 0
+bonding = 0
+material = 1
+max_durability = 0
+dmg_min = 2
+dmg_max = 4
+delay = 2000
+
+[[item_template]]
+entry = 2996
+class = 7
+subclass = 5
+name = "Bolt of Linen Cloth"
+display_id = 7331
+quality = 1
+buy_price = 160
+sell_price = 40
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 10
+stackable = 10
+armor = 0
+bonding = 0
+material = 7
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 2997
+class = 7
+subclass = 5
+name = "Bolt of Woolen Cloth"
+display_id = 10044
+quality = 1
+buy_price = 400
+sell_price = 100
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 25
+stackable = 10
+armor = 0
+bonding = 0
+material = 8
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 3357
+class = 7
+subclass = 9
+name = "Liferoot"
+display_id = 7381
+quality = 1
+buy_price = 300
+sell_price = 75
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 30
+stackable = 20
+armor = 0
+bonding = 0
+material = 7
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 3371
+class = 7
+subclass = 11
+name = "Empty Vial"
+display_id = 18077
+quality = 1
+buy_price = 20
+sell_price = 1
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 20
+armor = 0
+bonding = 0
+material = 3
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 3372
+class = 7
+subclass = 11
+name = "Leaded Vial"
+display_id = 18077
+quality = 1
+buy_price = 200
+sell_price = 10
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 25
+stackable = 20
+armor = 0
+bonding = 0
+material = 3
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 3466
+class = 7
+subclass = 11
+name = "Strong Flux"
+display_id = 7408
+quality = 1
+buy_price = 2000
+sell_price = 500
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 25
+stackable = 10
+armor = 0
+bonding = 0
+material = 7
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 3678
+class = 9
+subclass = 5
+name = "Recipe: Crocolisk Steak"
+display_id = 1102
+quality = 1
+buy_price = 400
+sell_price = 100
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 15
+stackable = 1
+armor = 0
+bonding = 0
+material = 2
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 3679
+class = 9
+subclass = 5
+name = "Recipe: Blood Sausage"
+display_id = 1102
+quality = 1
+buy_price = 400
+sell_price = 100
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 15
+stackable = 1
+armor = 0
+bonding = 0
+material = 2
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 3680
+class = 9
+subclass = 5
+name = "Recipe: Murloc Fin Soup"
+display_id = 1102
+quality = 1
+buy_price = 1600
+sell_price = 400
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 25
+stackable = 1
+armor = 0
+bonding = 0
+material = 2
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 3681
+class = 9
+subclass = 5
+name = "Recipe: Crocolisk Gumbo"
+display_id = 1102
+quality = 1
+buy_price = 1600
+sell_price = 400
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 25
+stackable = 1
+armor = 0
+bonding = 0
+material = 2
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 3682
+class = 9
+subclass = 5
+name = "Recipe: Curiously Tasty Omelet"
+display_id = 1102
+quality = 1
+buy_price = 1600
+sell_price = 400
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 25
+stackable = 1
+armor = 0
+bonding = 0
+material = 2
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 3683
+class = 9
+subclass = 5
+name = "Recipe: Gooey Spider Cake"
+display_id = 1102
+quality = 1
+buy_price = 1600
+sell_price = 400
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 25
+stackable = 1
+armor = 0
+bonding = 0
+material = 2
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 3857
+class = 7
+subclass = 7
+name = "Coal"
+display_id = 7340
+quality = 1
+buy_price = 500
+sell_price = 125
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 30
+stackable = 10
+armor = 0
+bonding = 0
+material = 7
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 4305
+class = 7
+subclass = 5
+name = "Bolt of Silk Cloth"
+display_id = 7333
+quality = 1
+buy_price = 2400
+sell_price = 600
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 35
+stackable = 10
+armor = 0
+bonding = 0
+material = 8
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 4306
+class = 7
+subclass = 5
+name = "Silk Cloth"
+display_id = 7717
+quality = 1
+buy_price = 600
+sell_price = 150
+inventory_type = 0
+allowable_class = 32767
+allowable_race = -1
+item_level = 30
+stackable = 20
+armor = 0
+bonding = 0
+material = 8
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 4338
+class = 7
+subclass = 5
+name = "Mageweave Cloth"
+display_id = 7384
+quality = 1
+buy_price = 1000
+sell_price = 250
+inventory_type = 0
+allowable_class = 32767
+allowable_race = -1
+item_level = 40
+stackable = 20
+armor = 0
+bonding = 0
+material = 7
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 4536
+class = 0
+subclass = 5
+name = "Shiny Red Apple"
+display_id = 6410
+quality = 1
+buy_price = 25
+sell_price = 1
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 5
+stackable = 20
+armor = 0
+bonding = 0
+material = -1
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 4537
+class = 0
+subclass = 5
+name = "Tel'Abim Banana"
+display_id = 6420
+quality = 1
+buy_price = 125
+sell_price = 6
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 15
+stackable = 20
+armor = 0
+bonding = 0
+material = -1
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 4538
+class = 0
+subclass = 5
+name = "Snapvine Watermelon"
+display_id = 4781
+quality = 1
+buy_price = 500
+sell_price = 25
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 25
+stackable = 20
+armor = 0
+bonding = 0
+material = -1
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 4539
+class = 0
+subclass = 5
+name = "Goldenbark Apple"
+display_id = 7856
+quality = 1
+buy_price = 1000
+sell_price = 50
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 35
+stackable = 20
+armor = 0
+bonding = 0
+material = -1
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 4540
+class = 0
+subclass = 5
+name = "Tough Hunk of Bread"
+display_id = 6399
+quality = 1
+buy_price = 25
+sell_price = 1
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 5
+stackable = 20
+armor = 0
+bonding = 0
+material = -1
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 4541
+class = 0
+subclass = 5
+name = "Freshly Baked Bread"
+display_id = 6343
+quality = 1
+buy_price = 125
+sell_price = 6
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 15
+stackable = 20
+armor = 0
+bonding = 0
+material = -1
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 4542
+class = 0
+subclass = 5
+name = "Moist Cornbread"
+display_id = 6344
+quality = 1
+buy_price = 500
+sell_price = 25
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 25
+stackable = 20
+armor = 0
+bonding = 0
+material = -1
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 4544
+class = 0
+subclass = 5
+name = "Mulgore Spice Bread"
+display_id = 6399
+quality = 1
+buy_price = 1000
+sell_price = 50
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 35
+stackable = 20
+armor = 0
+bonding = 0
+material = -1
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 4601
+class = 0
+subclass = 5
+name = "Soft Banana Bread"
+display_id = 6413
+quality = 1
+buy_price = 2000
+sell_price = 100
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 45
+stackable = 20
+armor = 0
+bonding = 0
+material = -1
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 4602
+class = 0
+subclass = 5
+name = "Moon Harvest Pumpkin"
+display_id = 6402
+quality = 1
+buy_price = 2000
+sell_price = 100
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 45
+stackable = 20
+armor = 0
+bonding = 0
+material = -1
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 5042
+class = 0
+subclass = 8
+name = "Red Ribboned Wrapping Paper"
+display_id = 6405
+quality = 1
+buy_price = 50
+sell_price = 12
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 5
+stackable = 10
+armor = 0
+bonding = 0
+material = -1
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 5048
+class = 0
+subclass = 8
+name = "Blue Ribboned Wrapping Paper"
+display_id = 6330
+quality = 1
+buy_price = 50
+sell_price = 12
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 5
+stackable = 10
+armor = 0
+bonding = 0
+material = -1
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 5956
+class = 2
+subclass = 14
+name = "Blacksmith Hammer"
+display_id = 8568
+quality = 1
+buy_price = 18
+sell_price = 3
+inventory_type = 21
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 0
+bonding = 0
+material = 1
+max_durability = 0
+dmg_min = 1
+dmg_max = 2
+delay = 2000
+
+[[item_template]]
+entry = 8485
+class = 15
+subclass = 2
+name = "Cat Carrier (Bombay)"
+display_id = 20629
+quality = 1
+buy_price = 4000
+sell_price = 1000
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 20
+stackable = 1
+armor = 0
+bonding = 3
+material = -1
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 8486
+class = 15
+subclass = 2
+name = "Cat Carrier (Cornish Rex)"
+display_id = 20629
+quality = 1
+buy_price = 4000
+sell_price = 1000
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 20
+stackable = 1
+armor = 0
+bonding = 3
+material = -1
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 8487
+class = 15
+subclass = 2
+name = "Cat Carrier (Orange Tabby)"
+display_id = 20629
+quality = 1
+buy_price = 4000
+sell_price = 1000
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 20
+stackable = 1
+armor = 0
+bonding = 3
+material = -1
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 8488
+class = 15
+subclass = 2
+name = "Cat Carrier (Silver Tabby)"
+display_id = 20629
+quality = 1
+buy_price = 4000
+sell_price = 1000
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 20
+stackable = 1
+armor = 0
+bonding = 3
+material = -1
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 8766
+class = 0
+subclass = 5
+name = "Morning Glory Dew"
+display_id = 926
+quality = 1
+buy_price = 4000
+sell_price = 200
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 55
+stackable = 20
+armor = 0
+bonding = 0
+material = 7
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 8925
+class = 7
+subclass = 11
+name = "Crystal Vial"
+display_id = 18077
+quality = 1
+buy_price = 2500
+sell_price = 125
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 35
+stackable = 20
+armor = 0
+bonding = 0
+material = 3
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 8950
+class = 0
+subclass = 5
+name = "Homemade Cherry Pie"
+display_id = 6342
+quality = 1
+buy_price = 4000
+sell_price = 200
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 55
+stackable = 20
+armor = 0
+bonding = 0
+material = -1
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 8953
+class = 0
+subclass = 5
+name = "Deep Fried Plantains"
+display_id = 17881
+quality = 1
+buy_price = 4000
+sell_price = 200
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 55
+stackable = 20
+armor = 0
+bonding = 0
+material = -1
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 17183
+class = 4
+subclass = 6
+name = "Dented Buckler"
+display_id = 2208
+quality = 1
+buy_price = 36
+sell_price = 7
+inventory_type = 14
+allowable_class = -1
+allowable_race = -1
+item_level = 3
+stackable = 1
+armor = 29
+bonding = 0
+material = 1
+max_durability = 25
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 17187
+class = 4
+subclass = 6
+name = "Banded Buckler"
+display_id = 27782
+quality = 1
+buy_price = 1161
+sell_price = 232
+inventory_type = 14
+allowable_class = -1
+allowable_race = -1
+item_level = 14
+stackable = 1
+armor = 289
+bonding = 0
+material = 1
+max_durability = 50
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 17188
+class = 4
+subclass = 6
+name = "Ringed Buckler"
+display_id = 18468
+quality = 1
+buy_price = 2447
+sell_price = 489
+inventory_type = 14
+allowable_class = -1
+allowable_race = -1
+item_level = 19
+stackable = 1
+armor = 367
+bonding = 0
+material = 1
+max_durability = 65
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 17192
+class = 4
+subclass = 6
+name = "Reinforced Targe"
+display_id = 2324
+quality = 1
+buy_price = 4820
+sell_price = 964
+inventory_type = 14
+allowable_class = -1
+allowable_race = -1
+item_level = 24
+stackable = 1
+armor = 444
+bonding = 0
+material = 1
+max_durability = 75
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 18256
+class = 7
+subclass = 11
+name = "Imbued Vial"
+display_id = 18077
+quality = 1
+buy_price = 20000
+sell_price = 1000
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 55
+stackable = 20
+armor = 0
+bonding = 0
+material = 3
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 18567
+class = 7
+subclass = 7
+name = "Elemental Flux"
+display_id = 30916
+quality = 1
+buy_price = 150000
+sell_price = 37500
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 60
+stackable = 10
+armor = 0
+bonding = 0
+material = 7
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 20815
+class = 7
+subclass = 11
+name = "Jeweler's Kit"
+display_id = 33224
+quality = 1
+buy_price = 800
+sell_price = 200
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 20
+stackable = 1
+armor = 0
+bonding = 0
+material = 1
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 2000
+
+[[item_template]]
+entry = 20824
+class = 7
+subclass = 4
+name = "Simple Grinder"
+display_id = 33227
+quality = 1
+buy_price = 25000
+sell_price = 6250
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 20
+stackable = 1
+armor = 0
+bonding = 0
+material = 1
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 2000
+
+[[item_template]]
+entry = 20849
+class = 2
+subclass = 7
+name = "Arcane Forged Shortsword"
+display_id = 33220
+quality = 1
+buy_price = 84
+sell_price = 16
+inventory_type = 13
+allowable_class = -1
+allowable_race = -1
+item_level = 4
+stackable = 1
+armor = 0
+bonding = 0
+material = 1
+max_durability = 25
+dmg_min = 3
+dmg_max = 6
+delay = 2600
+
+[[item_template]]
+entry = 20850
+class = 2
+subclass = 0
+name = "Arcane Forged Axe"
+display_id = 33255
+quality = 1
+buy_price = 84
+sell_price = 16
+inventory_type = 13
+allowable_class = -1
+allowable_race = -1
+item_level = 4
+stackable = 1
+armor = 0
+bonding = 0
+material = 1
+max_durability = 25
+dmg_min = 2
+dmg_max = 4
+delay = 2000
+
+[[item_template]]
+entry = 20851
+class = 2
+subclass = 4
+name = "Arcane Forged Mace"
+display_id = 33308
+quality = 1
+buy_price = 85
+sell_price = 17
+inventory_type = 13
+allowable_class = -1
+allowable_race = -1
+item_level = 4
+stackable = 1
+armor = 0
+bonding = 0
+material = 2
+max_durability = 25
+dmg_min = 2
+dmg_max = 4
+delay = 1900
+
+[[item_template]]
+entry = 20852
+class = 2
+subclass = 15
+name = "Arcane Forged Dirk"
+display_id = 33253
+quality = 1
+buy_price = 85
+sell_price = 17
+inventory_type = 13
+allowable_class = -1
+allowable_race = -1
+item_level = 4
+stackable = 1
+armor = 0
+bonding = 0
+material = 1
+max_durability = 20
+dmg_min = 1
+dmg_max = 3
+delay = 1600
+
+[[item_template]]
+entry = 20853
+class = 2
+subclass = 10
+name = "Mana Gathering Staff"
+display_id = 33254
+quality = 1
+buy_price = 107
+sell_price = 21
+inventory_type = 17
+allowable_class = -1
+allowable_race = -1
+item_level = 4
+stackable = 1
+armor = 0
+bonding = 0
+material = 2
+max_durability = 30
+dmg_min = 5
+dmg_max = 8
+delay = 3200
+
+[[item_template]]
+entry = 20910
+class = 2
+subclass = 2
+name = "Stiff Shortbow"
+display_id = 20723
+quality = 1
+buy_price = 63
+sell_price = 12
+inventory_type = 15
+allowable_class = -1
+allowable_race = -1
+item_level = 4
+stackable = 1
+armor = 0
+bonding = 0
+material = 2
+max_durability = 20
+dmg_min = 5
+dmg_max = 10
+delay = 2000
+
+[[item_template]]
+entry = 20911
+class = 4
+subclass = 6
+name = "Light Guard"
+display_id = 33309
+quality = 1
+buy_price = 37
+sell_price = 7
+inventory_type = 14
+allowable_class = -1
+allowable_race = -1
+item_level = 3
+stackable = 1
+armor = 29
+bonding = 0
+material = 1
+max_durability = 25
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 20912
+class = 4
+subclass = 6
+name = "Large Shield"
+display_id = 33307
+quality = 1
+buy_price = 84
+sell_price = 16
+inventory_type = 14
+allowable_class = -1
+allowable_race = -1
+item_level = 5
+stackable = 1
+armor = 55
+bonding = 0
+material = 1
+max_durability = 35
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 20914
+class = 4
+subclass = 3
+name = "Unadorned Chain Belt"
+display_id = 33264
+quality = 1
+buy_price = 39
+sell_price = 7
+inventory_type = 6
+allowable_class = -1
+allowable_race = -1
+item_level = 5
+stackable = 1
+armor = 38
+bonding = 0
+material = 5
+max_durability = 18
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 20915
+class = 4
+subclass = 3
+name = "Unadorned Chain Boots"
+display_id = 33270
+quality = 1
+buy_price = 60
+sell_price = 12
+inventory_type = 8
+allowable_class = -1
+allowable_race = -1
+item_level = 5
+stackable = 1
+armor = 46
+bonding = 0
+material = 5
+max_durability = 25
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 20916
+class = 4
+subclass = 3
+name = "Unadorned Chain Bracers"
+display_id = 33266
+quality = 1
+buy_price = 36
+sell_price = 7
+inventory_type = 9
+allowable_class = -1
+allowable_race = -1
+item_level = 5
+stackable = 1
+armor = 29
+bonding = 0
+material = 5
+max_durability = 18
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 20917
+class = 4
+subclass = 3
+name = "Unadorned Chain Gloves"
+display_id = 33269
+quality = 1
+buy_price = 36
+sell_price = 7
+inventory_type = 10
+allowable_class = -1
+allowable_race = -1
+item_level = 5
+stackable = 1
+armor = 42
+bonding = 0
+material = 5
+max_durability = 18
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 20918
+class = 4
+subclass = 3
+name = "Unadorned Chain Leggings"
+display_id = 33263
+quality = 1
+buy_price = 72
+sell_price = 14
+inventory_type = 7
+allowable_class = -1
+allowable_race = -1
+item_level = 5
+stackable = 1
+armor = 58
+bonding = 0
+material = 5
+max_durability = 40
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 20919
+class = 4
+subclass = 3
+name = "Unadorned Chain Vest"
+display_id = 33268
+quality = 1
+buy_price = 73
+sell_price = 14
+inventory_type = 5
+allowable_class = -1
+allowable_race = -1
+item_level = 5
+stackable = 1
+armor = 67
+bonding = 0
+material = 5
+max_durability = 55
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 20920
+class = 4
+subclass = 2
+name = "Sun Cured Belt"
+display_id = 33271
+quality = 1
+buy_price = 30
+sell_price = 6
+inventory_type = 6
+allowable_class = -1
+allowable_race = -1
+item_level = 5
+stackable = 1
+armor = 19
+bonding = 0
+material = 8
+max_durability = 16
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 20921
+class = 4
+subclass = 2
+name = "Sun Cured Boots"
+display_id = 33272
+quality = 1
+buy_price = 46
+sell_price = 9
+inventory_type = 8
+allowable_class = -1
+allowable_race = -1
+item_level = 5
+stackable = 1
+armor = 23
+bonding = 0
+material = 8
+max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 20922
+class = 4
+subclass = 2
+name = "Sun Cured Bracers"
+display_id = 33275
+quality = 1
+buy_price = 30
+sell_price = 6
+inventory_type = 9
+allowable_class = -1
+allowable_race = -1
+item_level = 5
+stackable = 1
+armor = 15
+bonding = 0
+material = 8
+max_durability = 16
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 20923
+class = 4
+subclass = 2
+name = "Sun Cured Gloves"
+display_id = 33276
+quality = 1
+buy_price = 30
+sell_price = 6
+inventory_type = 10
+allowable_class = -1
+allowable_race = -1
+item_level = 5
+stackable = 1
+armor = 21
+bonding = 0
+material = 8
+max_durability = 16
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 20924
+class = 4
+subclass = 2
+name = "Sun Cured Pants"
+display_id = 33273
+quality = 1
+buy_price = 62
+sell_price = 12
+inventory_type = 7
+allowable_class = -1
+allowable_race = -1
+item_level = 5
+stackable = 1
+armor = 29
+bonding = 0
+material = 8
+max_durability = 35
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 20925
+class = 4
+subclass = 2
+name = "Sun Cured Vest"
+display_id = 33274
+quality = 1
+buy_price = 62
+sell_price = 12
+inventory_type = 5
+allowable_class = -1
+allowable_race = -1
+item_level = 5
+stackable = 1
+armor = 33
+bonding = 0
+material = 8
+max_durability = 45
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 20985
+class = 4
+subclass = 1
+name = "Light Cloth Shoes"
+display_id = 16576
+quality = 1
+buy_price = 38
+sell_price = 7
+inventory_type = 8
+allowable_class = -1
+allowable_race = -1
+item_level = 5
+stackable = 1
+armor = 7
+bonding = 0
+material = 7
+max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 20986
+class = 4
+subclass = 1
+name = "Light Cloth Pants"
+display_id = 8969
+quality = 1
+buy_price = 51
+sell_price = 10
+inventory_type = 7
+allowable_class = -1
+allowable_race = -1
+item_level = 5
+stackable = 1
+armor = 9
+bonding = 0
+material = 7
+max_durability = 30
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 20987
+class = 4
+subclass = 1
+name = "Light Cloth Gloves"
+display_id = 16969
+quality = 1
+buy_price = 25
+sell_price = 5
+inventory_type = 10
+allowable_class = -1
+allowable_race = -1
+item_level = 5
+stackable = 1
+armor = 6
+bonding = 0
+material = 7
+max_durability = 14
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 20988
+class = 4
+subclass = 1
+name = "Light Cloth Bracers"
+display_id = 16929
+quality = 1
+buy_price = 25
+sell_price = 5
+inventory_type = 9
+allowable_class = -1
+allowable_race = -1
+item_level = 5
+stackable = 1
+armor = 4
+bonding = 0
+material = 7
+max_durability = 14
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 20989
+class = 4
+subclass = 1
+name = "Light Cloth Belt"
+display_id = 16832
+quality = 1
+buy_price = 25
+sell_price = 5
+inventory_type = 6
+allowable_class = -1
+allowable_race = -1
+item_level = 5
+stackable = 1
+armor = 6
+bonding = 0
+material = 7
+max_durability = 14
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 20990
+class = 4
+subclass = 1
+name = "Light Cloth Armor"
+display_id = 16575
+quality = 1
+buy_price = 52
+sell_price = 10
+inventory_type = 5
+allowable_class = -1
+allowable_race = -1
+item_level = 5
+stackable = 1
+armor = 10
+bonding = 0
+material = 7
+max_durability = 40
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 21892
+class = 9
+subclass = 2
+name = "Pattern: Bolt of Imbued Netherweave"
+display_id = 1301
+quality = 1
+buy_price = 40000
+sell_price = 10000
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 65
+stackable = 1
+armor = 0
+bonding = 0
+material = -1
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 21894
+class = 9
+subclass = 2
+name = "Pattern: Bolt of Soulcloth"
+display_id = 1301
+quality = 1
+buy_price = 40000
+sell_price = 10000
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 69
+stackable = 1
+armor = 0
+bonding = 0
+material = -1
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 21896
+class = 9
+subclass = 2
+name = "Pattern: Netherweave Robe"
+display_id = 1301
+quality = 1
+buy_price = 40000
+sell_price = 10000
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 68
+stackable = 1
+armor = 0
+bonding = 0
+material = -1
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 21897
+class = 9
+subclass = 2
+name = "Pattern: Netherweave Tunic"
+display_id = 1301
+quality = 1
+buy_price = 40000
+sell_price = 10000
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 69
+stackable = 1
+armor = 0
+bonding = 0
+material = -1
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 22562
+class = 9
+subclass = 8
+name = "Formula: Superior Mana Oil"
+display_id = 7798
+quality = 1
+buy_price = 50000
+sell_price = 12500
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 62
+stackable = 1
+armor = 0
+bonding = 0
+material = -1
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 22563
+class = 9
+subclass = 8
+name = "Formula: Superior Wizard Oil"
+display_id = 7798
+quality = 1
+buy_price = 70000
+sell_price = 17500
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 68
+stackable = 1
+armor = 0
+bonding = 0
+material = -1
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 22565
+class = 9
+subclass = 8
+name = "Formula: Large Prismatic Shard"
+display_id = 7798
+quality = 1
+buy_price = 60000
+sell_price = 15000
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 67
+stackable = 1
+armor = 0
+bonding = 0
+material = -1
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 22775
+class = 12
+subclass = 0
+name = "Suntouched Special Reserve"
+display_id = 18080
+quality = 1
+buy_price = 300
+sell_price = 75
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 0
+bonding = 4
+material = 3
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 22900
+class = 9
+subclass = 6
+name = "Recipe: Elixir of Camouflage"
+display_id = 1102
+quality = 1
+buy_price = 30000
+sell_price = 7500
+inventory_type = 0
+allowable_class = 32767
+allowable_race = -1
+item_level = 61
+stackable = 1
+armor = 0
+bonding = 0
+material = -1
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 23574
+class = 9
+subclass = 6
+name = "Recipe: Transmute Primal Might"
+display_id = 15274
+quality = 2
+buy_price = 80000
+sell_price = 20000
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 70
+stackable = 1
+armor = 0
+bonding = 0
+material = -1
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 23590
+class = 9
+subclass = 4
+name = "Plans: Adamantite Maul"
+display_id = 1102
+quality = 1
+buy_price = 40000
+sell_price = 10000
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 65
+stackable = 1
+armor = 0
+bonding = 0
+material = -1
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 23591
+class = 9
+subclass = 4
+name = "Plans: Adamantite Cleaver"
+display_id = 1102
+quality = 1
+buy_price = 40000
+sell_price = 10000
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 66
+stackable = 1
+armor = 0
+bonding = 0
+material = -1
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 23592
+class = 9
+subclass = 4
+name = "Plans: Adamantite Dagger"
+display_id = 1102
+quality = 1
+buy_price = 40000
+sell_price = 10000
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 66
+stackable = 1
+armor = 0
+bonding = 0
+material = -1
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 23593
+class = 9
+subclass = 4
+name = "Plans: Adamantite Rapier"
+display_id = 1102
+quality = 1
+buy_price = 40000
+sell_price = 10000
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 67
+stackable = 1
+armor = 0
+bonding = 0
+material = -1
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 23799
+class = 9
+subclass = 3
+name = "Schematic: Adamantite Rifle"
+display_id = 1102
+quality = 1
+buy_price = 80000
+sell_price = 20000
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 70
+stackable = 1
+armor = 0
+bonding = 0
+material = -1
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 23811
+class = 9
+subclass = 3
+name = "Schematic: White Smoke Flare"
+display_id = 1102
+quality = 1
+buy_price = 60000
+sell_price = 15000
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 67
+stackable = 1
+armor = 0
+bonding = 0
+material = -1
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 23815
+class = 9
+subclass = 3
+name = "Schematic: Adamantite Shell Machine"
+display_id = 1102
+quality = 1
+buy_price = 60000
+sell_price = 15000
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 67
+stackable = 1
+armor = 0
+bonding = 0
+material = -1
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 23816
+class = 9
+subclass = 3
+name = "Schematic: Fel Iron Toolbox"
+display_id = 1102
+quality = 1
+buy_price = 40000
+sell_price = 10000
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 65
+stackable = 1
+armor = 0
+bonding = 0
+material = -1
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 24285
+class = 12
+subclass = 0
+name = "Crepuscular Powder"
+display_id = 37130
+quality = 1
+buy_price = 1500000
+sell_price = 375000
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 0
+bonding = 4
+material = -1
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 24286
+class = 12
+subclass = 0
+name = "Arcane Catalyst"
+display_id = 35023
+quality = 1
+buy_price = 500000
+sell_price = 125000
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 1
+stackable = 1
+armor = 0
+bonding = 4
+material = -1
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 25861
+class = 2
+subclass = 16
+name = "Crude Throwing Axe"
+display_id = 20777
+quality = 1
+buy_price = 15
+sell_price = 3
+inventory_type = 25
+allowable_class = -1
+allowable_race = -1
+item_level = 3
+stackable = 1
+armor = 0
+bonding = 0
+material = 1
+max_durability = 200
+dmg_min = 1
+dmg_max = 3
+delay = 1800
+
+[[item_template]]
+entry = 27685
+class = 9
+subclass = 5
+name = "Recipe: Lynx Steak"
+display_id = 811
+quality = 1
+buy_price = 40
+sell_price = 10
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 5
+stackable = 1
+armor = 0
+bonding = 0
+material = -1
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 27860
+class = 0
+subclass = 5
+name = "Purified Draenic Water"
+display_id = 40852
+quality = 1
+buy_price = 6400
+sell_price = 320
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 75
+stackable = 20
+armor = 0
+bonding = 0
+material = 3
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 28399
+class = 0
+subclass = 5
+name = "Filtered Draenic Water"
+display_id = 40853
+quality = 1
+buy_price = 5600
+sell_price = 280
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 65
+stackable = 20
+armor = 0
+bonding = 0
+material = 3
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 28979
+class = 2
+subclass = 16
+name = "Light Throwing Knife"
+display_id = 40187
+quality = 1
+buy_price = 15
+sell_price = 3
+inventory_type = 25
+allowable_class = -1
+allowable_race = -1
+item_level = 3
+stackable = 1
+armor = 0
+bonding = 0
+material = 1
+max_durability = 200
+dmg_min = 1
+dmg_max = 2
+delay = 1600
+
+[[item_template]]
+entry = 29008
+class = 2
+subclass = 16
+name = "Sharp Throwing Axe"
+display_id = 40191
+quality = 1
+buy_price = 75
+sell_price = 18
+inventory_type = 25
+allowable_class = -1
+allowable_race = -1
+item_level = 16
+stackable = 1
+armor = 0
+bonding = 0
+material = 1
+max_durability = 200
+dmg_min = 8
+dmg_max = 16
+delay = 1900
+
+[[item_template]]
+entry = 33028
+class = 0
+subclass = 0
+name = "Barleybrew Light"
+display_id = 18102
+quality = 1
+buy_price = 15
+sell_price = 3
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 15
+stackable = 20
+armor = 0
+bonding = 0
+material = 3
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 33029
+class = 0
+subclass = 0
+name = "Barleybrew Dark"
+display_id = 18102
+quality = 1
+buy_price = 50
+sell_price = 12
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 25
+stackable = 20
+armor = 0
+bonding = 0
+material = 3
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 33030
+class = 0
+subclass = 0
+name = "Barleybrew Clear"
+display_id = 18102
+quality = 1
+buy_price = 3
+sell_price = 1
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 5
+stackable = 20
+armor = 0
+bonding = 0
+material = 3
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 33031
+class = 0
+subclass = 0
+name = "Thunder 45"
+display_id = 18102
+quality = 1
+buy_price = 100
+sell_price = 25
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 35
+stackable = 20
+armor = 0
+bonding = 0
+material = 3
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 33032
+class = 0
+subclass = 0
+name = "Thunderbrew Ale"
+display_id = 18102
+quality = 1
+buy_price = 200
+sell_price = 50
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 45
+stackable = 20
+armor = 0
+bonding = 0
+material = 3
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 33033
+class = 0
+subclass = 0
+name = "Thunderbrew Stout"
+display_id = 18102
+quality = 1
+buy_price = 400
+sell_price = 100
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 55
+stackable = 20
+armor = 0
+bonding = 0
+material = 3
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 33034
+class = 0
+subclass = 0
+name = "Gordok Grog"
+display_id = 18102
+quality = 1
+buy_price = 400
+sell_price = 100
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 65
+stackable = 20
+armor = 0
+bonding = 0
+material = 3
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 33035
+class = 0
+subclass = 0
+name = "Ogre Mead"
+display_id = 18102
+quality = 1
+buy_price = 640
+sell_price = 160
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 75
+stackable = 20
+armor = 0
+bonding = 0
+material = 3
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
+
+[[item_template]]
+entry = 33036
+class = 0
+subclass = 0
+name = "Mudder's Milk"
+display_id = 18102
+quality = 1
+buy_price = 640
+sell_price = 160
+inventory_type = 0
+allowable_class = -1
+allowable_race = -1
+item_level = 75
+stackable = 20
+armor = 0
+bonding = 0
+material = 3
+max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
