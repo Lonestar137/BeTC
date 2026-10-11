@@ -99,6 +99,15 @@ pub struct QuestItemTemplate {
     pub bonding: u32,
     pub material: i32,
     pub max_durability: u32,
+    /// Converted weapon swing numbers (`item_template` `dmg_min1`/`dmg_max1`, rounded to whole
+    /// points, and `delay` in ms). Absent or zero on non-weapons and on packs converted before
+    /// weapon damage was part of the schema.
+    #[serde(default)]
+    pub dmg_min: u32,
+    #[serde(default)]
+    pub dmg_max: u32,
+    #[serde(default)]
+    pub delay: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]

@@ -515,12 +515,20 @@ fn emit_world_entry_with_talents(
     if let Some(faction) = factions.and_then(|factions| factions.race_template(appearance.race)) {
         pairs.push((35, faction));
     }
-    if matches!(appearance.class, 2 | 3 | 5 | 7 | 8 | 9 | 11) {
-        pairs.extend([
-            (23, snapshot.mana),
-            (29, benilla_game_core::PLAYER_MAX_MANA),
-        ]);
-    }
+    // The class's power pools: mana 23/29, rage 24/30, focus 25/31, energy 26/32. Rage lives in
+    // tenths in the descriptor (`UnitPower` divides on read).
+    let (max_mana, max_rage, max_focus, max_energy) =
+        benilla_game_core::power_pool_caps(appearance.class);
+    pairs.extend([
+        (23, snapshot.mana),
+        (24, snapshot.rage.saturating_mul(10)),
+        (25, snapshot.focus),
+        (26, snapshot.energy),
+        (29, max_mana),
+        (30, max_rage.saturating_mul(10)),
+        (31, max_focus),
+        (32, max_energy),
+    ]);
     if let Some(display_id) = display_id {
         pairs.push((131, display_id));
         pairs.push((132, display_id));
@@ -1569,43 +1577,92 @@ fn advance_patrol(guid: u64, patrol: &mut ActivePatrol, elapsed_ms: u32) -> Opti
 const SPELL_EFFECT_APPLY_AURA: u32 = 6;
 const SPELL_AURA_PERIODIC_DAMAGE: u32 = 3;
 
-fn supported_direct_effect_slot(effects: [u32; 3], auras: [u32; 3]) -> Option<usize> {
+/// Secondary mechanics a resolved cast may carry beside its direct effect: the builder's combo
+/// points, the interrupt's school lockout, and a trigger (Charge's stun). Named here so a row
+/// carrying one still resolves its direct arm instead of falling through unsupported.
+fn is_secondary_mechanic(effect: u32) -> bool {
+    matches!(
+        effect,
+        benilla_formats::SPELL_EFFECT_ADD_COMBO_POINTS
+            | benilla_formats::SPELL_EFFECT_INTERRUPT_CAST
+            | benilla_formats::SPELL_EFFECT_TRIGGER_SPELL
+            | benilla_formats::SPELL_EFFECT_DUMMY
+    )
+}
+
+/// How one spell's effects resolve: the direct damage/heal slot (absent on an aura-only row), an
+/// optional percent-weapon slot merged into the same swing (Backstab's "150% weapon damage plus
+/// 15"), and whether any arm is a weapon arm.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct EffectPlan {
+    direct: Option<usize>,
+    percent: Option<usize>,
+    has_weapon: bool,
+}
+
+fn plan_direct_effect(effects: [u32; 3], auras: [u32; 3]) -> Option<EffectPlan> {
     let mut direct = None;
-    let mut periodic_damage = false;
+    let mut percent = None;
     let mut has_weapon = false;
+    let mut has_aura = false;
     for (slot, effect) in effects.into_iter().enumerate() {
+        let weapon = matches!(
+            effect,
+            benilla_formats::SPELL_EFFECT_WEAPON_DAMAGE
+                | benilla_formats::SPELL_EFFECT_WEAPON_DAMAGE_NOSCHOOL
+                | benilla_formats::SPELL_EFFECT_WEAPON_PERCENT_DAMAGE
+                | benilla_formats::SPELL_EFFECT_NORMALIZED_WEAPON_DMG
+        );
         match effect {
             0 => {}
             benilla_formats::SPELL_EFFECT_SCHOOL_DAMAGE
             | benilla_formats::SPELL_EFFECT_HEAL
             | benilla_formats::SPELL_EFFECT_WEAPON_DAMAGE
-            | benilla_formats::SPELL_EFFECT_WEAPON_PERCENT_DAMAGE
+            | benilla_formats::SPELL_EFFECT_WEAPON_DAMAGE_NOSCHOOL
             | benilla_formats::SPELL_EFFECT_NORMALIZED_WEAPON_DMG => {
                 if direct.replace(slot).is_some() {
                     return None;
                 }
-                if effect == benilla_formats::SPELL_EFFECT_WEAPON_DAMAGE
-                    || effect == benilla_formats::SPELL_EFFECT_WEAPON_PERCENT_DAMAGE
-                    || effect == benilla_formats::SPELL_EFFECT_NORMALIZED_WEAPON_DMG
-                {
-                    has_weapon = true;
+                has_weapon |= weapon;
+            }
+            benilla_formats::SPELL_EFFECT_WEAPON_PERCENT_DAMAGE => {
+                // A percent arm merges into the swing beside a flat one (Backstab 53); alone it
+                // is the direct arm (its own percent is all the swing gets).
+                if percent.replace(slot).is_some() {
+                    return None;
+                }
+                has_weapon = true;
+                if direct.is_none() {
+                    direct = Some(slot);
                 }
             }
-            SPELL_EFFECT_APPLY_AURA if auras[slot] == SPELL_AURA_PERIODIC_DAMAGE => {
-                periodic_damage = true;
-            }
             SPELL_EFFECT_APPLY_AURA => {
-                // Aura-only spells (buffs, debuffs) are supported when there is no direct effect.
-                // This allows Battle Shout, Power Word: Fortitude, etc.
+                // Auras resolve: periodic damage is the DoT, the rest is buff/debuff state.
+                has_aura = true;
             }
+            effect if is_secondary_mechanic(effect) => {}
             _ => return None,
         }
     }
-
-    direct.filter(|slot| {
-        !periodic_damage
-            || effects[*slot] == benilla_formats::SPELL_EFFECT_SCHOOL_DAMAGE
-            || has_weapon
+    // A row of pure secondary mechanics (a trigger alone, Charge's stun) resolves to nothing the
+    // simulation can apply; it is an explicit unsupported blocker, not a silent no-op buff.
+    if direct.is_none() && !has_aura {
+        return None;
+    }
+    // A periodic-damage aura beside a heal arm is no player spell's shape; refuse it rather than
+    // guess which arm wins. A DoT beside damage (Immolate) or alone (Corruption) resolves.
+    let periodic_damage = (0..3).any(|slot| {
+        effects[slot] == SPELL_EFFECT_APPLY_AURA && auras[slot] == SPELL_AURA_PERIODIC_DAMAGE
+    });
+    if periodic_damage
+        && direct.is_some_and(|slot| effects[slot] == benilla_formats::SPELL_EFFECT_HEAL)
+    {
+        return None;
+    }
+    Some(EffectPlan {
+        direct,
+        percent,
+        has_weapon,
     })
 }
 
@@ -1835,79 +1892,118 @@ fn drive_offline_gameplay(
                 .as_deref()
                 .and_then(|spells| {
                     let spell = spells.catalog.get(*spell_id)?;
-                    if spell.power_type != 0 {
-                        return None;
-                    }
+                    let power = benilla_game_core::PowerType::from_spell_power(spell.power_type)?;
                     let caster_level = core
                         .0
                         .active()
                         .and_then(|id| core.0.snapshot(id))
                         .map(|snapshot| u32::from(snapshot.level))?;
-                    let effect_slot =
-                        supported_direct_effect_slot(spell.effects, spell.effect_apply_aura)?;
-                    let (min, max) = spell.base_effect_range(effect_slot)?;
-                    let effect = match spell.effects[effect_slot] {
-                        benilla_formats::SPELL_EFFECT_SCHOOL_DAMAGE
-                        | benilla_formats::SPELL_EFFECT_WEAPON_DAMAGE
-                        | benilla_formats::SPELL_EFFECT_WEAPON_PERCENT_DAMAGE
-                        | benilla_formats::SPELL_EFFECT_NORMALIZED_WEAPON_DMG => {
-                            let periodic = (0..3).find_map(|slot| {
-                                if spell.effects[slot] != SPELL_EFFECT_APPLY_AURA
-                                    || spell.effect_apply_aura[slot] != SPELL_AURA_PERIODIC_DAMAGE
-                                {
-                                    return None;
-                                }
-                                let (min, max) = spell.base_effect_range(slot)?;
-                                let tick_ms = spell.effect_amplitude[slot];
-                                let duration_ms = u32::try_from(
-                                    spells.durations.get(spell.duration_index)?.base_ms,
-                                )
-                                .ok()?;
-                                (tick_ms > 0 && duration_ms >= tick_ms).then_some(
-                                    benilla_game_core::PeriodicDamage {
-                                        min: u32::try_from(min).ok()?,
-                                        max: u32::try_from(max).ok()?,
-                                        tick_ms,
-                                        duration_ms,
-                                    },
-                                )
-                            });
-                            let is_weapon = spell.effects[effect_slot]
-                                == benilla_formats::SPELL_EFFECT_WEAPON_DAMAGE
-                                || spell.effects[effect_slot]
-                                    == benilla_formats::SPELL_EFFECT_WEAPON_PERCENT_DAMAGE
-                                || spell.effects[effect_slot]
-                                    == benilla_formats::SPELL_EFFECT_NORMALIZED_WEAPON_DMG;
-                            if is_weapon {
-                                benilla_game_core::DirectSpellEffect::WeaponDamage {
-                                    min: u32::try_from(min).ok()?,
-                                    max: u32::try_from(max).ok()?,
-                                    school: 1_u32.checked_shl(spell.school)?,
-                                    periodic,
-                                }
-                            } else {
-                                benilla_game_core::DirectSpellEffect::Damage {
-                                    min: u32::try_from(min).ok()?,
-                                    max: u32::try_from(max).ok()?,
-                                    school: 1_u32.checked_shl(spell.school)?,
-                                    periodic,
-                                }
-                            }
+                    let plan = plan_direct_effect(spell.effects, spell.effect_apply_aura)?;
+                    // The cost is stated in the spell's own power: mana and energy spend it as
+                    // written, rage is stored tenfold ("150 on the wire is 15 Rage"), and a
+                    // health cost is an explicit unsupported blocker.
+                    let raw_cost = spell.mana_cost_at_level(
+                        caster_level,
+                        if power == benilla_game_core::PowerType::Mana {
+                            benilla_game_core::PLAYER_MAX_MANA
+                        } else {
+                            0
+                        },
+                    );
+                    let cost = benilla_game_core::PowerCost {
+                        kind: power,
+                        amount: if power == benilla_game_core::PowerType::Rage {
+                            raw_cost / 10
+                        } else {
+                            raw_cost
+                        },
+                    };
+                    let periodic = (0..3).find_map(|slot| {
+                        if spell.effects[slot] != SPELL_EFFECT_APPLY_AURA
+                            || spell.effect_apply_aura[slot] != SPELL_AURA_PERIODIC_DAMAGE
+                        {
+                            return None;
                         }
-                        benilla_formats::SPELL_EFFECT_HEAL => {
+                        let (min, max) = spell.base_effect_range(slot)?;
+                        let tick_ms = spell.effect_amplitude[slot];
+                        let duration_ms =
+                            u32::try_from(spells.durations.get(spell.duration_index)?.base_ms)
+                                .ok()?;
+                        (tick_ms > 0 && duration_ms >= tick_ms).then_some(
+                            benilla_game_core::PeriodicDamage {
+                                min: u32::try_from(min).ok()?,
+                                max: u32::try_from(max).ok()?,
+                                tick_ms,
+                                duration_ms,
+                            },
+                        )
+                    });
+                    let effect = match plan.direct {
+                        Some(slot) if spell.effects[slot] == benilla_formats::SPELL_EFFECT_HEAL => {
+                            let (min, max) = spell.base_effect_range(slot)?;
                             benilla_game_core::DirectSpellEffect::Heal {
                                 min: u32::try_from(min).ok()?,
                                 max: u32::try_from(max).ok()?,
                             }
                         }
-                        SPELL_EFFECT_APPLY_AURA => {
-                            // Aura-only spell (buff/debuff): no direct damage, just apply effects.
-                            benilla_game_core::DirectSpellEffect::Aura {
-                                school: 1_u32.checked_shl(spell.school).unwrap_or(1),
-                                periodic: None,
+                        Some(slot) => {
+                            let (min, max) = spell.base_effect_range(slot)?;
+                            let min = u32::try_from(min).ok()?;
+                            let max = u32::try_from(max).ok()?;
+                            let school = 1_u32.checked_shl(spell.school)?;
+                            if plan.has_weapon {
+                                let percent_effect = plan
+                                    .percent
+                                    .filter(|slot| {
+                                        spell.effects[*slot]
+                                            == benilla_formats::SPELL_EFFECT_WEAPON_PERCENT_DAMAGE
+                                    })
+                                    .unwrap_or(slot);
+                                let percent_only = spell.effects[slot]
+                                    == benilla_formats::SPELL_EFFECT_WEAPON_PERCENT_DAMAGE;
+                                let percent =
+                                    u32::try_from(spell.effect_base_points[percent_effect] + 1)
+                                        .ok()?;
+                                let bonus = if percent_only {
+                                    benilla_game_core::WeaponBonus::of_percent(percent)
+                                } else {
+                                    benilla_game_core::WeaponBonus { percent, min, max }
+                                };
+                                benilla_game_core::DirectSpellEffect::WeaponDamage {
+                                    bonus,
+                                    school,
+                                    periodic,
+                                }
+                            } else {
+                                benilla_game_core::DirectSpellEffect::Damage {
+                                    min,
+                                    max,
+                                    school,
+                                    periodic,
+                                }
                             }
                         }
-                        _ => return None,
+                        None => benilla_game_core::DirectSpellEffect::Aura {
+                            school: 1_u32.checked_shl(spell.school).unwrap_or(1),
+                            periodic: None,
+                        },
+                    };
+                    // Rogue mechanics: a finishing move spends the target's points, adding
+                    // `EffectPointsPerComboPoint` each; a builder effect awards one per hit.
+                    let combo = if spell.needs_combo_points() {
+                        let per_point = spell
+                            .effect_points_per_combo_point
+                            .iter()
+                            .fold(0.0_f32, |high, points| high.max(*points))
+                            .round() as u32;
+                        benilla_game_core::ComboEffect::Finisher { per_point }
+                    } else if spell
+                        .effects
+                        .contains(&benilla_formats::SPELL_EFFECT_ADD_COMBO_POINTS)
+                    {
+                        benilla_game_core::ComboEffect::Build
+                    } else {
+                        benilla_game_core::ComboEffect::None
                     };
                     let range = benilla_formats::min_max_range(
                         spell,
@@ -1916,12 +2012,13 @@ fn drive_offline_gameplay(
                         benilla_formats::RangeTargets::default(),
                     );
                     let range_yards = match (effect, range) {
-                        (benilla_game_core::DirectSpellEffect::Heal { .. }, None) => 0.0,
+                        (benilla_game_core::DirectSpellEffect::Heal { .. }, None)
+                        | (benilla_game_core::DirectSpellEffect::Aura { .. }, None) => 0.0,
                         (_, Some((_, max))) => max,
                         _ => return None,
                     };
                     Some((
-                        spell.mana_cost_at_level(caster_level, benilla_game_core::PLAYER_MAX_MANA),
+                        cost,
                         spells.cast_time_ms(
                             spell,
                             caster_level,
@@ -1931,11 +2028,13 @@ fn drive_offline_gameplay(
                         spell.start_recovery_ms,
                         range_yards,
                         effect,
+                        combo,
+                        spell.on_next_swing(),
                     ))
                 })
                 .or_else(|| {
                     (*spell_id == benilla_game_core::FIREBALL_SPELL_ID).then_some((
-                        benilla_game_core::FIREBALL_MANA_COST,
+                        benilla_game_core::PowerCost::mana(benilla_game_core::FIREBALL_MANA_COST),
                         benilla_game_core::FIREBALL_CAST_MS,
                         0,
                         benilla_game_core::FIREBALL_CAST_MS,
@@ -1951,29 +2050,35 @@ fn drive_offline_gameplay(
                                 duration_ms: benilla_game_core::FIREBALL_BURN_MS,
                             }),
                         },
+                        benilla_game_core::ComboEffect::None,
+                        false,
                     ))
                 }),
             _ => None,
         };
         if let Some((
-            mana_cost,
+            cost,
             cast_time_ms,
             spell_cooldown_ms,
             cooldown_ms,
             range_yards,
             effect,
+            combo,
+            on_next_swing,
         )) = cast_data
         {
             let started = start_offline_cast(
                 &mut core.0,
                 &channels,
                 command,
-                mana_cost,
+                cost,
                 cast_time_ms,
                 spell_cooldown_ms,
                 cooldown_ms,
                 range_yards,
                 effect,
+                combo,
+                on_next_swing,
             );
             if started {
                 save_after_command(&core.0, &mut persistence);
@@ -2937,16 +3042,19 @@ fn learn_offline_talent(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn start_offline_cast(
     core: &mut GameCore,
     channels: &OfflineChannels,
     command: crate::net::ClientCommand,
-    mana_cost: u32,
+    cost: benilla_game_core::PowerCost,
     cast_time_ms: u32,
     spell_cooldown_ms: u32,
     cooldown_ms: u32,
     range_yards: f32,
     effect: benilla_game_core::DirectSpellEffect,
+    combo: benilla_game_core::ComboEffect,
+    on_next_swing: bool,
 ) -> bool {
     let crate::net::ClientCommand::CastSpell { spell_id, target } = command else {
         return false;
@@ -2972,65 +3080,92 @@ fn start_offline_cast(
                 benilla_game_core::SpellTarget::Hostile(spawn_id),
             )
         }
-        benilla_game_core::DirectSpellEffect::Heal { .. } => {
-            if target.is_some_and(|target| target != player_guid) {
-                return false;
+        benilla_game_core::DirectSpellEffect::Heal { .. } => match target {
+            Some(t) if t != player_guid => {
+                // The heal lands on a friendly unit sharing the imported spawn identity.
+                let Some(ally) = core
+                    .allies()
+                    .iter()
+                    .find(|ally| imported_guid(ally.creature_entry, ally.spawn_id) == t)
+                else {
+                    return false;
+                };
+                (Some(t), benilla_game_core::SpellTarget::Ally(ally.spawn_id))
             }
-            (
+            _ => (
                 Some(player_guid),
                 benilla_game_core::SpellTarget::SelfCharacter,
-            )
-        }
+            ),
+        },
         benilla_game_core::DirectSpellEffect::Aura { .. } => {
-            // Aura-only spells target self or the current target.
+            // Aura-only spells target self, a friendly unit, or the current hostile target.
             match target {
-                Some(t) if t != player_guid => {
-                    let Some(spawn_id) = core
-                        .hostiles()
+                Some(t) if t == player_guid => (
+                    Some(player_guid),
+                    benilla_game_core::SpellTarget::SelfCharacter,
+                ),
+                Some(t) => {
+                    if let Some(ally) = core
+                        .allies()
                         .iter()
-                        .find(|hostile| combat_target_guid(hostile) == Some(t))
-                        .map(|hostile| hostile.spawn_id)
-                    else {
-                        return false;
-                    };
-                    (Some(t), benilla_game_core::SpellTarget::Hostile(spawn_id))
+                        .find(|ally| imported_guid(ally.creature_entry, ally.spawn_id) == t)
+                    {
+                        (Some(t), benilla_game_core::SpellTarget::Ally(ally.spawn_id))
+                    } else {
+                        let Some(spawn_id) = core
+                            .hostiles()
+                            .iter()
+                            .find(|hostile| combat_target_guid(hostile) == Some(t))
+                            .map(|hostile| hostile.spawn_id)
+                        else {
+                            return false;
+                        };
+                        (Some(t), benilla_game_core::SpellTarget::Hostile(spawn_id))
+                    }
                 }
-                _ => (
+                None => (
                     Some(player_guid),
                     benilla_game_core::SpellTarget::SelfCharacter,
                 ),
             }
         }
     };
-    match core.begin_direct_spell(
+    match core.begin_cast(benilla_game_core::CastRequest {
         spell_id,
-        cast_target,
-        mana_cost,
+        target: cast_target,
+        cost,
         cast_time_ms,
         spell_cooldown_ms,
         cooldown_ms,
         range_yards,
         effect,
-    ) {
-        Ok(()) => {
-            info!("offline cast: spell {spell_id} -> {cast_time_ms}ms (mana {mana_cost})");
-            send_gameplay_events(
-                channels,
-                [
-                    SessionEvent::SpellStart {
-                        caster: player_guid,
-                        spell_id,
-                        cast_flags: 0x2,
-                        cast_time_ms,
-                        target: presentation_target,
-                        ammo_display_id: None,
-                    },
-                    SessionEvent::ObjectValues {
-                        guid: player_guid,
-                        fields: ObjectFields::from_pairs(&[(23, core.active_mana())]),
-                    },
-                ],
+        combo,
+        on_next_swing,
+    }) {
+        Ok(benilla_game_core::CastOutcome::QueuedMelee) => {
+            info!(
+                "offline cast: spell {spell_id} queued on the next swing ({:?} cost {}/{})",
+                cost.kind,
+                cost.amount,
+                core.active_power(cost.kind)
             );
+            true
+        }
+        Ok(benilla_game_core::CastOutcome::Cast) => {
+            info!(
+                "offline cast: spell {spell_id} -> {cast_time_ms}ms ({:?} cost {})",
+                cost.kind, cost.amount
+            );
+            let mut events = vec![SessionEvent::SpellStart {
+                caster: player_guid,
+                spell_id,
+                cast_flags: 0x2,
+                cast_time_ms,
+                target: presentation_target,
+                ammo_display_id: None,
+            }];
+            events.extend(player_power_events(player_guid, core));
+            send_gameplay_events(channels, events);
             true
         }
         Err(error) => {
@@ -3038,6 +3173,20 @@ fn start_offline_cast(
             false
         }
     }
+}
+
+/// The player's four power pools as descriptor writes: mana 23, rage 24 (tenths in the
+/// descriptor), focus 25, energy 26.
+fn player_power_events(guid: u64, core: &GameCore) -> [SessionEvent; 1] {
+    [SessionEvent::ObjectValues {
+        guid,
+        fields: ObjectFields::from_pairs(&[
+            (23, core.active_mana()),
+            (24, core.active_rage().saturating_mul(10)),
+            (25, core.active_focus()),
+            (26, core.active_energy()),
+        ]),
+    }]
 }
 
 fn start_offline_auto_attack(core: &mut GameCore, channels: &OfflineChannels, target: u64) {
@@ -3313,6 +3462,56 @@ fn advance_offline_combat_with_talents(
                     ],
                 );
             }
+            CombatUpdate::MeleeSpellImpact {
+                spell_id,
+                school,
+                impact,
+            } => {
+                // A queued melee ability (Heroic Strike) taking over a swing: the spell's own
+                // go and damage log, not the white swing's.
+                changed = true;
+                let Some(id) = core.active() else {
+                    continue;
+                };
+                let Some(hostile) = core.hostile(impact.spawn_id) else {
+                    continue;
+                };
+                let Some(guid) = combat_target_guid(&hostile) else {
+                    continue;
+                };
+                let mut events = vec![
+                    SessionEvent::SpellGo {
+                        caster: id.presentation_guid(),
+                        spell_id,
+                        cast_flags: 0x100,
+                        hits: vec![guid],
+                        misses: Vec::new(),
+                        target: Some(guid),
+                        go_target: None,
+                        dest: None,
+                        ammo_display_id: None,
+                        item_caster: None,
+                    },
+                    SessionEvent::SpellDamageLog(benilla_protocol::messages::SpellDamageLog {
+                        target: guid,
+                        attacker: id.presentation_guid(),
+                        spell_id,
+                        damage: impact.damage,
+                        school: u8::try_from(school).unwrap_or(0),
+                        absorb: 0,
+                        resist: 0,
+                        periodic: false,
+                        blocked: 0,
+                        hit_info: 0,
+                    }),
+                ];
+                events.extend(hostile_spell_state_events(
+                    guid,
+                    &hostile,
+                    impact.killed.then_some(spell_id),
+                ));
+                send_gameplay_events(channels, events);
+            }
             CombatUpdate::MeleeImpact(impact) => {
                 let Some(id) = core.active() else {
                     continue;
@@ -3465,17 +3664,40 @@ fn advance_offline_combat_with_talents(
                     send_gameplay_events(channels, [event]);
                 }
             }
+            CombatUpdate::AllyHeal {
+                spawn_id,
+                remaining_health,
+                ..
+            } => {
+                changed = true;
+                let Some(ally) = core.ally(spawn_id) else {
+                    continue;
+                };
+                let guid = imported_guid(ally.creature_entry, ally.spawn_id);
+                send_gameplay_events(
+                    channels,
+                    [SessionEvent::ObjectValues {
+                        guid,
+                        fields: ObjectFields::from_pairs(&[(22, remaining_health)]),
+                    }],
+                );
+            }
+            CombatUpdate::AllyAura {
+                spawn_id,
+                applied,
+                remaining_ms,
+                ..
+            } => {
+                // Friendly buff/debuff state lives in the simulation; the NPC aura descriptor
+                // block is not written yet, so only the simulation changes here.
+                changed = true;
+                let _ = (spawn_id, applied, remaining_ms);
+            }
         }
     }
-    if let Some(mana) = core.advance_mana_regen(elapsed_ms) {
+    if core.advance_power_regen(elapsed_ms) {
         if let Some(id) = core.active() {
-            send_gameplay_events(
-                channels,
-                [SessionEvent::ObjectValues {
-                    guid: id.presentation_guid(),
-                    fields: ObjectFields::from_pairs(&[(23, mana)]),
-                }],
-            );
+            send_gameplay_events(channels, player_power_events(id.presentation_guid(), core));
         }
     }
     changed
@@ -3897,27 +4119,228 @@ mod tests {
     use super::*;
     use bevy::ecs::system::RunSystemOnce;
 
+    /// Swing the project baseline in tests that assert swing numbers: the main hand goes to the
+    /// backpack, so the assertion is not written against one race's converted starter weapon
+    /// (mirrors `benilla-game-core`'s test helper).
+    fn disarm(core: &mut GameCore) {
+        let _ = core.unequip_to_backpack(15);
+    }
+
     #[test]
     fn cast_resolver_rejects_unsupported_secondary_effects() {
         assert_eq!(
-            supported_direct_effect_slot([2, 6, 0], [0, 3, 0]),
-            Some(0),
+            plan_direct_effect([2, 6, 0], [0, 3, 0]),
+            Some(EffectPlan {
+                direct: Some(0),
+                percent: None,
+                has_weapon: false,
+            }),
             "Fireball's direct and periodic damage are both supported"
         );
         assert_eq!(
-            supported_direct_effect_slot([6, 2, 0], [33, 0, 0]),
-            Some(1),
+            plan_direct_effect([6, 2, 0], [33, 0, 0]),
+            Some(EffectPlan {
+                direct: Some(1),
+                percent: None,
+                has_weapon: false,
+            }),
             "Frostbolt's slow aura is supported as a secondary effect"
         );
         assert_eq!(
-            supported_direct_effect_slot([2, 6, 0], [0, 33, 0]),
-            Some(0),
+            plan_direct_effect([2, 6, 0], [0, 33, 0]),
+            Some(EffectPlan {
+                direct: Some(0),
+                percent: None,
+                has_weapon: false,
+            }),
             "damage with a slow aura is supported"
         );
         assert_eq!(
-            supported_direct_effect_slot([2, 10, 0], [0, 0, 0]),
+            plan_direct_effect([2, 10, 0], [0, 0, 0]),
             None,
             "a cast with multiple direct effects is not modeled"
+        );
+        assert_eq!(
+            plan_direct_effect([121, 31, 80], [0, 0, 0]),
+            Some(EffectPlan {
+                direct: Some(0),
+                percent: Some(1),
+                has_weapon: true,
+            }),
+            "Backstab's percent arm merges into its flat weapon arm, beside the builder"
+        );
+        assert_eq!(
+            plan_direct_effect([17, 0, 0], [0, 0, 0]),
+            Some(EffectPlan {
+                direct: Some(0),
+                percent: None,
+                has_weapon: true,
+            }),
+            "Heroic Strike's weapon-damage-noschool arm resolves"
+        );
+        assert_eq!(
+            plan_direct_effect([62, 6, 0], [0, 0, 0]),
+            None,
+            "mana burn (62) is not a weapon arm and nothing models it yet"
+        );
+        assert_eq!(
+            plan_direct_effect([64, 0, 0], [0, 0, 0]),
+            None,
+            "a row of pure secondary mechanics resolves to nothing the simulation can apply"
+        );
+    }
+
+    /// Phase 7's coverage audit over the converted starter set: every castable starter spell of
+    /// every race and class resolves through a named handler. Passive rows never cast, the Attack
+    /// pseudo-spell routes to auto-attack, and learn wrappers are the trainer system's own.
+    #[test]
+    fn every_castable_starter_spell_resolves_through_a_named_handler() {
+        let data = benilla_formats::wow_data_or_skip!();
+        let mut chain = benilla_formats::open_chain(&data).expect("open chain");
+        let catalog = benilla_formats::load_spell_catalog(&mut chain).expect("spell catalog");
+        let mut blockers = Vec::new();
+        let mut resolved = 0usize;
+        for race in 1..=11u8 {
+            for class in 1..=11u8 {
+                for spell_id in benilla_game_core::progression::starter_spell_ids(race, class) {
+                    if spell_id == benilla_game_core::ATTACK_SPELL_ID {
+                        continue;
+                    }
+                    let Some(spell) = catalog.get(spell_id) else {
+                        blockers.push((race, class, spell_id, String::from("missing row")));
+                        continue;
+                    };
+                    if spell.passive
+                        || spell.cast_ui != 0
+                        || spell
+                            .effects
+                            .contains(&benilla_formats::SPELL_EFFECT_LEARN_SPELL)
+                    {
+                        continue;
+                    }
+                    if plan_direct_effect(spell.effects, spell.effect_apply_aura).is_some() {
+                        resolved += 1;
+                    } else {
+                        blockers.push((race, class, spell_id, spell.name.clone()));
+                    }
+                }
+            }
+        }
+        assert!(
+            resolved > 50,
+            "castable starter spells resolved through named handlers: {resolved}"
+        );
+        assert!(
+            blockers.is_empty(),
+            "castable starter spells without a handler (a spellbook entry is not proof its \
+             effect works): {blockers:?}"
+        );
+    }
+
+    /// Acceptance: a friendly spell resolves on self and on an ally through the adapter's target
+    /// mapping, instead of vanishing: the self heal reports on the player and a friendly buff
+    /// lands in the ally's simulation state.
+    #[test]
+    fn self_and_ally_casts_map_their_targets_through_the_adapter() {
+        let id = CharacterId::parse("00000000000000000000000000000005").unwrap();
+        let appearance = Appearance {
+            race: 10,
+            class: 8,
+            gender: 0,
+            skin: 0,
+            face: 0,
+            hair_style: 0,
+            hair_color: 0,
+            facial_hair: 0,
+        };
+        let mut core = GameCore::default();
+        core.create_character(
+            id.clone(),
+            "Solaen",
+            appearance,
+            starting_position(10).unwrap(),
+        )
+        .unwrap();
+        core.enter_world().unwrap();
+        let player_guid = id.presentation_guid();
+        let ally = core.allies().first().expect("converted friendly NPC");
+        let ally_guid = imported_guid(ally.creature_entry, ally.spawn_id);
+        let ally_spawn = ally.spawn_id;
+
+        let (_pick_tx, picks) = crossbeam_channel::unbounded();
+        let (events, received) = crossbeam_channel::unbounded();
+        let (_command_tx, commands) = crossbeam_channel::unbounded();
+        let channels = OfflineChannels {
+            picks,
+            events,
+            commands,
+        };
+
+        // The self-cast path: the spell aims at the player and its heal resolves on the player.
+        assert!(start_offline_cast(
+            &mut core,
+            &channels,
+            crate::net::ClientCommand::CastSpell {
+                spell_id: benilla_game_core::FIREBALL_SPELL_ID,
+                target: Some(player_guid),
+            },
+            benilla_game_core::PowerCost::mana(10),
+            0,
+            0,
+            0,
+            0.0,
+            benilla_game_core::DirectSpellEffect::Heal { min: 20, max: 20 },
+            benilla_game_core::ComboEffect::None,
+            false,
+        ));
+        assert!(matches!(
+            received.try_recv().unwrap(),
+            SessionEvent::SpellStart { target: Some(guid), .. } if guid == player_guid
+        ));
+        advance_offline_combat(&mut core, &channels, 1);
+        let heal_events: Vec<_> = received.try_iter().collect();
+        assert!(
+            heal_events.iter().any(|event| matches!(
+                event,
+                SessionEvent::SpellHealLog(log)
+                    if log.target == player_guid && log.healer == player_guid
+            )),
+            "the self heal resolves on the player: {heal_events:?}"
+        );
+
+        // The ally path: a friendly unit's guid maps to its simulation spawn, and the buff lands
+        // in the ally's state instead of being swallowed.
+        assert!(start_offline_cast(
+            &mut core,
+            &channels,
+            crate::net::ClientCommand::CastSpell {
+                spell_id: benilla_game_core::FIREBALL_SPELL_ID,
+                target: Some(ally_guid),
+            },
+            benilla_game_core::PowerCost::mana(5),
+            0,
+            0,
+            0,
+            30.0,
+            benilla_game_core::DirectSpellEffect::Aura {
+                school: 1,
+                periodic: None,
+            },
+            benilla_game_core::ComboEffect::None,
+            false,
+        ));
+        assert!(matches!(
+            received.try_recv().unwrap(),
+            SessionEvent::SpellStart { target: Some(guid), .. } if guid == ally_guid
+        ));
+        advance_offline_combat(&mut core, &channels, 1);
+        assert!(
+            core.ally(ally_spawn)
+                .expect("the ally is in the simulation")
+                .auras
+                .iter()
+                .any(|aura| aura.spell_id == benilla_game_core::FIREBALL_SPELL_ID),
+            "the friendly buff lands on the ally"
         );
     }
 
@@ -4519,11 +4942,14 @@ mod tests {
                 advance_offline_combat(&mut core, &channels, benilla_game_core::HOSTILE_RESPAWN_MS);
             }
             core.start_auto_attack(mana_wyrm.spawn_id).unwrap();
-            assert!(advance_offline_combat(
-                &mut core,
-                &channels,
-                benilla_game_core::MELEE_SWING_MS * 12,
-            ));
+            // The starter weapon's converted swing numbers decide how long the kill takes, so
+            // step one swing interval at a time until the killing blow lands.
+            let killed = (0..64).any(|_| {
+                advance_offline_combat(&mut core, &channels, benilla_game_core::MELEE_SWING_MS);
+                core.hostile(mana_wyrm.spawn_id)
+                    .is_none_or(|hostile| hostile.health == 0)
+            });
+            assert!(killed, "the Mana Wyrm dies under auto-attack");
             let combat_events: Vec<_> = received.try_iter().collect();
             assert!(combat_events.iter().any(|event| matches!(
                 event,
@@ -4819,6 +5245,7 @@ mod tests {
         )
         .unwrap();
         core.enter_world().unwrap();
+        disarm(&mut core);
 
         let content = benilla_game_core::content::starting_zone_content();
         let nearby: Vec<_> = content
@@ -4899,7 +5326,7 @@ mod tests {
                 spell_id: benilla_game_core::FIREBALL_SPELL_ID,
                 target: Some(friendly_guid),
             },
-            benilla_game_core::FIREBALL_MANA_COST,
+            benilla_game_core::PowerCost::mana(benilla_game_core::FIREBALL_MANA_COST),
             benilla_game_core::FIREBALL_CAST_MS,
             0,
             benilla_game_core::FIREBALL_CAST_MS,
@@ -4910,6 +5337,8 @@ mod tests {
                 school: 4,
                 periodic: None,
             },
+            benilla_game_core::ComboEffect::None,
+            false,
         );
         assert!(
             received.try_iter().next().is_none(),
@@ -4981,7 +5410,7 @@ mod tests {
                     spell_id: benilla_game_core::FIREBALL_SPELL_ID,
                     target: Some(hostile_guid),
                 },
-                benilla_game_core::FIREBALL_MANA_COST,
+                benilla_game_core::PowerCost::mana(benilla_game_core::FIREBALL_MANA_COST),
                 benilla_game_core::FIREBALL_CAST_MS,
                 0,
                 benilla_game_core::FIREBALL_CAST_MS,
@@ -4992,6 +5421,8 @@ mod tests {
                     school: 4,
                     periodic: None,
                 },
+                benilla_game_core::ComboEffect::None,
+                false,
             );
             assert!(matches!(
                 received.try_recv().unwrap(),
@@ -5052,6 +5483,7 @@ mod tests {
         )
         .unwrap();
         core.enter_world().unwrap();
+        disarm(&mut core);
         let wyrm = core
             .hostiles()
             .iter()
@@ -5315,7 +5747,7 @@ mod tests {
                     spell_id: benilla_game_core::FIREBALL_SPELL_ID,
                     target: Some(hostile_guid),
                 },
-                30,
+                benilla_game_core::PowerCost::mana(30),
                 benilla_game_core::FIREBALL_CAST_MS,
                 0,
                 benilla_game_core::FIREBALL_CAST_MS,
@@ -5326,6 +5758,8 @@ mod tests {
                     school: 4,
                     periodic: None,
                 },
+                benilla_game_core::ComboEffect::None,
+                false,
             );
             assert!(matches!(
                 received.try_recv().unwrap(),
@@ -5359,10 +5793,14 @@ mod tests {
                     if *guid == hostile_guid && fields.unit_health() == Some(expected_health)
             )));
             if expected_health == 0 {
+                // An ordinary death carries health zero; the dead dynflag stays reserved for
+                // feign death (`UNIT_DYNFLAG_DEAD`), as the descriptor writers record it.
                 assert!(impact_events.iter().any(|event| matches!(
                     event,
                     SessionEvent::ObjectValues { guid, fields }
-                        if *guid == hostile_guid && fields.unit_dynamic_flags() == 0x20
+                        if *guid == hostile_guid
+                            && fields.unit_health() == Some(0)
+                            && !fields.unit_dynflag_dead()
                 )));
             }
         }
@@ -5408,6 +5846,7 @@ mod tests {
         )
         .unwrap();
         core.enter_world().unwrap();
+        disarm(&mut core);
         let start = core.snapshot(&id).unwrap().position;
         core.update_active(
             WorldPosition {

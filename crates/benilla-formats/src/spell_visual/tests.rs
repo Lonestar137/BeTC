@@ -139,7 +139,6 @@ fn parses_stage_kits_and_zero_means_no_kit_at_that_stage() {
             instant_area_kit: 23,
             impact_area_kit: 24,
             persistent_area_kit: 25,
-            ..Default::default()
         }
     );
     assert_eq!(
@@ -272,7 +271,7 @@ fn real_spell_visual_chain_resolves_fireball() {
     let data = crate::wow_data_or_skip!();
     let mut chain = crate::open_chain(&data).expect("open chain");
     let cat = load_spell_visual_catalog(&mut chain).expect("load SpellVisual/SpellVisualKit");
-    assert!(cat.len() > 0, "the build-8606 visual table loads");
+    assert!(!cat.is_empty(), "the build-8606 visual table loads");
     assert!(cat.kit_len() > 0, "the build-8606 visual-kit table loads");
     let chain_error = cat
         .chain_effect_error()

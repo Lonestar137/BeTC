@@ -12,7 +12,8 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 const PROFILE_VERSION: u32 = 1;
-const SNAPSHOT_VERSION: u32 = 8;
+const SNAPSHOT_VERSION: u32 = 9;
+const POOLS_SNAPSHOT_VERSION: u32 = 8;
 const PREVIOUS_SNAPSHOT_VERSION: u32 = 6;
 const BODY_PROPORTIONS_SNAPSHOT_VERSION: u32 = 7;
 const EQUIPMENT_SNAPSHOT_VERSION: u32 = 5;
@@ -49,6 +50,20 @@ pub const CREATURE_SWING_MS: u32 = 2_000;
 pub const CREATURE_DAMAGE: u32 = 5;
 pub const PLAYER_MAX_HEALTH: u32 = 100;
 pub const STARTER_MANA: u32 = 100;
+/// The rage and energy pools (TBC caps both at 100 points). Rage is modeled in whole points;
+/// the client descriptor stores tenths and divides on read.
+pub const PLAYER_MAX_RAGE: u32 = 100;
+pub const PLAYER_MAX_ENERGY: u32 = 100;
+/// The focus pool hunter pets run on; modeled with summons.
+pub const PLAYER_MAX_FOCUS: u32 = 100;
+/// Energy regen: 10 points every 2,000 simulation ms, uninterrupted by casting.
+pub const ENERGY_REGEN_TICK_MS: u32 = 2_000;
+pub const ENERGY_REGEN_PER_TICK: u32 = 10;
+/// Out-of-combat rage decay: 1 point every 2,000 simulation ms, none during a fight.
+pub const RAGE_DECAY_TICK_MS: u32 = 2_000;
+pub const RAGE_DECAY_PER_TICK: u32 = 1;
+/// Combo points cap (TBC builders add one per hit to five).
+pub const MAX_COMBO_POINTS: u8 = 5;
 /// The mana pool the starter Mage regens toward, out of combat; the snapshot models no gear or
 /// intellect, so a flat pool stands in for the real level-scaled base mana.
 pub const PLAYER_MAX_MANA: u32 = 100;
@@ -56,6 +71,9 @@ pub const PLAYER_MAX_MANA: u32 = 100;
 pub const MANA_REGEN_TICK_MS: u32 = 1_000;
 pub const MANA_REGEN_PER_TICK: u32 = 5;
 pub const HOSTILE_MAX_HEALTH: u32 = 60;
+/// A friendly unit's health pool: project-sized like the player's, since converted creature
+/// templates carry no health in this slice.
+pub const FRIENDLY_MAX_HEALTH: u32 = 100;
 pub const HOSTILE_RESPAWN_MS: u32 = 30_000;
 pub const QUEST_XP_TO_NEXT_LEVEL: u32 = 400;
 
@@ -146,7 +164,7 @@ pub struct CharacterAura {
 
 /// Optional, cosmetic player-model proportions. Values are signed percentage points from the
 /// stock shape; hard limits keep the M2 silhouette within an authored-looking range.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct BodyProportions {
     pub enabled: bool,
@@ -160,21 +178,6 @@ pub struct BodyProportions {
     pub seat: i8,
 }
 
-impl Default for BodyProportions {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            height: 0,
-            shoulders: 0,
-            arms: 0,
-            waist: 0,
-            hips: 0,
-            bust: 0,
-            seat: 0,
-        }
-    }
-}
-
 impl BodyProportions {
     pub const HEIGHT_RANGE: std::ops::RangeInclusive<i8> = -10..=35;
     pub const SHAPE_RANGE: std::ops::RangeInclusive<i8> = -20..=20;
@@ -182,21 +185,17 @@ impl BodyProportions {
 
     pub fn is_valid(self) -> bool {
         Self::HEIGHT_RANGE.contains(&self.height)
-            && [
-                self.shoulders,
-                self.arms,
-                self.waist,
-                self.hips,
-                self.bust,
-            ]
-            .into_iter()
-            .all(|value| Self::SHAPE_RANGE.contains(&value))
+            && [self.shoulders, self.arms, self.waist, self.hips, self.bust]
+                .into_iter()
+                .all(|value| Self::SHAPE_RANGE.contains(&value))
             && Self::SEAT_RANGE.contains(&self.seat)
     }
 
     pub fn height_scale(self) -> f32 {
-        1.0 + f32::from(self.height.clamp(*Self::HEIGHT_RANGE.start(), *Self::HEIGHT_RANGE.end()))
-            / 100.0
+        1.0 + f32::from(
+            self.height
+                .clamp(*Self::HEIGHT_RANGE.start(), *Self::HEIGHT_RANGE.end()),
+        ) / 100.0
     }
 }
 
@@ -228,6 +227,27 @@ pub struct HostileState {
     pub burn_level: u8,
 }
 
+/// A friendly unit the player may heal or buff: a converted friendly NPC or a summon. Friendly
+/// creatures take no damage in this slice; a heal or aura lands on them and its duration runs
+/// while the character is played. Its position is a float triple, so it compares with `PartialEq`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AllyState {
+    pub spawn_id: u32,
+    pub creature_entry: u32,
+    pub position: WorldPosition,
+    pub health: u32,
+    pub max_health: u32,
+    pub auras: Vec<AllyAura>,
+}
+
+/// One active friendly spell effect on an ally: the spell and its remaining duration (`None` is
+/// permanent).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AllyAura {
+    pub spell_id: u32,
+    pub remaining_ms: Option<u32>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CastImpact {
     pub spawn_id: u32,
@@ -239,7 +259,133 @@ pub struct CastImpact {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SpellTarget {
     Hostile(u32),
+    /// A friendly unit by its spawn id ([`AllyState::spawn_id`]).
+    Ally(u32),
     SelfCharacter,
+}
+
+/// The power pool a spell spends, the build-8606 `Spell.dbc` `powerType` column resolved.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PowerType {
+    Mana,
+    Rage,
+    Energy,
+    Focus,
+}
+
+impl PowerType {
+    /// `powerType`: 0 mana, 1 rage, 2 focus, 3 energy. Anything else is a health cost, which no
+    /// player-acquirable spell in this slice spends.
+    pub fn from_spell_power(power: u32) -> Option<Self> {
+        match power {
+            0 => Some(Self::Mana),
+            1 => Some(Self::Rage),
+            2 => Some(Self::Focus),
+            3 => Some(Self::Energy),
+            _ => None,
+        }
+    }
+
+    /// The pool a class runs on unshifted: warriors rage, rogues energy, every other class mana.
+    /// Druid forms shift the pool; form-driven pools are not modeled yet.
+    pub fn of_class(class: u8) -> Self {
+        match class {
+            1 => Self::Rage,
+            4 => Self::Energy,
+            _ => Self::Mana,
+        }
+    }
+}
+
+/// A resolved spell cost in its own power's units (rage costs already divided by ten, as the
+/// client displays them).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PowerCost {
+    pub kind: PowerType,
+    pub amount: u32,
+}
+
+impl PowerCost {
+    pub fn mana(amount: u32) -> Self {
+        Self {
+            kind: PowerType::Mana,
+            amount,
+        }
+    }
+}
+
+/// A weapon-damage ability over the swing: the weapon roll scaled by `percent` (100 is a plain
+/// weapon swing; `SPELL_EFFECT_WEAPON_PERCENT_DAMAGE` carries the percent) plus a flat roll
+/// (`EffectBasePoints + 1`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WeaponBonus {
+    pub percent: u32,
+    pub min: u32,
+    pub max: u32,
+}
+
+impl WeaponBonus {
+    pub fn flat(min: u32, max: u32) -> Self {
+        Self {
+            percent: 100,
+            min,
+            max,
+        }
+    }
+
+    pub fn of_percent(percent: u32) -> Self {
+        Self {
+            percent,
+            min: 0,
+            max: 0,
+        }
+    }
+}
+
+/// Combo-point behavior of a rogue builder or finisher.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ComboEffect {
+    /// The ability neither builds nor spends points.
+    #[default]
+    None,
+    /// Adds one combo point on the struck target, to [`MAX_COMBO_POINTS`].
+    Build,
+    /// A finisher (Eviscerate): spends every point on the target, adding `per_point` damage per
+    /// spent point (`EffectPointsPerComboPoint`).
+    Finisher { per_point: u32 },
+}
+
+/// The equipped weapon's converted swing numbers (`item_template` damage and speed). An empty
+/// hand or a statless item swings with [`MELEE_DAMAGE`] every [`MELEE_SWING_MS`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WeaponProfile {
+    pub min: u32,
+    pub max: u32,
+    pub swing_ms: u32,
+}
+
+/// A resolved cast request: client spell numbers already normalized by the adapter. Its range is
+/// a float, so it compares with `PartialEq` only.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CastRequest {
+    pub spell_id: u32,
+    pub target: SpellTarget,
+    pub cost: PowerCost,
+    pub cast_time_ms: u32,
+    pub spell_cooldown_ms: u32,
+    pub cooldown_ms: u32,
+    pub range_yards: f32,
+    pub effect: DirectSpellEffect,
+    pub combo: ComboEffect,
+    /// On-next-swing melee abilities (Heroic Strike) queue on the swing instead of resolving now.
+    pub on_next_swing: bool,
+}
+
+/// Whether a resolved cast armed a timed cast or queued a melee ability for the next swing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CastOutcome {
+    Cast,
+    QueuedMelee,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -250,11 +396,14 @@ pub enum DirectSpellEffect {
         school: u32,
         periodic: Option<PeriodicDamage>,
     },
-    Heal { min: u32, max: u32 },
-    /// Weapon-damage abilities: deal weapon damage plus a flat bonus (Heroic Strike, Sinister Strike).
-    WeaponDamage {
+    Heal {
         min: u32,
         max: u32,
+    },
+    /// Weapon-damage abilities: the swing's weapon roll plus a [`WeaponBonus`] (Heroic Strike,
+    /// Sinister Strike). Unarmed swings take the project baseline instead of a weapon roll.
+    WeaponDamage {
+        bonus: WeaponBonus,
         school: u32,
         periodic: Option<PeriodicDamage>,
     },
@@ -312,6 +461,38 @@ struct PendingPeriodicDamage {
     duration_ms: u32,
 }
 
+/// An on-next-swing melee ability (Heroic Strike) waiting to take over one swing's damage.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct QueuedMelee {
+    spell_id: u32,
+    damage: u32,
+    school: u32,
+    combo: ComboEffect,
+    periodic: Option<PendingPeriodicDamage>,
+}
+
+/// The resolved damage shape of a cast, before its deterministic roll.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DamageShape {
+    /// Aura-only: no direct amount.
+    None,
+    /// A flat roll: once, or once per combo point for a finisher.
+    Flat { min: u32, max: u32 },
+    /// The weapon swing plus a [`WeaponBonus`].
+    Weapon { bonus: WeaponBonus },
+}
+
+impl DamageShape {
+    /// The roll bounds a bad request is refused on; a zero-width flat bonus rolls nothing.
+    fn bounds(self) -> Option<(u32, u32)> {
+        match self {
+            Self::None => None,
+            Self::Flat { min, max } => Some((min, max)),
+            Self::Weapon { bonus } => Some((bonus.min, bonus.max)),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CombatUpdate {
     Impact(CastImpact),
@@ -331,6 +512,12 @@ pub enum CombatUpdate {
         impact: CastImpact,
     },
     MeleeImpact(CastImpact),
+    /// A queued melee ability (Heroic Strike) taking over one swing.
+    MeleeSpellImpact {
+        spell_id: u32,
+        school: u32,
+        impact: CastImpact,
+    },
     /// A Fireball burn tick (periodic damage) on a living hostile.
     DotImpact(CastImpact),
     Experience {
@@ -342,9 +529,28 @@ pub enum CombatUpdate {
         health_gained: u32,
         mana_gained: u32,
     },
-    LootReady { spawn_id: u32, has_loot: bool },
+    LootReady {
+        spawn_id: u32,
+        has_loot: bool,
+    },
     QuestObjective(quest::QuestObjectiveUpdate),
-    Respawned { spawn_id: u32 },
+    Respawned {
+        spawn_id: u32,
+    },
+    /// A heal landed on a friendly unit.
+    AllyHeal {
+        spell_id: u32,
+        spawn_id: u32,
+        amount: u32,
+        remaining_health: u32,
+    },
+    /// A friendly spell effect (buff/debuff) applied to, or expired on, a friendly unit.
+    AllyAura {
+        spell_id: u32,
+        spawn_id: u32,
+        remaining_ms: Option<u32>,
+        applied: bool,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -405,6 +611,14 @@ pub struct CharacterSnapshot {
     pub quest_journal: quest::QuestJournal,
     pub health: u32,
     pub mana: u32,
+    /// Rage, energy and focus pools (schema 9). Rage is whole points; the presentation adapter
+    /// writes it to the descriptor in tenths. Only the class's own pool is ever nonzero.
+    #[serde(default)]
+    pub rage: u32,
+    #[serde(default)]
+    pub energy: u32,
+    #[serde(default)]
+    pub focus: u32,
     pub auras: Vec<CharacterAura>,
     /// Deterministic combat roll state, preserved across logout and process restart.
     #[serde(default)]
@@ -519,6 +733,7 @@ pub enum CoreError {
     CastInProgress,
     AbilityOnCooldown,
     InsufficientPower,
+    NoComboPoints,
     CharacterDead,
     CharacterAlive,
     InvalidAura,
@@ -546,7 +761,8 @@ impl fmt::Display for CoreError {
             Self::OutOfRange => "the target is out of range",
             Self::CastInProgress => "another ability is already being cast",
             Self::AbilityOnCooldown => "the ability is on cooldown",
-            Self::InsufficientPower => "not enough mana",
+            Self::InsufficientPower => "not enough power for the spell's cost",
+            Self::NoComboPoints => "the finisher needs a combo point on the target",
             Self::CharacterDead => "a dead character cannot start combat",
             Self::CharacterAlive => "the active character is not dead",
             Self::InvalidAura => "aura slot or aura state is invalid",
@@ -602,11 +818,13 @@ pub struct GameCore {
     active: Option<CharacterId>,
     minute_remainder_ms: u64,
     hostiles: Vec<HostileState>,
+    allies: Vec<AllyState>,
     open_loot_spawn_id: Option<u32>,
     cast_remaining_ms: u32,
     cooldown_remaining_ms: u32,
     spell_cooldowns: BTreeMap<u32, u32>,
     cast_target_spawn_id: Option<u32>,
+    cast_ally_spawn_id: Option<u32>,
     cast_damage: u32,
     cast_spell_id: u32,
     cast_is_heal: bool,
@@ -616,7 +834,16 @@ pub struct GameCore {
     melee_remaining_ms: u32,
     active_mana: u32,
     active_health: u32,
+    active_rage: u32,
+    active_energy: u32,
+    active_focus: u32,
     mana_regen_remainder_ms: u32,
+    energy_regen_remainder_ms: u32,
+    rage_decay_remainder_ms: u32,
+    queued_melee: Option<QueuedMelee>,
+    combo_points: u8,
+    combo_target_spawn_id: Option<u32>,
+    cast_combo: ComboEffect,
 }
 
 impl Default for Profile {
@@ -743,7 +970,11 @@ impl GameCore {
             .find(|slot| !snapshot.equipment.iter().any(|worn| worn.slot == *slot))
             .or_else(|| slots.first().copied())
             .ok_or(CoreError::ItemNotEquippable)?;
-        move_item_in(snapshot, ItemSlot::Backpack(backpack_slot), ItemSlot::Equipment(target))
+        move_item_in(
+            snapshot,
+            ItemSlot::Backpack(backpack_slot),
+            ItemSlot::Equipment(target),
+        )
     }
 
     /// Unequip `equip_slot` into the first free backpack slot.
@@ -753,7 +984,11 @@ impl GameCore {
             .snapshots
             .get_mut(&id)
             .ok_or(CoreError::NoCharacterSelected)?;
-        if !snapshot.equipment.iter().any(|item| item.slot == equip_slot) {
+        if !snapshot
+            .equipment
+            .iter()
+            .any(|item| item.slot == equip_slot)
+        {
             return Err(CoreError::UnknownItem);
         }
         let Some(free) = (0..quest::BACKPACK_SLOTS)
@@ -913,6 +1148,11 @@ impl GameCore {
 
     /// Credit imported-creature XP and quest objectives; presentation never submits either value.
     fn record_creature_kill(&mut self, spawn_id: u32, creature_entry: u32) -> Vec<CombatUpdate> {
+        // A dead target takes its combo points with it.
+        if self.combo_target_spawn_id == Some(spawn_id) {
+            self.combo_target_spawn_id = None;
+            self.combo_points = 0;
+        }
         let mut updates = Vec::new();
         if let Some(creature_level) = content::starting_zone_content()
             .template(creature_entry)
@@ -961,20 +1201,12 @@ impl GameCore {
         updates
     }
 
-    fn roll_creature_loot(
-        &mut self,
-        spawn_id: u32,
-        creature_entry: u32,
-    ) -> Option<CombatUpdate> {
+    fn roll_creature_loot(&mut self, spawn_id: u32, creature_entry: u32) -> Option<CombatUpdate> {
         let id = self.active.clone()?;
         let hostile = self.hostile(spawn_id)?;
         let remaining_ms = hostile.respawn_remaining_ms?;
         let snapshot = self.snapshots.get_mut(&id)?;
-        let rolled = loot::roll(
-            creature_entry,
-            || next_random(snapshot),
-            |_| false,
-        )?;
+        let rolled = loot::roll(creature_entry, || next_random(snapshot), |_| false)?;
         let has_loot = rolled.gold > 0 || !rolled.items.is_empty();
         let corpse = loot::CorpseLoot {
             spawn_id,
@@ -1014,6 +1246,7 @@ impl GameCore {
             let gains = refill_level_vitals(snapshot, self.active_health, self.active_mana);
             self.active_health = snapshot.health;
             self.active_mana = snapshot.mana;
+            self.active_energy = snapshot.energy;
             gains
         } else {
             (0, 0)
@@ -1116,6 +1349,7 @@ impl GameCore {
         snapshot.quest_journal.entries[progress_index].reward_choice = Some(choice);
         self.active_health = snapshot.health;
         self.active_mana = snapshot.mana;
+        self.active_energy = snapshot.energy;
         Ok(quest::QuestReward {
             quest_id,
             experience: definition.project_reward_xp,
@@ -1407,38 +1641,35 @@ impl GameCore {
             id: id.clone(),
             name: name.clone(),
         });
-        self.snapshots.insert(
-            id.clone(),
-            {
-                let mut snapshot = CharacterSnapshot {
-                    schema_version: SNAPSHOT_VERSION,
-                    id: id.clone(),
-                    name,
-                    appearance,
-                    body_proportions: BodyProportions::default(),
-                    level: 1,
-                    known_spell_ids: progression::starter_spell_ids(
-                        appearance.race,
-                        appearance.class,
-                    ),
-                    money_copper: 0,
-                    experience: 0,
-                    inventory: Vec::new(),
-                    equipment: Vec::new(),
-                    corpse_loot: Vec::new(),
-                    quest_journal: quest::QuestJournal::default(),
-                    health: PLAYER_MAX_HEALTH,
-                    mana: maximum_mana(appearance.class),
-                    auras: Vec::new(),
-                    rng_state: initial_rng_state(&id),
-                    position: start,
-                    play_time_ms: 0,
-                    game_time_minutes: INITIAL_GAME_TIME_MINUTES,
-                };
-                grant_starting_equipment(&mut snapshot);
-                snapshot
-            },
-        );
+        self.snapshots.insert(id.clone(), {
+            let mut snapshot = CharacterSnapshot {
+                schema_version: SNAPSHOT_VERSION,
+                id: id.clone(),
+                name,
+                appearance,
+                body_proportions: BodyProportions::default(),
+                level: 1,
+                known_spell_ids: progression::starter_spell_ids(appearance.race, appearance.class),
+                money_copper: 0,
+                experience: 0,
+                inventory: Vec::new(),
+                equipment: Vec::new(),
+                corpse_loot: Vec::new(),
+                quest_journal: quest::QuestJournal::default(),
+                health: PLAYER_MAX_HEALTH,
+                mana: maximum_mana(appearance.class),
+                rage: 0,
+                energy: maximum_energy(appearance.class),
+                focus: 0,
+                auras: Vec::new(),
+                rng_state: initial_rng_state(&id),
+                position: start,
+                play_time_ms: 0,
+                game_time_minutes: INITIAL_GAME_TIME_MINUTES,
+            };
+            grant_starting_equipment(&mut snapshot);
+            snapshot
+        });
         self.profile.selected.get_or_insert_with(|| id.clone());
         Ok(id)
     }
@@ -1511,36 +1742,47 @@ impl GameCore {
         self.active = Some(id.clone());
         self.minute_remainder_ms = 0;
         if snapshot.position.map_id == SUNSTRIDER_MAP_ID {
-            self.hostiles = if snapshot.appearance.race == 10 {
+            self.hostiles = Vec::new();
+            self.allies = Vec::new();
+            if snapshot.appearance.race == 10 {
                 let content = content::starting_zone_content();
-                content
-                    .spawns_near(
-                        snapshot.position.map_id,
-                        snapshot.position.x,
-                        snapshot.position.y,
-                        SUNSTRIDER_CONTENT_RADIUS_YARDS,
-                    )
-                    .filter_map(|spawn| {
-                        let template = content.template(spawn.entry)?;
-                        is_sunstrider_attackable_faction(template.faction).then(|| {
-                            hostile_from_spawn(
-                                spawn.source_guid,
-                                spawn.entry,
-                                WorldPosition {
-                                    map_id: spawn.map_id,
-                                    x: spawn.x,
-                                    y: spawn.y,
-                                    z: spawn.z,
-                                    orientation: spawn.orientation,
-                                },
-                                SUNSTRIDER_AGGRESSIVE_FACTION_TEMPLATES.contains(&template.faction),
-                            )
-                        })
-                    })
-                    .collect()
-            } else {
-                Vec::new()
-            };
+                for spawn in content.spawns_near(
+                    snapshot.position.map_id,
+                    snapshot.position.x,
+                    snapshot.position.y,
+                    SUNSTRIDER_CONTENT_RADIUS_YARDS,
+                ) {
+                    let Some(template) = content.template(spawn.entry) else {
+                        continue;
+                    };
+                    let position = WorldPosition {
+                        map_id: spawn.map_id,
+                        x: spawn.x,
+                        y: spawn.y,
+                        z: spawn.z,
+                        orientation: spawn.orientation,
+                    };
+                    if is_sunstrider_attackable_faction(template.faction) {
+                        self.hostiles.push(hostile_from_spawn(
+                            spawn.source_guid,
+                            spawn.entry,
+                            position,
+                            SUNSTRIDER_AGGRESSIVE_FACTION_TEMPLATES.contains(&template.faction),
+                        ));
+                    } else {
+                        // Friendly templates share the unit presentation and receive friendly
+                        // spells; they never enter combat.
+                        self.allies.push(AllyState {
+                            spawn_id: spawn.source_guid,
+                            creature_entry: spawn.entry,
+                            position,
+                            health: FRIENDLY_MAX_HEALTH,
+                            max_health: FRIENDLY_MAX_HEALTH,
+                            auras: Vec::new(),
+                        });
+                    }
+                }
+            }
         } else {
             // The combat harness still supports the inherited non-Sunstrider starting anchors;
             // authored NPC content is intentionally scoped to the Blood Elf zone.
@@ -1554,6 +1796,7 @@ impl GameCore {
         self.cooldown_remaining_ms = 0;
         self.spell_cooldowns.clear();
         self.cast_target_spawn_id = None;
+        self.cast_ally_spawn_id = None;
         self.cast_damage = 0;
         self.cast_spell_id = 0;
         self.cast_is_heal = false;
@@ -1562,8 +1805,17 @@ impl GameCore {
         self.melee_target_spawn_id = None;
         self.melee_remaining_ms = 0;
         self.mana_regen_remainder_ms = 0;
+        self.energy_regen_remainder_ms = 0;
+        self.rage_decay_remainder_ms = 0;
+        self.queued_melee = None;
+        self.combo_points = 0;
+        self.combo_target_spawn_id = None;
+        self.cast_combo = ComboEffect::None;
         self.active_health = snapshot.health;
         self.active_mana = snapshot.mana;
+        self.active_rage = snapshot.rage;
+        self.active_energy = snapshot.energy;
+        self.active_focus = snapshot.focus;
         self.open_loot_spawn_id = None;
         for corpse in &snapshot.corpse_loot {
             if let Some(hostile) = self
@@ -1589,10 +1841,16 @@ impl GameCore {
             .copied()
     }
 
-    pub fn open_corpse_loot(
-        &mut self,
-        spawn_id: u32,
-    ) -> Result<loot::LootWindow, loot::LootError> {
+    /// Friendly units (converted friendly NPCs and summons) that receive friendly spells.
+    pub fn allies(&self) -> &[AllyState] {
+        &self.allies
+    }
+
+    pub fn ally(&self, spawn_id: u32) -> Option<&AllyState> {
+        self.allies.iter().find(|ally| ally.spawn_id == spawn_id)
+    }
+
+    pub fn open_corpse_loot(&mut self, spawn_id: u32) -> Result<loot::LootWindow, loot::LootError> {
         let id = self
             .active
             .as_ref()
@@ -1613,7 +1871,11 @@ impl GameCore {
             .ok_or(loot::LootError::NotLootable)?;
         self.open_loot_spawn_id = Some(spawn_id);
         Ok(loot::LootWindow {
-            gold: if corpse.money_looted { 0 } else { corpse.loot.gold },
+            gold: if corpse.money_looted {
+                0
+            } else {
+                corpse.loot.gold
+            },
             items: corpse
                 .loot
                 .items
@@ -1653,7 +1915,12 @@ impl GameCore {
             .ok_or(loot::LootError::InvalidSlot)?
             .clone();
         let backpack_slot = (0..quest::BACKPACK_SLOTS)
-            .find(|slot| !snapshot.inventory.iter().any(|existing| existing.slot == *slot))
+            .find(|slot| {
+                !snapshot
+                    .inventory
+                    .iter()
+                    .any(|existing| existing.slot == *slot)
+            })
             .ok_or(loot::LootError::BackpackFull)?;
         let instance_id = next_instance_id(snapshot).ok_or(loot::LootError::BackpackFull)?;
         let item = quest::InventoryItem {
@@ -1736,6 +2003,33 @@ impl GameCore {
         self.active_health
     }
 
+    /// The current pool for one power kind (the class's own pool; the others read 0).
+    pub fn active_power(&self, kind: PowerType) -> u32 {
+        match kind {
+            PowerType::Mana => self.active_mana,
+            PowerType::Rage => self.active_rage,
+            PowerType::Energy => self.active_energy,
+            PowerType::Focus => self.active_focus,
+        }
+    }
+
+    pub fn active_rage(&self) -> u32 {
+        self.active_rage
+    }
+
+    pub fn active_energy(&self) -> u32 {
+        self.active_energy
+    }
+
+    pub fn active_focus(&self) -> u32 {
+        self.active_focus
+    }
+
+    /// Combo points on the tracked target (0 without one), the rogue builder/finisher state.
+    pub fn combo_points(&self) -> u8 {
+        self.combo_points
+    }
+
     fn persist_active_vitals(&mut self) {
         let Some(id) = self.active.clone() else {
             return;
@@ -1745,6 +2039,9 @@ impl GameCore {
         };
         snapshot.health = self.active_health;
         snapshot.mana = self.active_mana;
+        snapshot.rage = self.active_rage;
+        snapshot.energy = self.active_energy;
+        snapshot.focus = self.active_focus;
     }
 
     pub fn active_auras(&self) -> Option<&[CharacterAura]> {
@@ -1860,14 +2157,26 @@ impl GameCore {
         snapshot.position = position;
         snapshot.health = PLAYER_MAX_HEALTH;
         snapshot.mana = maximum_mana(snapshot.appearance.class);
+        snapshot.rage = 0;
+        snapshot.energy = maximum_energy(snapshot.appearance.class);
         let snapshot = snapshot.clone();
         self.active_health = PLAYER_MAX_HEALTH;
         self.active_mana = snapshot.mana;
+        self.active_rage = snapshot.rage;
+        self.active_energy = snapshot.energy;
+        self.active_focus = snapshot.focus;
         self.mana_regen_remainder_ms = 0;
+        self.energy_regen_remainder_ms = 0;
+        self.rage_decay_remainder_ms = 0;
+        self.queued_melee = None;
+        self.combo_points = 0;
+        self.combo_target_spawn_id = None;
+        self.cast_combo = ComboEffect::None;
         self.cast_remaining_ms = 0;
         self.cooldown_remaining_ms = 0;
         self.spell_cooldowns.clear();
         self.cast_target_spawn_id = None;
+        self.cast_ally_spawn_id = None;
         self.cast_damage = 0;
         self.cast_spell_id = 0;
         self.cast_is_heal = false;
@@ -1909,7 +2218,8 @@ impl GameCore {
         hostile.provoked = true;
         hostile.evading = false;
         self.melee_target_spawn_id = Some(spawn_id);
-        self.melee_remaining_ms = MELEE_SWING_MS;
+        self.melee_remaining_ms =
+            equipped_weapon(snapshot).map_or(MELEE_SWING_MS, |weapon| weapon.swing_ms);
         Ok(())
     }
 
@@ -1955,7 +2265,9 @@ impl GameCore {
         )
     }
 
-    /// Start a known direct-damage or self-healing spell using normalized client spell data.
+    /// Start a known direct-damage or self-healing spell using normalized client spell data: the
+    /// mana-costed shape the fireball path and tests use. [`GameCore::begin_cast`] is the full
+    /// request.
     pub fn begin_direct_spell(
         &mut self,
         spell_id: u32,
@@ -1967,50 +2279,109 @@ impl GameCore {
         range_yards: f32,
         effect: DirectSpellEffect,
     ) -> Result<(), CoreError> {
-        let (min, max, target_spawn_id, is_heal, school, periodic) = match (effect, target) {
-            (
-                DirectSpellEffect::Damage {
-                    min,
-                    max,
-                    school,
-                    periodic,
-                },
-                SpellTarget::Hostile(spawn_id),
-            ) => (min, max, Some(spawn_id), false, school, periodic),
-            (
-                DirectSpellEffect::WeaponDamage {
-                    min,
-                    max,
-                    school,
-                    periodic,
-                },
-                SpellTarget::Hostile(spawn_id),
-            ) => (min, max, Some(spawn_id), false, school, periodic),
-            (DirectSpellEffect::Heal { min, max }, SpellTarget::SelfCharacter) => {
-                (min, max, None, true, 0, None)
-            }
-            (
-                DirectSpellEffect::Aura {
-                    school,
-                    periodic: _,
-                },
-                SpellTarget::SelfCharacter,
-            ) => (0, 0, None, true, school, None),
-            (
-                DirectSpellEffect::Aura {
-                    school,
-                    periodic: _,
-                },
-                SpellTarget::Hostile(spawn_id),
-            ) => (0, 0, Some(spawn_id), false, school, None),
-            _ => return Err(CoreError::UnsupportedSpellEffect),
+        self.begin_cast(CastRequest {
+            spell_id,
+            target,
+            cost: PowerCost::mana(mana_cost),
+            cast_time_ms,
+            spell_cooldown_ms,
+            cooldown_ms,
+            range_yards,
+            effect,
+            combo: ComboEffect::None,
+            on_next_swing: false,
+        })
+        .map(|_| ())
+    }
+
+    /// Start a known spell: validate target, cost, cooldowns and reach, roll its outcome from the
+    /// snapshot's deterministic RNG, then either arm the cast or queue a next-swing melee ability
+    /// (Heroic Strike) to take over one swing's damage. A finisher spends its target's combo
+    /// points and rolls once per point.
+    pub fn begin_cast(&mut self, request: CastRequest) -> Result<CastOutcome, CoreError> {
+        let CastRequest {
+            spell_id,
+            target,
+            cost,
+            cast_time_ms,
+            spell_cooldown_ms,
+            cooldown_ms,
+            range_yards,
+            effect,
+            combo,
+            on_next_swing,
+        } = request;
+        // Weapon-damage abilities are melee abilities: they strike inside melee reach whatever
+        // the row's range reads (on-next-swing rows resolve their range as 100 yards).
+        let range_yards = if matches!(effect, DirectSpellEffect::WeaponDamage { .. }) {
+            range_yards.min(MELEE_RANGE_YARDS)
+        } else {
+            range_yards
         };
-        if min > max || !range_yards.is_finite() || range_yards < 0.0 {
+        if !range_yards.is_finite() || range_yards < 0.0 {
             return Err(CoreError::UnsupportedSpellEffect);
         }
-        if periodic.is_some_and(|dot| {
-            dot.min > dot.max || dot.tick_ms == 0 || dot.duration_ms < dot.tick_ms
-        }) {
+        let (shape, target_spawn_id, ally_spawn_id, is_heal, school, periodic) =
+            match (effect, target) {
+                (
+                    DirectSpellEffect::Damage {
+                        min,
+                        max,
+                        school,
+                        periodic,
+                    },
+                    SpellTarget::Hostile(spawn_id),
+                ) => (
+                    DamageShape::Flat { min, max },
+                    Some(spawn_id),
+                    None,
+                    false,
+                    school,
+                    periodic,
+                ),
+                (
+                    DirectSpellEffect::WeaponDamage {
+                        bonus,
+                        school,
+                        periodic,
+                    },
+                    SpellTarget::Hostile(spawn_id),
+                ) => (
+                    DamageShape::Weapon { bonus },
+                    Some(spawn_id),
+                    None,
+                    false,
+                    school,
+                    periodic,
+                ),
+                (DirectSpellEffect::Heal { min, max }, SpellTarget::SelfCharacter) => {
+                    (DamageShape::Flat { min, max }, None, None, true, 0, None)
+                }
+                (DirectSpellEffect::Heal { min, max }, SpellTarget::Ally(spawn_id)) => (
+                    DamageShape::Flat { min, max },
+                    None,
+                    Some(spawn_id),
+                    true,
+                    0,
+                    None,
+                ),
+                (DirectSpellEffect::Aura { school, .. }, SpellTarget::SelfCharacter) => {
+                    (DamageShape::None, None, None, true, school, None)
+                }
+                (DirectSpellEffect::Aura { school, .. }, SpellTarget::Ally(spawn_id)) => {
+                    (DamageShape::None, None, Some(spawn_id), true, school, None)
+                }
+                (DirectSpellEffect::Aura { school, .. }, SpellTarget::Hostile(spawn_id)) => {
+                    (DamageShape::None, Some(spawn_id), None, false, school, None)
+                }
+                // Friendly fire and weapon damage against a friendly unit are not modeled.
+                _ => return Err(CoreError::UnsupportedSpellEffect),
+            };
+        if shape.bounds().is_some_and(|(min, max)| min > max)
+            || periodic.is_some_and(|dot| {
+                dot.min > dot.max || dot.tick_ms == 0 || dot.duration_ms < dot.tick_ms
+            })
+        {
             return Err(CoreError::UnsupportedSpellEffect);
         }
         let id = self
@@ -2021,22 +2392,25 @@ impl GameCore {
         if self.active_health == 0 {
             return Err(CoreError::CharacterDead);
         }
-        let snapshot = self
+        if !self
             .snapshots
             .get(&id)
-            .ok_or(CoreError::CharacterNotFound)?;
-        if !snapshot.known_spell_ids.contains(&spell_id) {
+            .is_some_and(|snapshot| snapshot.known_spell_ids.contains(&spell_id))
+        {
             return Err(CoreError::UnknownAbility);
         }
         if self.cast_spell_id != 0 {
             return Err(CoreError::CastInProgress);
         }
         if self.cooldown_remaining_ms > 0
-            || self.spell_cooldowns.get(&spell_id).is_some_and(|&time| time > 0)
+            || self
+                .spell_cooldowns
+                .get(&spell_id)
+                .is_some_and(|&time| time > 0)
         {
             return Err(CoreError::AbilityOnCooldown);
         }
-        if self.active_mana < mana_cost {
+        if self.active_power(cost.kind) < cost.amount {
             return Err(CoreError::InsufficientPower);
         }
         if let Some(spawn_id) = target_spawn_id {
@@ -2045,18 +2419,76 @@ impl GameCore {
                 .iter()
                 .find(|hostile| hostile.spawn_id == spawn_id && hostile.health > 0)
                 .ok_or(CoreError::InvalidTarget)?;
+            let snapshot = self
+                .snapshots
+                .get(&id)
+                .ok_or(CoreError::CharacterNotFound)?;
             if snapshot.position.map_id != hostile.position.map_id
                 || distance_squared(snapshot.position, hostile.position) > range_yards * range_yards
             {
                 return Err(CoreError::OutOfRange);
             }
         }
+        if let Some(spawn_id) = ally_spawn_id {
+            let ally = self
+                .allies
+                .iter()
+                .find(|ally| ally.spawn_id == spawn_id)
+                .ok_or(CoreError::InvalidTarget)?;
+            let snapshot = self
+                .snapshots
+                .get(&id)
+                .ok_or(CoreError::CharacterNotFound)?;
+            if snapshot.position.map_id != ally.position.map_id
+                || distance_squared(snapshot.position, ally.position) > range_yards * range_yards
+            {
+                return Err(CoreError::OutOfRange);
+            }
+        }
+        // A finisher spends the target's tracked combo points and rolls once per point.
+        let points = match combo {
+            ComboEffect::Finisher { .. } => {
+                if target_spawn_id.is_none()
+                    || self.combo_target_spawn_id != target_spawn_id
+                    || self.combo_points == 0
+                {
+                    return Err(CoreError::NoComboPoints);
+                }
+                self.combo_points
+            }
+            _ => 0,
+        };
         let (amount, periodic) = {
+            let weapon = self
+                .snapshots
+                .get(&id)
+                .and_then(equipped_weapon);
             let snapshot = self
                 .snapshots
                 .get_mut(&id)
                 .ok_or(CoreError::CharacterNotFound)?;
-            let amount = roll_inclusive(snapshot, min, max);
+            let per_point = match combo {
+                ComboEffect::Finisher { per_point } => {
+                    per_point.saturating_mul(u32::from(points).max(1))
+                }
+                _ => 0,
+            };
+            let amount = match shape {
+                DamageShape::None => 0,
+                DamageShape::Flat { min, max } => {
+                    roll_inclusive(snapshot, min, max).saturating_add(per_point)
+                }
+                DamageShape::Weapon { bonus } => {
+                    let swing = weapon
+                        .map(|weapon| roll_inclusive(snapshot, weapon.min, weapon.max))
+                        .unwrap_or(MELEE_DAMAGE);
+                    swing
+                        .saturating_mul(bonus.percent)
+                        .saturating_div(100)
+                        .saturating_add(roll_inclusive(snapshot, bonus.min, bonus.max))
+                        .saturating_add(per_point)
+                }
+            };
             let periodic = periodic.map(|dot| PendingPeriodicDamage {
                 spell_id,
                 damage: roll_inclusive(snapshot, dot.min, dot.max),
@@ -2071,15 +2503,73 @@ impl GameCore {
         if spell_cooldown_ms > 0 {
             self.spell_cooldowns.insert(spell_id, spell_cooldown_ms);
         }
+        self.spend_power(cost.kind, cost.amount);
+        if matches!(combo, ComboEffect::Finisher { .. }) {
+            self.combo_points = 0;
+            self.combo_target_spawn_id = None;
+        }
+        self.cast_combo = combo;
+        if on_next_swing {
+            self.queued_melee = Some(QueuedMelee {
+                spell_id,
+                damage: amount,
+                school,
+                combo,
+                periodic,
+            });
+            self.persist_active_vitals();
+            return Ok(CastOutcome::QueuedMelee);
+        }
         self.cast_target_spawn_id = target_spawn_id;
+        self.cast_ally_spawn_id = ally_spawn_id;
         self.cast_damage = amount;
         self.cast_spell_id = spell_id;
         self.cast_is_heal = is_heal;
         self.cast_school = school;
         self.cast_periodic = periodic;
-        self.active_mana -= mana_cost;
         self.persist_active_vitals();
-        Ok(())
+        Ok(CastOutcome::Cast)
+    }
+
+    /// The pool a cost spends from, and its subtraction at cast start (never refunded).
+    fn spend_power(&mut self, kind: PowerType, amount: u32) {
+        match kind {
+            PowerType::Mana => self.active_mana = self.active_mana.saturating_sub(amount),
+            PowerType::Rage => self.active_rage = self.active_rage.saturating_sub(amount),
+            PowerType::Energy => self.active_energy = self.active_energy.saturating_sub(amount),
+            PowerType::Focus => self.active_focus = self.active_focus.saturating_sub(amount),
+        }
+    }
+
+    /// One builder hit: a combo point on `spawn_id`, retargeting (and discarding) any points
+    /// another creature was holding.
+    fn add_combo_point(&mut self, spawn_id: u32) {
+        if self.combo_target_spawn_id != Some(spawn_id) {
+            self.combo_target_spawn_id = Some(spawn_id);
+            self.combo_points = 0;
+        }
+        self.combo_points = (self.combo_points + 1).min(MAX_COMBO_POINTS);
+    }
+
+    /// Whole rage points from a melee exchange, added for the class whose pool is rage.
+    fn gain_rage(&mut self, damage: u32, taken: bool) {
+        let Some(id) = self.active.as_ref() else {
+            return;
+        };
+        let Some(snapshot) = self.snapshots.get(id) else {
+            return;
+        };
+        if PowerType::of_class(snapshot.appearance.class) != PowerType::Rage {
+            return;
+        }
+        let level = snapshot.level;
+        self.active_rage =
+            (self.active_rage + rage_from_damage(damage, level, taken)).min(PLAYER_MAX_RAGE);
+    }
+
+    /// The queued next-swing melee ability's spell, for the cast bar and the action highlight.
+    pub fn queued_melee_spell(&self) -> Option<u32> {
+        self.queued_melee.map(|queued| queued.spell_id)
     }
 
     pub fn cancel_spell(&mut self, spell_id: u32) -> bool {
@@ -2088,45 +2578,94 @@ impl GameCore {
         }
         self.cast_remaining_ms = 0;
         self.cast_target_spawn_id = None;
+        self.cast_ally_spawn_id = None;
         self.cast_damage = 0;
         self.cast_spell_id = 0;
         self.cast_is_heal = false;
         self.cast_school = 0;
+        self.cast_combo = ComboEffect::None;
         self.cast_periodic = None;
         true
+    }
+
+    /// Clear a queued next-swing melee ability without touching a running cast.
+    pub fn cancel_queued_melee(&mut self, spell_id: u32) -> bool {
+        if self
+            .queued_melee
+            .is_some_and(|queued| queued.spell_id == spell_id)
+        {
+            self.queued_melee = None;
+            true
+        } else {
+            false
+        }
     }
 
     pub fn cancel_fireball(&mut self, spell_id: u32) -> bool {
         (spell_id == FIREBALL_SPELL_ID) && self.cancel_spell(spell_id)
     }
 
-    /// Advance out-of-combat mana regen: one [`MANA_REGEN_PER_TICK`] every [`MANA_REGEN_TICK_MS`]
-    /// toward [`PLAYER_MAX_MANA`], paused while a spell is casting (the five-second rule's cast
-    /// half). Returns `Some(mana)` when the pool changed so the caller can echo `UNIT_FIELD_POWER1`.
-    pub fn advance_mana_regen(&mut self, elapsed_ms: u32) -> Option<u32> {
-        if self.active.is_none() || self.active_health == 0 || self.cast_spell_id != 0 {
-            return None;
+    /// Advance out-of-combat power regeneration from caller-supplied time: mana toward
+    /// [`PLAYER_MAX_MANA`] at [`MANA_REGEN_PER_TICK`] per [`MANA_REGEN_TICK_MS`] (paused while a
+    /// spell is casting, the five-second rule's cast half), energy at [`ENERGY_REGEN_PER_TICK`]
+    /// per [`ENERGY_REGEN_TICK_MS`] uninterrupted, and rage decaying at [`RAGE_DECAY_PER_TICK`]
+    /// per [`RAGE_DECAY_TICK_MS`] only outside a fight. Returns `true` when a pool moved, so the
+    /// caller can echo the descriptor pools.
+    pub fn advance_power_regen(&mut self, elapsed_ms: u32) -> bool {
+        if self.active.is_none() || self.active_health == 0 {
+            return false;
         }
-        // Only a mana-using class regens toward its pool; every other class pools at 0 and its
-        // `maximum_mana` is 0, so the loop never moves it (a rogue never gains mana).
-        let max_mana = self
+        let class = self
             .active
             .as_ref()
             .and_then(|id| self.snapshots.get(id))
-            .map_or(0, |snapshot| maximum_mana(snapshot.appearance.class));
-        self.mana_regen_remainder_ms = self.mana_regen_remainder_ms.saturating_add(elapsed_ms);
+            .map_or(0, |snapshot| snapshot.appearance.class);
         let mut changed = false;
-        while self.mana_regen_remainder_ms >= MANA_REGEN_TICK_MS {
-            self.mana_regen_remainder_ms -= MANA_REGEN_TICK_MS;
-            if self.active_mana < max_mana {
-                self.active_mana = (self.active_mana + MANA_REGEN_PER_TICK).min(max_mana);
+        if self.cast_spell_id == 0 {
+            self.mana_regen_remainder_ms = self.mana_regen_remainder_ms.saturating_add(elapsed_ms);
+            while self.mana_regen_remainder_ms >= MANA_REGEN_TICK_MS {
+                self.mana_regen_remainder_ms -= MANA_REGEN_TICK_MS;
+                if self.active_mana < maximum_mana(class) {
+                    self.active_mana =
+                        (self.active_mana + MANA_REGEN_PER_TICK).min(maximum_mana(class));
+                    changed = true;
+                }
+            }
+        }
+        self.energy_regen_remainder_ms = self.energy_regen_remainder_ms.saturating_add(elapsed_ms);
+        while self.energy_regen_remainder_ms >= ENERGY_REGEN_TICK_MS {
+            self.energy_regen_remainder_ms -= ENERGY_REGEN_TICK_MS;
+            if self.active_energy < maximum_energy(class) {
+                self.active_energy =
+                    (self.active_energy + ENERGY_REGEN_PER_TICK).min(maximum_energy(class));
                 changed = true;
+            }
+        }
+        let in_combat = self.melee_target_spawn_id.is_some()
+            || self
+                .hostiles
+                .iter()
+                .any(|hostile| hostile.engaged && hostile.health > 0);
+        if !in_combat {
+            self.rage_decay_remainder_ms = self.rage_decay_remainder_ms.saturating_add(elapsed_ms);
+            while self.rage_decay_remainder_ms >= RAGE_DECAY_TICK_MS {
+                self.rage_decay_remainder_ms -= RAGE_DECAY_TICK_MS;
+                if self.active_rage > 0 {
+                    self.active_rage = self.active_rage.saturating_sub(RAGE_DECAY_PER_TICK);
+                    changed = true;
+                }
             }
         }
         if changed {
             self.persist_active_vitals();
         }
-        changed.then_some(self.active_mana)
+        changed
+    }
+
+    /// Advance out-of-combat mana regen only; [`GameCore::advance_power_regen`] covers every pool.
+    pub fn advance_mana_regen(&mut self, elapsed_ms: u32) -> Option<u32> {
+        self.advance_power_regen(elapsed_ms)
+            .then_some(self.active_mana)
     }
 
     /// Advance the active cast and deterministic hostile respawn clock by caller-supplied time.
@@ -2159,11 +2698,16 @@ impl GameCore {
         if self.active_health == 0 {
             self.cast_remaining_ms = 0;
             self.cast_target_spawn_id = None;
+            self.cast_ally_spawn_id = None;
             self.cast_damage = 0;
             self.cast_spell_id = 0;
             self.cast_is_heal = false;
             self.cast_school = 0;
+            self.cast_combo = ComboEffect::None;
             self.cast_periodic = None;
+            self.queued_melee = None;
+            self.combo_points = 0;
+            self.combo_target_spawn_id = None;
             self.cooldown_remaining_ms = 0;
             self.spell_cooldowns.clear();
             self.stop_auto_attack();
@@ -2179,6 +2723,8 @@ impl GameCore {
                 let spell_id = self.cast_spell_id;
                 let is_heal = self.cast_is_heal;
                 let school = self.cast_school;
+                let combo = self.cast_combo;
+                self.cast_combo = ComboEffect::None;
                 let periodic = self.cast_periodic.take();
                 let caster_level = self
                     .active
@@ -2189,7 +2735,43 @@ impl GameCore {
                 self.cast_is_heal = false;
                 self.cast_school = 0;
                 let target = self.cast_target_spawn_id.take();
-                if is_heal {
+                let ally_target = self.cast_ally_spawn_id.take();
+                if let Some(spawn_id) = ally_target {
+                    if damage == 0 {
+                        // A friendly buff/debuff lands on the ally: recorded and reported, with no
+                        // direct amount. Its duration runs while the character is played.
+                        if let Some(ally) = self
+                            .allies
+                            .iter_mut()
+                            .find(|ally| ally.spawn_id == spawn_id)
+                        {
+                            ally.auras.retain(|aura| aura.spell_id != spell_id);
+                            ally.auras.push(AllyAura {
+                                spell_id,
+                                remaining_ms: None,
+                            });
+                        }
+                        updates.push(CombatUpdate::AllyAura {
+                            spell_id,
+                            spawn_id,
+                            remaining_ms: None,
+                            applied: true,
+                        });
+                    } else if let Some(ally) = self
+                        .allies
+                        .iter_mut()
+                        .find(|ally| ally.spawn_id == spawn_id)
+                    {
+                        let amount = damage.min(ally.max_health.saturating_sub(ally.health));
+                        ally.health += amount;
+                        updates.push(CombatUpdate::AllyHeal {
+                            spell_id,
+                            spawn_id,
+                            amount,
+                            remaining_health: ally.health,
+                        });
+                    }
+                } else if is_heal {
                     let amount = damage.min(PLAYER_MAX_HEALTH - self.active_health);
                     self.active_health += amount;
                     self.persist_active_vitals();
@@ -2227,10 +2809,8 @@ impl GameCore {
                                 hostile.burn_school = periodic.school;
                                 hostile.burn_tick_ms = periodic.tick_ms;
                                 hostile.burn_level = caster_level;
-                                new_periodic = Some((
-                                    spawn_id,
-                                    elapsed_ms.saturating_sub(cast_remaining_ms),
-                                ));
+                                new_periodic =
+                                    Some((spawn_id, elapsed_ms.saturating_sub(cast_remaining_ms)));
                             }
                             (
                                 CastImpact {
@@ -2252,6 +2832,9 @@ impl GameCore {
                                 impact,
                             }
                         });
+                        if combo == ComboEffect::Build && !impact.killed {
+                            self.add_combo_point(spawn_id);
+                        }
                         if let Some(entry) = killed_entry {
                             updates.extend(self.record_creature_kill(spawn_id, entry));
                         }
@@ -2268,17 +2851,40 @@ impl GameCore {
                 break;
             }
             elapsed -= self.melee_remaining_ms;
-            let Some(id) = self.active.as_ref() else {
+            let Some(id) = self.active.as_ref().cloned() else {
                 self.stop_auto_attack();
                 break;
             };
-            let Some(snapshot) = self.snapshots.get(id) else {
+            let weapon = self
+                .snapshots
+                .get(&id)
+                .and_then(equipped_weapon);
+            let caster_level = self.snapshots.get(&id).map_or(1, |snapshot| snapshot.level);
+            let queued = self.queued_melee.take();
+            let (ability, damage, queued_periodic) = match queued {
+                Some(queued) => (
+                    Some((queued.spell_id, queued.school, queued.combo)),
+                    queued.damage,
+                    queued.periodic,
+                ),
+                None => {
+                    let swing = weapon.map_or(MELEE_DAMAGE, |weapon| {
+                        let snapshot = self
+                            .snapshots
+                            .get_mut(&id)
+                            .expect("the snapshot was just read");
+                        roll_inclusive(snapshot, weapon.min, weapon.max)
+                    });
+                    (None, swing, None)
+                }
+            };
+            let Some(snapshot) = self.snapshots.get(&id) else {
                 self.stop_auto_attack();
                 break;
             };
             let Some(hostile) = self
                 .hostiles
-                .iter_mut()
+                .iter()
                 .find(|hostile| hostile.spawn_id == spawn_id && hostile.health > 0)
             else {
                 self.stop_auto_attack();
@@ -2291,29 +2897,71 @@ impl GameCore {
                 self.stop_auto_attack();
                 break;
             }
-            hostile.health = hostile.health.saturating_sub(MELEE_DAMAGE);
-            let killed = hostile.health == 0;
-            if killed {
-                hostile.respawn_remaining_ms = Some(HOSTILE_RESPAWN_MS);
-                hostile.burn_remaining_ms = 0;
-                hostile.burn_tick_remaining_ms = 0;
-                hostile.burn_damage = 0;
-                hostile.burn_spell_id = 0;
-                hostile.burn_school = 0;
-                hostile.burn_tick_ms = 0;
+            let combo = ability.map_or(ComboEffect::None, |(_, _, combo)| combo);
+            let periodic = (!matches!(combo, ComboEffect::Build))
+                .then_some(queued_periodic)
+                .flatten();
+            let swing_ms = weapon.map_or(MELEE_SWING_MS, |weapon| weapon.swing_ms);
+            let impact = self
+                .hostiles
+                .iter_mut()
+                .find(|hostile| hostile.spawn_id == spawn_id)
+                .filter(|hostile| hostile.health > 0)
+                .map(|hostile| {
+                    hostile.provoked = true;
+                    hostile.evading = false;
+                    hostile.health = hostile.health.saturating_sub(damage);
+                    let killed = hostile.health == 0;
+                    if killed {
+                        hostile.respawn_remaining_ms = Some(HOSTILE_RESPAWN_MS);
+                        hostile.burn_remaining_ms = 0;
+                        hostile.burn_tick_remaining_ms = 0;
+                        hostile.burn_damage = 0;
+                        hostile.burn_spell_id = 0;
+                        hostile.burn_school = 0;
+                        hostile.burn_tick_ms = 0;
+                    } else if let Some(periodic) = periodic {
+                        hostile.burn_remaining_ms = periodic.duration_ms;
+                        hostile.burn_tick_remaining_ms = periodic.tick_ms;
+                        hostile.burn_damage = periodic.damage;
+                        hostile.burn_spell_id = periodic.spell_id;
+                        hostile.burn_school = periodic.school;
+                        hostile.burn_tick_ms = periodic.tick_ms;
+                        hostile.burn_level = caster_level;
+                    }
+                    CastImpact {
+                        spawn_id: hostile.spawn_id,
+                        damage,
+                        remaining_health: hostile.health,
+                        killed,
+                    }
+                });
+            let Some(impact) = impact else {
+                self.stop_auto_attack();
+                break;
+            };
+            self.gain_rage(damage, false);
+            if combo == ComboEffect::Build && !impact.killed {
+                self.add_combo_point(spawn_id);
             }
-            let creature_entry = hostile.creature_entry;
-            updates.push(CombatUpdate::MeleeImpact(CastImpact {
-                spawn_id,
-                damage: MELEE_DAMAGE,
-                remaining_health: hostile.health,
-                killed,
-            }));
-            if killed {
+            updates.push(match ability {
+                Some((spell_id, school, _)) => CombatUpdate::MeleeSpellImpact {
+                    spell_id,
+                    school,
+                    impact,
+                },
+                None => CombatUpdate::MeleeImpact(impact),
+            });
+            if impact.killed {
+                let creature_entry = self
+                    .hostiles
+                    .iter()
+                    .find(|hostile| hostile.spawn_id == spawn_id)
+                    .map_or(0, |hostile| hostile.creature_entry);
                 self.stop_auto_attack();
                 updates.extend(self.record_creature_kill(spawn_id, creature_entry));
             } else {
-                self.melee_remaining_ms = MELEE_SWING_MS;
+                self.melee_remaining_ms = swing_ms;
             }
         }
         // One periodic school-damage aura per hostile for this initial spell slice.
@@ -2397,20 +3045,22 @@ impl GameCore {
         let Some(snapshot) = self.snapshots.get_mut(&id) else {
             return;
         };
-        snapshot.corpse_loot.retain_mut(|corpse| {
-            match state_by_spawn.get(&corpse.spawn_id) {
+        snapshot
+            .corpse_loot
+            .retain_mut(|corpse| match state_by_spawn.get(&corpse.spawn_id) {
                 Some(Some(remaining_ms)) => {
                     corpse.respawn_remaining_ms = *remaining_ms;
                     true
                 }
                 Some(None) => false,
                 None => true,
-            }
-        });
-        if self
-            .open_loot_spawn_id
-            .is_some_and(|spawn_id| !snapshot.corpse_loot.iter().any(|corpse| corpse.spawn_id == spawn_id))
-        {
+            });
+        if self.open_loot_spawn_id.is_some_and(|spawn_id| {
+            !snapshot
+                .corpse_loot
+                .iter()
+                .any(|corpse| corpse.spawn_id == spawn_id)
+        }) {
             self.open_loot_spawn_id = None;
         }
     }
@@ -2583,18 +3233,29 @@ impl GameCore {
         self.persist_active_vitals();
         let id = self.active.take().ok_or(CoreError::NoCharacterSelected)?;
         self.hostiles.clear();
+        self.allies.clear();
         self.open_loot_spawn_id = None;
         self.active_health = 0;
         self.cast_remaining_ms = 0;
         self.cooldown_remaining_ms = 0;
         self.spell_cooldowns.clear();
         self.cast_target_spawn_id = None;
+        self.cast_ally_spawn_id = None;
         self.cast_damage = 0;
         self.cast_spell_id = 0;
         self.cast_is_heal = false;
         self.stop_auto_attack();
         self.active_mana = 0;
+        self.active_rage = 0;
+        self.active_energy = 0;
+        self.active_focus = 0;
         self.mana_regen_remainder_ms = 0;
+        self.energy_regen_remainder_ms = 0;
+        self.rage_decay_remainder_ms = 0;
+        self.queued_melee = None;
+        self.combo_points = 0;
+        self.combo_target_spawn_id = None;
+        self.cast_combo = ComboEffect::None;
         self.snapshots
             .get(&id)
             .cloned()
@@ -2674,11 +3335,13 @@ impl GameCore {
             active: None,
             minute_remainder_ms: 0,
             hostiles: Vec::new(),
+            allies: Vec::new(),
             open_loot_spawn_id: None,
             cast_remaining_ms: 0,
             cooldown_remaining_ms: 0,
             spell_cooldowns: BTreeMap::new(),
             cast_target_spawn_id: None,
+            cast_ally_spawn_id: None,
             cast_damage: 0,
             cast_spell_id: 0,
             cast_is_heal: false,
@@ -2688,7 +3351,16 @@ impl GameCore {
             melee_remaining_ms: 0,
             active_mana: 0,
             active_health: 0,
+            active_rage: 0,
+            active_energy: 0,
+            active_focus: 0,
             mana_regen_remainder_ms: 0,
+            energy_regen_remainder_ms: 0,
+            rage_decay_remainder_ms: 0,
+            queued_melee: None,
+            combo_points: 0,
+            combo_target_spawn_id: None,
+            cast_combo: ComboEffect::None,
         })
     }
 }
@@ -2792,13 +3464,11 @@ fn trainer_condition_satisfied(
         }
         visiting.push(condition_id);
         let value = match condition.kind {
-            6 => {
-                match snapshot.appearance.race {
-                    1 | 3 | 4 | 7 | 11 => Some(condition.value1 == 469),
-                    2 | 5 | 6 | 8 | 10 => Some(condition.value1 == 67),
-                    _ => None,
-                }
-            }
+            6 => match snapshot.appearance.race {
+                1 | 3 | 4 | 7 | 11 => Some(condition.value1 == 469),
+                2 | 5 | 6 | 8 | 10 => Some(condition.value1 == 67),
+                _ => None,
+            },
             14 => {
                 let race = snapshot.appearance.race;
                 if !(1..=32).contains(&race) {
@@ -2898,14 +3568,18 @@ fn valid_inventory(items: &[quest::InventoryItem]) -> bool {
 }
 
 fn valid_corpse_loot(corpses: &[loot::CorpseLoot]) -> bool {
-    corpses.windows(2).all(|pair| pair[0].spawn_id < pair[1].spawn_id)
+    corpses
+        .windows(2)
+        .all(|pair| pair[0].spawn_id < pair[1].spawn_id)
         && corpses.iter().all(|corpse| {
             corpse.spawn_id != 0
                 && corpse.respawn_remaining_ms != 0
                 && corpse.looted_items.len() == corpse.loot.items.len()
-                && corpse.loot.items.iter().all(|item| {
-                    item.count != 0 && quest::item_template(item.entry).is_some()
-                })
+                && corpse
+                    .loot
+                    .items
+                    .iter()
+                    .all(|item| item.count != 0 && quest::item_template(item.entry).is_some())
         })
 }
 
@@ -2927,14 +3601,15 @@ fn distinct_instance_ids(
     inventory: &[quest::InventoryItem],
     equipment: &[quest::InventoryItem],
 ) -> bool {
-    equipment
-        .iter()
-        .all(|item| inventory.iter().all(|other| other.instance_id != item.instance_id))
-        && equipment.iter().enumerate().all(|(index, item)| {
-            !equipment[index + 1..]
-                .iter()
-                .any(|later| later.instance_id == item.instance_id)
-        })
+    equipment.iter().all(|item| {
+        inventory
+            .iter()
+            .all(|other| other.instance_id != item.instance_id)
+    }) && equipment.iter().enumerate().all(|(index, item)| {
+        !equipment[index + 1..]
+            .iter()
+            .any(|later| later.instance_id == item.instance_id)
+    })
 }
 
 /// The first free item instance id across the backpack and equipment, 1-based.
@@ -3013,11 +3688,17 @@ fn allowed_equip_slots(entry: u32) -> Option<Vec<u8>> {
 fn take_item(snapshot: &mut CharacterSnapshot, at: ItemSlot) -> Option<quest::InventoryItem> {
     match at {
         ItemSlot::Backpack(slot) => {
-            let index = snapshot.inventory.iter().position(|item| item.slot == slot)?;
+            let index = snapshot
+                .inventory
+                .iter()
+                .position(|item| item.slot == slot)?;
             Some(snapshot.inventory.remove(index))
         }
         ItemSlot::Equipment(slot) => {
-            let index = snapshot.equipment.iter().position(|item| item.slot == slot)?;
+            let index = snapshot
+                .equipment
+                .iter()
+                .position(|item| item.slot == slot)?;
             Some(snapshot.equipment.remove(index))
         }
     }
@@ -3080,10 +3761,66 @@ fn move_item_in(
     Ok(())
 }
 
+/// The equipped main hand's converted swing numbers (slot 15, the client's
+/// `EQUIPMENT_SLOT_MAINHAND`); `None` for an empty hand or a statless item. The template may come
+/// from either converted pack: starting gear or a creature's loot.
+fn equipped_weapon(snapshot: &CharacterSnapshot) -> Option<WeaponProfile> {
+    let item = snapshot
+        .equipment
+        .iter()
+        .find(|item| item.slot == MAIN_HAND_EQUIPMENT_SLOT)?;
+    let template = quest::item_template(item.entry).or_else(|| loot::item_template(item.entry))?;
+    (template.dmg_max > 0 && template.delay > 0).then_some(WeaponProfile {
+        min: template.dmg_min.min(template.dmg_max),
+        max: template.dmg_max,
+        swing_ms: template.delay,
+    })
+}
+
+/// Worn equipment slot of the main hand (`INV_SLOT` 15).
+const MAIN_HAND_EQUIPMENT_SLOT: u8 = 15;
+
 fn maximum_mana(class: u8) -> u32 {
     matches!(class, 2 | 3 | 5 | 7 | 8 | 9 | 11)
         .then_some(PLAYER_MAX_MANA)
         .unwrap_or(0)
+}
+
+/// The energy pool rogues run on; every other class pools at 0 energy.
+fn maximum_energy(class: u8) -> u32 {
+    matches!(class, 4).then_some(PLAYER_MAX_ENERGY).unwrap_or(0)
+}
+
+/// The class's pool caps in whole points: mana, rage, energy, focus. Only the class's own pools
+/// are nonzero (a hunter pet's focus comes with the summon, not the player). The presentation
+/// adapter writes rage in tenths, as the client divides it on read.
+pub fn power_pool_caps(class: u8) -> (u32, u32, u32, u32) {
+    (
+        maximum_mana(class),
+        matches!(class, 1).then_some(PLAYER_MAX_RAGE).unwrap_or(0),
+        maximum_energy(class),
+        0,
+    )
+}
+
+/// The classic-era rage conversion value at a level,
+/// `0.0091107836·level² + 3.225598133·level + 4.2652911` (project-owned; the classic rule, not
+/// client data). Damage is divided by it before the dealt/taken multiplier. Computed in `f64` so
+/// the cited constants keep their full precision.
+fn rage_conversion(level: u8) -> f64 {
+    let level = f64::from(level);
+    0.009_110_783_6 * level * level + 3.225_598_133 * level + 4.265_291_1
+}
+
+/// Whole rage points from melee damage: dealt damage is worth 7.5/conversion, damage taken
+/// 2.5/conversion, at least 1 for any hit. Fractions truncate after the sum.
+fn rage_from_damage(damage: u32, level: u8, taken: bool) -> u32 {
+    if damage == 0 {
+        return 0;
+    }
+    let multiplier = if taken { 2.5 } else { 7.5 };
+    let points = damage as f64 * multiplier / rage_conversion(level);
+    (points as u32).max(1)
 }
 
 fn refill_level_vitals(
@@ -3094,6 +3831,7 @@ fn refill_level_vitals(
     let max_mana = maximum_mana(snapshot.appearance.class);
     snapshot.health = PLAYER_MAX_HEALTH;
     snapshot.mana = max_mana;
+    snapshot.energy = maximum_energy(snapshot.appearance.class);
     (
         PLAYER_MAX_HEALTH.saturating_sub(previous_health),
         max_mana.saturating_sub(previous_mana),
@@ -3151,6 +3889,9 @@ fn roll_inclusive(snapshot: &mut CharacterSnapshot, min: u32, max: u32) -> u32 {
 fn valid_vitals(snapshot: &CharacterSnapshot) -> bool {
     snapshot.health <= PLAYER_MAX_HEALTH
         && snapshot.mana <= maximum_mana(snapshot.appearance.class)
+        && snapshot.rage <= PLAYER_MAX_RAGE
+        && snapshot.energy <= PLAYER_MAX_ENERGY
+        && snapshot.focus <= PLAYER_MAX_FOCUS
         && snapshot.rng_state != 0
         && valid_auras(&snapshot.auras)
 }
@@ -3361,6 +4102,7 @@ pub fn decode_snapshot(source: &str) -> Result<CharacterSnapshot, SaveError> {
             | EQUIPMENT_SNAPSHOT_VERSION
             | PREVIOUS_SNAPSHOT_VERSION
             | BODY_PROPORTIONS_SNAPSHOT_VERSION
+            | POOLS_SNAPSHOT_VERSION
             | SNAPSHOT_VERSION
     ) {
         return Err(SaveError::UnsupportedVersion(document.schema_version));
@@ -3390,6 +4132,9 @@ pub fn decode_snapshot(source: &str) -> Result<CharacterSnapshot, SaveError> {
                 quest_journal: quest::QuestJournal::default(),
                 health: PLAYER_MAX_HEALTH,
                 mana: maximum_mana(legacy.appearance.class),
+                rage: 0,
+                energy: maximum_energy(legacy.appearance.class),
+                focus: 0,
                 auras: Vec::new(),
                 rng_state,
                 id: legacy.id,
@@ -3425,6 +4170,9 @@ pub fn decode_snapshot(source: &str) -> Result<CharacterSnapshot, SaveError> {
                 quest_journal: quest::QuestJournal::default(),
                 health: PLAYER_MAX_HEALTH,
                 mana: maximum_mana(legacy.appearance.class),
+                rage: 0,
+                energy: maximum_energy(legacy.appearance.class),
+                focus: 0,
                 auras: Vec::new(),
                 rng_state,
                 position: legacy.position,
@@ -3455,6 +4203,9 @@ pub fn decode_snapshot(source: &str) -> Result<CharacterSnapshot, SaveError> {
                 quest_journal: legacy.quest_journal,
                 health: PLAYER_MAX_HEALTH,
                 mana: maximum_mana(legacy.appearance.class),
+                rage: 0,
+                energy: maximum_energy(legacy.appearance.class),
+                focus: 0,
                 auras: Vec::new(),
                 rng_state,
                 position: legacy.position,
@@ -3500,6 +4251,17 @@ pub fn decode_snapshot(source: &str) -> Result<CharacterSnapshot, SaveError> {
             }
             snapshot.schema_version = SNAPSHOT_VERSION;
             snapshot.corpse_loot.clear();
+            snapshot
+        }
+        POOLS_SNAPSHOT_VERSION => {
+            // Schema 9 adds rage, energy and focus; their serde defaults seed the pools with the
+            // pre-pool state (empty rage, no energy or focus for a class that never used one).
+            let mut snapshot: CharacterSnapshot = toml::from_str(&document.payload)
+                .map_err(|error| SaveError::InvalidToml(error.to_string()))?;
+            if snapshot.schema_version != POOLS_SNAPSHOT_VERSION {
+                return Err(SaveError::InvalidSnapshot);
+            }
+            snapshot.schema_version = SNAPSHOT_VERSION;
             snapshot
         }
         SNAPSHOT_VERSION => {
@@ -3613,7 +4375,23 @@ mod tests {
         let target = core.hostile(spawn_id).expect("combat target exists");
         core.update_active(target.position, 0).unwrap();
         core.start_auto_attack(spawn_id).unwrap();
-        core.advance_combat(MELEE_SWING_MS * (HOSTILE_MAX_HEALTH / MELEE_DAMAGE))
+        let mut updates = Vec::new();
+        for _ in 0..64 {
+            if core
+                .hostile(spawn_id)
+                .is_none_or(|hostile| hostile.health == 0)
+            {
+                break;
+            }
+            updates.extend(core.advance_combat(MELEE_SWING_MS));
+        }
+        updates
+    }
+
+    /// Swing the project baseline in tests that assert swing numbers: the main hand goes to the
+    /// backpack, so the assertion is not written against one race's converted starter weapon.
+    fn disarm(core: &mut GameCore) {
+        let _ = core.unequip_to_backpack(MAIN_HAND_EQUIPMENT_SLOT);
     }
 
     fn trainer_offer(
@@ -3744,7 +4522,11 @@ mod tests {
         let (mut core, id) = core_for(10, 8);
         let snapshot = core.snapshot(&id).unwrap();
         let slots: Vec<u8> = snapshot.equipment.iter().map(|item| item.slot).collect();
-        assert_eq!(slots, vec![3, 4, 6, 7, 15], "shirt, robe, legs, feet, main hand");
+        assert_eq!(
+            slots,
+            vec![3, 4, 6, 7, 15],
+            "shirt, robe, legs, feet, main hand"
+        );
         assert!(
             snapshot
                 .equipment
@@ -3969,12 +4751,7 @@ mod tests {
         core.enter_world().unwrap();
 
         let purchase = core
-            .buy_trainer_spell_with_ranks(
-                trainer_entry,
-                offer.spell_id,
-                resolve,
-                successor,
-            )
+            .buy_trainer_spell_with_ranks(trainer_entry, offer.spell_id, resolve, successor)
             .unwrap();
         assert_eq!(purchase.learned_spell_id, learned_rank);
         assert_eq!(purchase.removed_spell_ids, vec![previous_rank]);
@@ -4549,7 +5326,30 @@ mod tests {
             snapshot.known_spell_ids.sort_unstable();
         }
         core.enter_world().unwrap();
+        disarm(&mut core);
         let target_spawn_id = core.hostile(HOSTILE_SPAWN_ID).unwrap().spawn_id;
+        let target_position = core.hostile(HOSTILE_SPAWN_ID).unwrap().position;
+
+        // Weapon-damage abilities strike inside melee reach, whatever the row's range reads.
+        assert_eq!(
+            core.begin_direct_spell(
+                900_020,
+                SpellTarget::Hostile(target_spawn_id),
+                10,
+                0,
+                1_500,
+                0,
+                35.0,
+                DirectSpellEffect::WeaponDamage {
+                    bonus: WeaponBonus::flat(10, 20),
+                    school: 1,
+                    periodic: None,
+                },
+            ),
+            Err(CoreError::OutOfRange),
+            "the practice target stands outside melee reach"
+        );
+        core.update_active(target_position, 0).unwrap();
 
         core.begin_direct_spell(
             900_020,
@@ -4560,8 +5360,7 @@ mod tests {
             0,
             35.0,
             DirectSpellEffect::WeaponDamage {
-                min: 10,
-                max: 20,
+                bonus: WeaponBonus::flat(10, 20),
                 school: 1,
                 periodic: None,
             },
@@ -4578,7 +5377,12 @@ mod tests {
         };
         assert_eq!(*spell_id, 900_020);
         assert_eq!(*school, 1);
-        assert!((10..=20).contains(&impact.damage));
+        // Unarmed: the project baseline swing plus the ability's flat bonus roll.
+        assert!(
+            (MELEE_DAMAGE + 10..=MELEE_DAMAGE + 20).contains(&impact.damage),
+            "baseline swing + 10..20 bonus, got {}",
+            impact.damage
+        );
     }
 
     #[test]
@@ -4590,7 +5394,6 @@ mod tests {
             snapshot.known_spell_ids.sort_unstable();
         }
         core.enter_world().unwrap();
-        let target_spawn_id = core.hostile(HOSTILE_SPAWN_ID).unwrap().spawn_id;
 
         core.begin_direct_spell(
             900_030,
@@ -4608,7 +5411,12 @@ mod tests {
         .unwrap();
         let updates = core.advance_combat(0);
         // Aura-only spells on self resolve as a heal with 0 amount (no-op).
-        assert!(updates.is_empty() || updates.iter().all(|u| matches!(u, CombatUpdate::SpellHeal { amount: 0, .. })));
+        assert!(
+            updates.is_empty()
+                || updates
+                    .iter()
+                    .all(|u| matches!(u, CombatUpdate::SpellHeal { amount: 0, .. }))
+        );
     }
 
     #[test]
@@ -4642,10 +5450,7 @@ mod tests {
             .unwrap();
         assert_eq!(second.learned_spell_ids, vec![900_101]);
         assert_eq!(second.remaining_points, 0);
-        assert!(core
-            .active_known_spell_ids()
-            .unwrap()
-            .contains(&900_101));
+        assert!(core.active_known_spell_ids().unwrap().contains(&900_101));
 
         core.snapshots.get_mut(&id).unwrap().level = 15;
         let second_talent_rank = [900_102];
@@ -4679,6 +5484,7 @@ mod tests {
     fn sunstrider_combat_uses_imported_attackable_source_ids_and_excludes_friendly_factions() {
         let (mut core, _, _) = core_with_two();
         core.enter_world().unwrap();
+        disarm(&mut core);
 
         let content = content::starting_zone_content();
         let in_range: Vec<_> = content
@@ -4928,7 +5734,7 @@ mod tests {
         assert_eq!(snapshot.health, PLAYER_MAX_HEALTH);
         assert_eq!(snapshot.mana, PLAYER_MAX_MANA);
         assert_eq!(snapshot.money_copper, 30);
-        assert_eq!(snapshot.inventory, [reward.item.clone()]);
+        assert_eq!(snapshot.inventory, [reward.item]);
         assert_eq!(
             snapshot.quest_journal.progress(8325).unwrap().reward_choice,
             Some(1)
@@ -5077,6 +5883,7 @@ mod tests {
     fn auto_attack_swings_on_a_deterministic_timer_and_stops_cleanly() {
         let (mut core, _, _) = practice_core_with_two();
         core.enter_world().unwrap();
+        disarm(&mut core);
         core.update_active(
             WorldPosition {
                 x: PRACTICE_START.x + 8.0,
@@ -5111,6 +5918,372 @@ mod tests {
         assert_eq!(
             core.hostile(HOSTILE_SPAWN_ID).unwrap().health,
             HOSTILE_MAX_HEALTH - MELEE_DAMAGE
+        );
+    }
+
+    #[test]
+    fn the_starter_weapon_sets_the_swing_timer_and_damage_range() {
+        // A Blood Elf mage starts with the converted Bent Staff: 3-5 damage every 2,900 ms.
+        let (mut core, id, _) = practice_core_with_two();
+        core.enter_world().unwrap();
+        let weapon = core
+            .snapshots
+            .get(&id)
+            .map(equipped_weapon)
+            .unwrap()
+            .expect("the starter staff carries converted swing numbers");
+        assert_eq!(
+            weapon,
+            WeaponProfile {
+                min: 3,
+                max: 5,
+                swing_ms: 2_900,
+            }
+        );
+        let target = core.hostile(HOSTILE_SPAWN_ID).unwrap();
+        core.update_active(target.position, 0).unwrap();
+        core.start_auto_attack(HOSTILE_SPAWN_ID).unwrap();
+        assert!(
+            core.advance_combat(2_899).is_empty(),
+            "the staff swings slow"
+        );
+        let updates = core.advance_combat(1);
+        let [CombatUpdate::MeleeImpact(impact)] = updates.as_slice() else {
+            panic!("one white swing lands: {updates:?}");
+        };
+        assert!(
+            (3..=5).contains(&impact.damage),
+            "the converted swing range, got {}",
+            impact.damage
+        );
+    }
+
+    #[test]
+    fn a_next_swing_melee_ability_takes_over_one_swing_and_spends_rage() {
+        let (mut core, id) = core_for(1, 1);
+        {
+            let snapshot = core.snapshots.get_mut(&id).unwrap();
+            snapshot.known_spell_ids.push(900_040);
+            snapshot.known_spell_ids.sort_unstable();
+        }
+        core.enter_world().unwrap();
+        disarm(&mut core);
+        let target = core.hostile(HOSTILE_SPAWN_ID).unwrap();
+        core.update_active(target.position, 0).unwrap();
+        core.start_auto_attack(HOSTILE_SPAWN_ID).unwrap();
+        core.active_rage = 30;
+
+        let ability = CastRequest {
+            spell_id: 900_040,
+            target: SpellTarget::Hostile(HOSTILE_SPAWN_ID),
+            cost: PowerCost {
+                kind: PowerType::Rage,
+                amount: 15,
+            },
+            cast_time_ms: 0,
+            spell_cooldown_ms: 0,
+            cooldown_ms: 0,
+            range_yards: 30.0,
+            effect: DirectSpellEffect::WeaponDamage {
+                bonus: WeaponBonus::flat(10, 20),
+                school: 1,
+                periodic: None,
+            },
+            combo: ComboEffect::None,
+            on_next_swing: true,
+        };
+        assert_eq!(core.begin_cast(ability), Ok(CastOutcome::QueuedMelee));
+        assert_eq!(core.queued_melee_spell(), Some(900_040));
+        assert_eq!(core.active_rage(), 15, "the rage cost is spent on queue");
+
+        let updates = core.advance_combat(MELEE_SWING_MS);
+        let [CombatUpdate::MeleeSpellImpact {
+            spell_id, impact, ..
+        }] = updates.as_slice()
+        else {
+            panic!("the queued ability takes the first swing: {updates:?}");
+        };
+        assert_eq!(*spell_id, 900_040);
+        assert!(
+            (MELEE_DAMAGE + 10..=MELEE_DAMAGE + 20).contains(&impact.damage),
+            "unarmed baseline plus the ability's bonus, got {}",
+            impact.damage
+        );
+        assert_eq!(core.queued_melee_spell(), None, "one swing only");
+
+        let updates = core.advance_combat(MELEE_SWING_MS);
+        assert!(
+            matches!(updates.as_slice(), [CombatUpdate::MeleeImpact(_)]),
+            "the next swing is a white swing: {updates:?}"
+        );
+
+        // The queue refuses outside melee reach whatever the row's range reads.
+        core.stop_auto_attack();
+        core.update_active(
+            WorldPosition {
+                x: PRACTICE_START.x + 20.0,
+                ..PRACTICE_START
+            },
+            0,
+        )
+        .unwrap();
+        core.active_rage = 30;
+        assert_eq!(
+            core.begin_cast(CastRequest {
+                range_yards: 30.0,
+                ..ability
+            }),
+            Err(CoreError::OutOfRange)
+        );
+    }
+
+    #[test]
+    fn rage_grows_from_melee_damage_and_decays_only_outside_a_fight() {
+        let (mut core, _) = core_for(1, 1);
+        core.enter_world().unwrap();
+        disarm(&mut core);
+        assert_eq!(core.active_rage(), 0, "rage starts empty");
+        let target = core.hostile(HOSTILE_SPAWN_ID).unwrap();
+        core.update_active(target.position, 0).unwrap();
+        core.start_auto_attack(HOSTILE_SPAWN_ID).unwrap();
+        let updates = core.advance_combat(MELEE_SWING_MS);
+        let [CombatUpdate::MeleeImpact(impact)] = updates.as_slice() else {
+            panic!("one white swing lands: {updates:?}");
+        };
+        let gained = rage_from_damage(impact.damage, 1, false);
+        assert!(gained > 0);
+        assert_eq!(
+            core.active_rage(),
+            gained,
+            "a warrior banks rage from swings"
+        );
+
+        // In a fight rage holds; out of one it decays.
+        assert!(!core.advance_power_regen(RAGE_DECAY_TICK_MS * 4));
+        assert_eq!(core.active_rage(), gained);
+        core.stop_auto_attack();
+        assert!(core.advance_power_regen(RAGE_DECAY_TICK_MS * 2));
+        assert_eq!(
+            core.active_rage(),
+            gained.saturating_sub(RAGE_DECAY_PER_TICK * 2)
+        );
+    }
+
+    #[test]
+    fn energy_regens_on_its_own_cadence_and_combo_points_scale_a_finisher() {
+        let (mut core, id) = core_for(1, 4);
+        {
+            let snapshot = core.snapshots.get_mut(&id).unwrap();
+            snapshot.known_spell_ids.extend([900_050, 900_051]);
+            snapshot.known_spell_ids.sort_unstable();
+        }
+        core.enter_world().unwrap();
+        disarm(&mut core);
+        assert_eq!(core.active_energy(), PLAYER_MAX_ENERGY);
+        let target = core.hostile(HOSTILE_SPAWN_ID).unwrap();
+        core.update_active(target.position, 0).unwrap();
+
+        let builder = CastRequest {
+            spell_id: 900_050,
+            target: SpellTarget::Hostile(HOSTILE_SPAWN_ID),
+            cost: PowerCost {
+                kind: PowerType::Energy,
+                amount: 45,
+            },
+            cast_time_ms: 0,
+            spell_cooldown_ms: 0,
+            cooldown_ms: 0,
+            range_yards: 5.0,
+            effect: DirectSpellEffect::WeaponDamage {
+                bonus: WeaponBonus::flat(5, 5),
+                school: 1,
+                periodic: None,
+            },
+            combo: ComboEffect::Build,
+            on_next_swing: false,
+        };
+        let finisher = CastRequest {
+            spell_id: 900_051,
+            cost: PowerCost {
+                kind: PowerType::Energy,
+                amount: 35,
+            },
+            effect: DirectSpellEffect::Damage {
+                min: 10,
+                max: 10,
+                school: 1,
+                periodic: None,
+            },
+            combo: ComboEffect::Finisher { per_point: 5 },
+            on_next_swing: false,
+            ..builder
+        };
+        assert_eq!(
+            core.begin_cast(finisher),
+            Err(CoreError::NoComboPoints),
+            "a finisher refuses with nothing to spend"
+        );
+
+        assert_eq!(core.begin_cast(builder), Ok(CastOutcome::Cast));
+        assert_eq!(core.active_energy(), PLAYER_MAX_ENERGY - 45);
+        core.advance_combat(0);
+        assert_eq!(core.combo_points(), 1, "the builder stacks one point");
+
+        // Energy regens on its own cadence, uninterrupted by casting (mana pauses).
+        assert!(core.advance_power_regen(ENERGY_REGEN_TICK_MS));
+        assert_eq!(
+            core.active_energy(),
+            PLAYER_MAX_ENERGY - 45 + ENERGY_REGEN_PER_TICK
+        );
+
+        assert_eq!(core.begin_cast(builder), Ok(CastOutcome::Cast));
+        core.advance_combat(0);
+        assert_eq!(core.combo_points(), 2);
+
+        // A few more energy ticks fund the finisher.
+        assert!(core.advance_power_regen(ENERGY_REGEN_TICK_MS * 4));
+        assert_eq!(core.begin_cast(finisher), Ok(CastOutcome::Cast));
+        assert_eq!(core.combo_points(), 0, "the finisher spends every point");
+        let updates = core.advance_combat(0);
+        let [CombatUpdate::SpellImpact { impact, .. }] = updates.as_slice() else {
+            panic!("the finisher resolves: {updates:?}");
+        };
+        assert_eq!(
+            impact.damage, 20,
+            "the roll plus per-point damage per spent combo point"
+        );
+    }
+
+    #[test]
+    fn friendly_spells_resolve_on_self_and_on_allies() {
+        let (mut core, id) = core_for(10, 8);
+        {
+            let snapshot = core.snapshots.get_mut(&id).unwrap();
+            snapshot
+                .known_spell_ids
+                .extend([900_070, 900_071, 900_072, 900_073]);
+            snapshot.known_spell_ids.sort_unstable();
+        }
+        core.enter_world().unwrap();
+        let ally_spawn = core
+            .allies()
+            .first()
+            .expect("converted friendly NPC")
+            .spawn_id;
+        core.active_health = 75;
+        core.allies.first_mut().unwrap().health = 60;
+
+        // A heal on self resolves and reports its clamp to the pool.
+        core.begin_direct_spell(
+            900_070,
+            SpellTarget::SelfCharacter,
+            10,
+            0,
+            0,
+            0,
+            0.0,
+            DirectSpellEffect::Heal { min: 20, max: 20 },
+        )
+        .unwrap();
+        let updates = core.advance_combat(1);
+        assert!(
+            updates.iter().any(|update| matches!(
+                update,
+                CombatUpdate::SpellHeal {
+                    spell_id: 900_070,
+                    amount: 20,
+                    remaining_health: 95,
+                }
+            )),
+            "the self heal lands: {updates:?}"
+        );
+
+        // A heal on an ally resolves on the ally, not the player.
+        core.begin_direct_spell(
+            900_071,
+            SpellTarget::Ally(ally_spawn),
+            10,
+            0,
+            0,
+            0,
+            30.0,
+            DirectSpellEffect::Heal { min: 15, max: 15 },
+        )
+        .unwrap();
+        let updates = core.advance_combat(1);
+        assert!(
+            updates.iter().any(|update| matches!(
+                update,
+                CombatUpdate::AllyHeal {
+                    spell_id: 900_071,
+                    spawn_id,
+                    amount: 15,
+                    remaining_health: 75,
+                } if *spawn_id == ally_spawn
+            )),
+            "the ally heal lands on the friendly unit: {updates:?}"
+        );
+        assert_eq!(
+            core.active_health(),
+            95,
+            "the player's heal was not re-applied"
+        );
+
+        // A friendly buff lands on the ally and stays with the simulation.
+        core.begin_direct_spell(
+            900_072,
+            SpellTarget::Ally(ally_spawn),
+            5,
+            0,
+            0,
+            0,
+            30.0,
+            DirectSpellEffect::Aura {
+                school: 1,
+                periodic: None,
+            },
+        )
+        .unwrap();
+        let updates = core.advance_combat(1);
+        assert!(
+            updates.iter().any(|update| matches!(
+                update,
+                CombatUpdate::AllyAura {
+                    spell_id: 900_072,
+                    applied: true,
+                    ..
+                }
+            )),
+            "the ally buff applies: {updates:?}"
+        );
+        assert_eq!(
+            core.ally(ally_spawn)
+                .unwrap()
+                .auras
+                .iter()
+                .map(|aura| aura.spell_id)
+                .collect::<Vec<_>>(),
+            vec![900_072]
+        );
+
+        // Friendly fire is not modeled: a damage spell against a friendly unit refuses.
+        assert_eq!(
+            core.begin_direct_spell(
+                900_073,
+                SpellTarget::Ally(ally_spawn),
+                5,
+                0,
+                0,
+                0,
+                30.0,
+                DirectSpellEffect::Damage {
+                    min: 5,
+                    max: 5,
+                    school: 1,
+                    periodic: None,
+                },
+            ),
+            Err(CoreError::UnsupportedSpellEffect)
         );
     }
 
@@ -5385,7 +6558,11 @@ mod tests {
         .unwrap();
         assert!(matches!(
             core.advance_combat(FIREBALL_CAST_MS).as_slice(),
-            [CombatUpdate::Impact(CastImpact { killed: false, remaining_health: 1, .. })]
+            [CombatUpdate::Impact(CastImpact {
+                killed: false,
+                remaining_health: 1,
+                ..
+            })]
         ));
 
         let updates = core.advance_combat(FIREBALL_BURN_TICK_MS);
@@ -5393,10 +6570,9 @@ mod tests {
             updates.first(),
             Some(CombatUpdate::DotImpact(CastImpact { killed: true, .. }))
         ));
-        assert!(updates.iter().any(|update| matches!(
-            update,
-            CombatUpdate::Experience { amount: 50, .. }
-        )));
+        assert!(updates
+            .iter()
+            .any(|update| matches!(update, CombatUpdate::Experience { amount: 50, .. })));
         assert_eq!(core.snapshot(&id).unwrap().experience, 50);
         assert!(core
             .advance_combat(HOSTILE_RESPAWN_MS)
@@ -5425,6 +6601,35 @@ mod tests {
         assert_eq!(migrated.schema_version, SNAPSHOT_VERSION);
         assert_eq!(migrated.body_proportions.height, 5);
         assert!(migrated.corpse_loot.is_empty());
+    }
+
+    #[test]
+    fn schema_eight_migrates_with_empty_rage_energy_and_focus_pools() {
+        let (core, id) = core_for(10, 8);
+        let mut snapshot = core.snapshot(&id).unwrap().clone();
+        snapshot.schema_version = POOLS_SNAPSHOT_VERSION;
+        let payload = toml::to_string(&snapshot)
+            .unwrap()
+            .replace("rage = 0\n", "")
+            .replace("energy = 0\n", "")
+            .replace("focus = 0\n", "");
+        for pool in ["rage = 0", "energy = 0", "focus = 0"] {
+            assert!(!payload.contains(pool), "{pool} was stripped");
+        }
+        let encoded = toml::to_string(&CheckedDocument {
+            schema_version: POOLS_SNAPSHOT_VERSION,
+            sha1: sha1_hex(payload.as_bytes()),
+            payload,
+        })
+        .unwrap();
+
+        let migrated = decode_snapshot(&encoded).unwrap();
+        assert_eq!(migrated.schema_version, SNAPSHOT_VERSION);
+        assert_eq!(
+            (migrated.rage, migrated.energy, migrated.focus),
+            (0, 0, 0),
+            "a pre-pool snapshot lands with empty pools"
+        );
     }
 
     #[test]
@@ -5471,7 +6676,16 @@ mod tests {
 
         let window = restored.open_corpse_loot(wyrm.spawn_id).unwrap();
         assert_eq!(window.gold, 17);
-        assert_eq!(window.items, [(0, loot::LootItem { entry: 20_845, count: 2 })]);
+        assert_eq!(
+            window.items,
+            [(
+                0,
+                loot::LootItem {
+                    entry: 20_845,
+                    count: 2
+                }
+            )]
+        );
         let item = restored.take_corpse_loot(0).unwrap();
         assert_eq!((item.entry, item.count, item.slot), (20_845, 2, 0));
         assert_eq!(restored.take_corpse_money(), Ok(17));
@@ -5490,7 +6704,10 @@ mod tests {
         assert_eq!(restored.active_money_copper(), Some(17));
 
         restored.advance_combat(HOSTILE_RESPAWN_MS);
-        assert_eq!(restored.hostile(wyrm.spawn_id).unwrap().health, HOSTILE_MAX_HEALTH);
+        assert_eq!(
+            restored.hostile(wyrm.spawn_id).unwrap().health,
+            HOSTILE_MAX_HEALTH
+        );
         assert!(restored
             .snapshot(&id)
             .unwrap()
@@ -5561,7 +6778,10 @@ mod tests {
         let mut invalid_seat = decode_snapshot(&core.encode_snapshot(&id).unwrap()).unwrap();
         invalid_seat.body_proportions.seat = 41;
         let invalid_seat = encode_checked(SNAPSHOT_VERSION, &invalid_seat).unwrap();
-        assert_eq!(decode_snapshot(&invalid_seat), Err(SaveError::InvalidSnapshot));
+        assert_eq!(
+            decode_snapshot(&invalid_seat),
+            Err(SaveError::InvalidSnapshot)
+        );
     }
 
     #[test]
@@ -5583,7 +6803,7 @@ mod tests {
             30,
             30,
         )
-            .unwrap();
+        .unwrap();
         core.advance_combat(FIREBALL_CAST_MS);
         assert_eq!(core.active_mana(), STARTER_MANA - FIREBALL_MANA_COST);
         assert_eq!(

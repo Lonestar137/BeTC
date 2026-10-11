@@ -152,6 +152,13 @@ const SPELL_AURA_MOD_SHAPESHIFT: u32 = 36;
 pub const SPELL_AURA_PERIODIC_DAMAGE: u32 = 3;
 /// `SPELL_AURA_PERIODIC_HEAL`: a heal-over-time aura (Renew, Rejuvenation).
 pub const SPELL_AURA_PERIODIC_HEAL: u32 = 8;
+/// `SPELL_AURA_MOD_CONFUSE`: disorient; the unit wanders and loses control (Polymorph 118,
+/// Blind 2094).
+pub const SPELL_AURA_MOD_CONFUSE: u32 = 5;
+/// `SPELL_AURA_MOD_STUN`: incapacitate; no movement, no actions (Gouge 1776's third effect).
+pub const SPELL_AURA_MOD_STUN: u32 = 12;
+/// `SPELL_AURA_MOD_ROOT`: immobilize; no movement, actions free (Frost Nova 122's second effect).
+pub const SPELL_AURA_MOD_ROOT: u32 = 26;
 /// `SPELL_AURA_MOD_STAT`: a stat buff/debuff (Power Word: Fortitude, Sunder Armor).
 pub const SPELL_AURA_MOD_STAT: u32 = 21;
 /// `SPELL_AURA_MOD_RESISTANCE`: a resistance buff/debuff (Frost Armor, Mark of the Wild).
@@ -241,15 +248,37 @@ const ATTR_EX_EXCLUDE_CASTER: u32 = 0x0008_0000;
 
 /// `SPELL_EFFECT_ATTACK`: only 6603 "Attack" has it, but the client tests the effect, not the id.
 const SPELL_EFFECT_ATTACK: u32 = 78;
-/// `SPELL_EFFECT_SCHOOL_DAMAGE`, a direct school-damage effect.
+/// `SPELL_EFFECT_SCHOOL_DAMAGE`, a direct school-damage effect (Fireball 133's first effect).
 pub const SPELL_EFFECT_SCHOOL_DAMAGE: u32 = 2;
-/// `SPELL_EFFECT_HEAL`, a direct health restore.
+/// `SPELL_EFFECT_DUMMY`: row-specific behavior named by the tooltip (Eviscerate 2098's damage
+/// arm, Charge 100's rage grant). No general rule resolves it.
+pub const SPELL_EFFECT_DUMMY: u32 = 3;
+/// `SPELL_EFFECT_HEAL`, a direct health restore (Holy Light 635).
 pub const SPELL_EFFECT_HEAL: u32 = 10;
-/// `SPELL_EFFECT_WEAPON_DAMAGE`: melee weapon-damage abilities (Heroic Strike, Sinister Strike).
-pub const SPELL_EFFECT_WEAPON_DAMAGE: u32 = 62;
-/// `SPELL_EFFECT_WEAPON_PERCENT_DAMAGE`: percentage weapon-damage abilities (Mortal Strike).
-pub const SPELL_EFFECT_WEAPON_PERCENT_DAMAGE: u32 = 64;
-/// `SPELL_EFFECT_NORMALIZED_WEAPON_DMG`: normalized weapon-damage abilities (Backstab).
+/// `SPELL_EFFECT_WEAPON_DAMAGE_NOSCHOOL`: "weapon damage plus $s1", the physical melee
+/// abilities (Heroic Strike 78, Cleave 845, Slam 1464).
+pub const SPELL_EFFECT_WEAPON_DAMAGE_NOSCHOOL: u32 = 17;
+/// `SPELL_EFFECT_WEAPON_PERCENT_DAMAGE`: "$s% weapon damage", where `EffectBasePoints + 1` is
+/// the percent (Backstab 53's second effect: 150%).
+pub const SPELL_EFFECT_WEAPON_PERCENT_DAMAGE: u32 = 31;
+/// `SPELL_EFFECT_WEAPON_DAMAGE`: "causing $s1 additional damage" over the weapon roll (Auto Shot
+/// 75, Claw 1082, Quick Shot 1516).
+pub const SPELL_EFFECT_WEAPON_DAMAGE: u32 = 58;
+/// `SPELL_EFFECT_MANA_BURN`: burns `EffectBasePoints + 1` mana for damage (Mana Burn 2691).
+/// Nothing models mana burn yet, so its rows are explicit unsupported.
+pub const SPELL_EFFECT_MANA_BURN: u32 = 62;
+/// `SPELL_EFFECT_TRIGGER_SPELL`: fires `EffectTriggerSpell` (Charge 100's Charge Stun 7922,
+/// Whirlwind 1680).
+pub const SPELL_EFFECT_TRIGGER_SPELL: u32 = 64;
+/// `SPELL_EFFECT_INTERRUPT_CAST`: the school lockout beside a hit (Shield Bash 72, Pummel 6552).
+pub const SPELL_EFFECT_INTERRUPT_CAST: u32 = 68;
+/// `SPELL_EFFECT_ADD_COMBO_POINTS`: the rogue builder, "Awards $s combo $lpoint:points;"
+/// (Sinister Strike 1752, Backstab 53, Gouge 1776); `EffectBasePoints + 1` points.
+pub const SPELL_EFFECT_ADD_COMBO_POINTS: u32 = 80;
+/// `SPELL_EFFECT_CHARGE`: closes to the target (Charge 100, Intercept 20252).
+pub const SPELL_EFFECT_CHARGE: u32 = 96;
+/// `SPELL_EFFECT_NORMALIZED_WEAPON_DMG`: "damage in addition to your normal weapon damage"
+/// (Sinister Strike 1752, Backstab 53).
 pub const SPELL_EFFECT_NORMALIZED_WEAPON_DMG: u32 = 121;
 /// `SPELL_EFFECT_ENERGIZE`: restores a power resource (mana, rage, energy).
 pub const SPELL_EFFECT_ENERGIZE: u32 = 30;

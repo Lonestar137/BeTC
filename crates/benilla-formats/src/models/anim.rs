@@ -859,7 +859,7 @@ mod tests {
         bytes[0x24..0x28].copy_from_slice(&1000u32.to_le_bytes());
         bytes[0x30..0x34].copy_from_slice(&7u32.to_le_bytes());
 
-        let track = read_channel_track(&bytes, 0, 4, |b, o| le_u32(b, o));
+        let track = read_channel_track(&bytes, 0, 4, le_u32);
         assert_eq!(track.keys, vec![(0, 7)]);
     }
 
@@ -875,7 +875,7 @@ mod tests {
         bytes[0x24..0x28].copy_from_slice(&500u32.to_le_bytes());
         bytes[0x30..0x34].copy_from_slice(&7u32.to_le_bytes());
 
-        let channel = read_global_channel(&bytes, 0, 4, &|_| Some(1000), |b, o| le_u32(b, o));
+        let channel = read_global_channel(&bytes, 0, 4, &|_| Some(1000), le_u32);
         assert!(channel.is_none());
     }
 

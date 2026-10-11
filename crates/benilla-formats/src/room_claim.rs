@@ -14,11 +14,11 @@
 //! 2. **MOLR** — the groups whose authored light-ref list names the fixture. Authored for the
 //!    reference's own purpose (register a GL light while drawing a visible group's doodads), which
 //!    is why it cannot carry the gate alone, but it is the artist speaking and it is never wrong.
-//! 2b. **SPLIT-FLOOR SIBLINGS** (MONKEY (split-floor claims)) — the group across a portal too
+//! 3. **SPLIT-FLOOR SIBLINGS** (MONKEY (split-floor claims)) — the group across a portal too
 //!    LARGE to be a doorway ([`SPLIT_PORTAL_MIN_AREA`]): one room the artist cut in two for
 //!    rendering. It joins the base at weight 1, because there is no threshold between the halves
 //!    to fade across — see [`ClaimHow::Split`].
-//! 3. **PORTAL-ADJACENT** — the groups up to [`ROOM_CLAIM_HOPS`] portal hops from a claimed group,
+//! 4. **PORTAL-ADJACENT** — the groups up to [`ROOM_CLAIM_HOPS`] portal hops from a claimed group,
 //!    when the doorways lie within the fixture's effective radius. This is the "light crosses an
 //!    open doorway" rule: without it a fixture stops dead at its room's edge and a continuous floor
 //!    changes brightness in a straight line at the group boundary, which is exactly the seam the

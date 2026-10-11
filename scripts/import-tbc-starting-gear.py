@@ -67,6 +67,11 @@ ITEM_COLUMNS = [
     "bonding",
     "Material",
     "MaxDurability",
+    # Server-side weapon damage and speed (the 2.4.3 client's Item.dbc carries display
+    # data only). Slot 1 is the weapon swing; the floats are rounded to whole points.
+    "dmg_min1",
+    "dmg_max1",
+    "delay",
 ]
 
 
@@ -172,6 +177,9 @@ def load_items(sql_path):
                 "bonding": int(raw[index["bonding"]]),
                 "material": int(raw[index["Material"]]),
                 "max_durability": int(raw[index["MaxDurability"]]),
+                "dmg_min": int(round(float(raw[index["dmg_min1"]]))),
+                "dmg_max": int(round(float(raw[index["dmg_max1"]]))),
+                "delay": int(raw[index["delay"]]),
             }
     return items, index
 
@@ -227,6 +235,9 @@ def main():
             "bonding",
             "material",
             "max_durability",
+            "dmg_min",
+            "dmg_max",
+            "delay",
         ]:
             out.append("%s = %d" % (key, item[key]))
         out.append("name = %s" % toml_string(item["name"]))

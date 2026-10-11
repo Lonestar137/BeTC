@@ -22,6 +22,9 @@ armor = 0
 bonding = 0
 material = 1
 max_durability = 20
+dmg_min = 1
+dmg_max = 3
+delay = 1900
 name = "Worn Shortsword"
 
 [[item_template]]
@@ -41,6 +44,9 @@ armor = 0
 bonding = 0
 material = 2
 max_durability = 25
+dmg_min = 3
+dmg_max = 5
+delay = 2900
 name = "Bent Staff"
 
 [[item_template]]
@@ -60,6 +66,9 @@ armor = 0
 bonding = 0
 material = 2
 max_durability = 20
+dmg_min = 1
+dmg_max = 3
+delay = 1900
 name = "Worn Mace"
 
 [[item_template]]
@@ -79,6 +88,9 @@ armor = 0
 bonding = 0
 material = 1
 max_durability = 20
+dmg_min = 1
+dmg_max = 3
+delay = 2000
 name = "Worn Axe"
 
 [[item_template]]
@@ -98,6 +110,9 @@ armor = 0
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Recruit's Shirt"
 
 [[item_template]]
@@ -117,6 +132,9 @@ armor = 2
 bonding = 0
 material = 7
 max_durability = 25
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Recruit's Pants"
 
 [[item_template]]
@@ -136,6 +154,9 @@ armor = 0
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Recruit's Boots"
 
 [[item_template]]
@@ -155,6 +176,9 @@ armor = 0
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Squire's Boots"
 
 [[item_template]]
@@ -174,6 +198,9 @@ armor = 2
 bonding = 0
 material = 7
 max_durability = 25
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Squire's Pants"
 
 [[item_template]]
@@ -193,6 +220,9 @@ armor = 0
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Squire's Shirt"
 
 [[item_template]]
@@ -212,6 +242,9 @@ armor = 0
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Footpad's Shoes"
 
 [[item_template]]
@@ -231,6 +264,9 @@ armor = 2
 bonding = 0
 material = 7
 max_durability = 25
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Footpad's Pants"
 
 [[item_template]]
@@ -250,6 +286,9 @@ armor = 0
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Footpad's Shirt"
 
 [[item_template]]
@@ -269,6 +308,9 @@ armor = 0
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Neophyte's Boots"
 
 [[item_template]]
@@ -288,6 +330,9 @@ armor = 2
 bonding = 0
 material = 7
 max_durability = 25
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Neophyte's Pants"
 
 [[item_template]]
@@ -307,6 +352,9 @@ armor = 0
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Neophyte's Shirt"
 
 [[item_template]]
@@ -326,6 +374,9 @@ armor = 0
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Apprentice's Boots"
 
 [[item_template]]
@@ -345,6 +396,9 @@ armor = 3
 bonding = 0
 material = 7
 max_durability = 35
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Apprentice's Robe"
 
 [[item_template]]
@@ -364,6 +418,9 @@ armor = 3
 bonding = 0
 material = 7
 max_durability = 35
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Acolyte's Robe"
 
 [[item_template]]
@@ -383,6 +440,9 @@ armor = 0
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Acolyte's Shoes"
 
 [[item_template]]
@@ -402,6 +462,9 @@ armor = 2
 bonding = 0
 material = 7
 max_durability = 25
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Thug Pants"
 
 [[item_template]]
@@ -421,6 +484,9 @@ armor = 0
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Thug Boots"
 
 [[item_template]]
@@ -440,6 +506,9 @@ armor = 0
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Trapper's Shirt"
 
 [[item_template]]
@@ -459,6 +528,9 @@ armor = 0
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Rugged Trapper's Boots"
 
 [[item_template]]
@@ -478,6 +550,9 @@ armor = 2
 bonding = 0
 material = 7
 max_durability = 25
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Brawler's Pants"
 
 [[item_template]]
@@ -497,6 +572,9 @@ armor = 0
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Brawler's Boots"
 
 [[item_template]]
@@ -516,6 +594,9 @@ armor = 2
 bonding = 0
 material = 7
 max_durability = 25
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Rugged Trapper's Pants"
 
 [[item_template]]
@@ -535,6 +616,9 @@ armor = 0
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Rugged Trapper's Shirt"
 
 [[item_template]]
@@ -554,6 +638,9 @@ armor = 14
 bonding = 0
 material = 8
 max_durability = 30
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Primitive Kilt"
 
 [[item_template]]
@@ -573,6 +660,9 @@ armor = 0
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Primitive Mantle"
 
 [[item_template]]
@@ -592,6 +682,9 @@ armor = 2
 bonding = 0
 material = 7
 max_durability = 25
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Apprentice's Pants"
 
 [[item_template]]
@@ -611,6 +704,9 @@ armor = 2
 bonding = 0
 material = 7
 max_durability = 25
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Acolyte's Pants"
 
 [[item_template]]
@@ -630,6 +726,9 @@ armor = 0
 bonding = 0
 material = 1
 max_durability = 16
+dmg_min = 1
+dmg_max = 2
+delay = 1600
 name = "Worn Dagger"
 
 [[item_template]]
@@ -649,6 +748,9 @@ armor = 0
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Thug Shirt"
 
 [[item_template]]
@@ -668,6 +770,9 @@ armor = 0
 bonding = 0
 material = 2
 max_durability = 25
+dmg_min = 3
+dmg_max = 5
+delay = 2900
 name = "Battleworn Hammer"
 
 [[item_template]]
@@ -687,6 +792,9 @@ armor = 5
 bonding = 0
 material = 1
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Worn Wooden Shield"
 
 [[item_template]]
@@ -706,6 +814,9 @@ armor = 0
 bonding = 0
 material = 2
 max_durability = 20
+dmg_min = 5
+dmg_max = 10
+delay = 2300
 name = "Worn Shortbow"
 
 [[item_template]]
@@ -725,6 +836,9 @@ armor = 0
 bonding = 0
 material = 1
 max_durability = 20
+dmg_min = 5
+dmg_max = 10
+delay = 2300
 name = "Old Blunderbuss"
 
 [[item_template]]
@@ -744,6 +858,9 @@ armor = 0
 bonding = 0
 material = 2
 max_durability = 25
+dmg_min = 3
+dmg_max = 5
+delay = 2900
 name = "Handcrafted Staff"
 
 [[item_template]]
@@ -763,6 +880,9 @@ armor = 0
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Apprentice's Shirt"
 
 [[item_template]]
@@ -782,6 +902,9 @@ armor = 0
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Acolyte's Shirt"
 
 [[item_template]]
@@ -801,6 +924,9 @@ armor = 3
 bonding = 0
 material = 7
 max_durability = 35
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Neophyte's Robe"
 
 [[item_template]]
@@ -820,6 +946,9 @@ armor = 3
 bonding = 0
 material = 7
 max_durability = 35
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Apprentice's Robe"
 
 [[item_template]]
@@ -839,6 +968,9 @@ armor = 0
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Squire's Shirt"
 
 [[item_template]]
@@ -858,6 +990,9 @@ armor = 2
 bonding = 0
 material = 7
 max_durability = 25
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Squire's Pants"
 
 [[item_template]]
@@ -877,6 +1012,9 @@ armor = 3
 bonding = 0
 material = 7
 max_durability = 35
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Neophyte's Robe"
 
 [[item_template]]
@@ -896,6 +1034,9 @@ armor = 0
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Recruit's Shirt"
 
 [[item_template]]
@@ -915,6 +1056,9 @@ armor = 2
 bonding = 0
 material = 7
 max_durability = 25
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Recruit's Pants"
 
 [[item_template]]
@@ -934,6 +1078,9 @@ armor = 0
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Recruit's Boots"
 
 [[item_template]]
@@ -953,6 +1100,9 @@ armor = 3
 bonding = 0
 material = 7
 max_durability = 35
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Novice's Robe"
 
 [[item_template]]
@@ -972,6 +1122,9 @@ armor = 2
 bonding = 0
 material = 7
 max_durability = 25
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Novice's Pants"
 
 [[item_template]]
@@ -991,6 +1144,9 @@ armor = 0
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Brawler's Harness"
 
 [[item_template]]
@@ -1010,6 +1166,9 @@ armor = 2
 bonding = 0
 material = 7
 max_durability = 25
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Trapper's Pants"
 
 [[item_template]]
@@ -1029,6 +1188,9 @@ armor = 0
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Trapper's Boots"
 
 [[item_template]]
@@ -1048,6 +1210,9 @@ armor = 3
 bonding = 0
 material = 7
 max_durability = 35
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Acolyte's Robe"
 
 [[item_template]]
@@ -1067,6 +1232,9 @@ armor = 0
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Primitive Mantle"
 
 [[item_template]]
@@ -1086,6 +1254,9 @@ armor = 14
 bonding = 0
 material = 8
 max_durability = 30
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Primitive Kilt"
 
 [[item_template]]
@@ -1105,6 +1276,9 @@ armor = 0
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Thug Shirt"
 
 [[item_template]]
@@ -1124,6 +1298,9 @@ armor = 2
 bonding = 0
 material = 7
 max_durability = 25
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Thug Pants"
 
 [[item_template]]
@@ -1143,6 +1320,9 @@ armor = 0
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Thug Boots"
 
 [[item_template]]
@@ -1162,6 +1342,9 @@ armor = 3
 bonding = 0
 material = 7
 max_durability = 35
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Novice's Robe"
 
 [[item_template]]
@@ -1181,6 +1364,9 @@ armor = 3
 bonding = 0
 material = 7
 max_durability = 35
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Apprentice's Robe"
 
 [[item_template]]
@@ -1200,6 +1386,9 @@ armor = 3
 bonding = 0
 material = 7
 max_durability = 35
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Neophyte's Robe"
 
 [[item_template]]
@@ -1219,6 +1408,9 @@ armor = 0
 bonding = 0
 material = 1
 max_durability = 25
+dmg_min = 3
+dmg_max = 5
+delay = 2900
 name = "Worn Battleaxe"
 
 [[item_template]]
@@ -1238,6 +1430,9 @@ armor = 3
 bonding = 0
 material = 7
 max_durability = 35
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Neophyte's Robe"
 
 [[item_template]]
@@ -1257,6 +1452,9 @@ armor = 3
 bonding = 0
 material = 7
 max_durability = 35
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Acolyte's Robe"
 
 [[item_template]]
@@ -1276,6 +1474,9 @@ armor = 3
 bonding = 0
 material = 7
 max_durability = 35
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Apprentice's Robe"
 
 [[item_template]]
@@ -1295,6 +1496,9 @@ armor = 2
 bonding = 0
 material = 7
 max_durability = 25
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Apprentice's Pants"
 
 [[item_template]]
@@ -1314,6 +1518,9 @@ armor = 0
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Apprentice's Boots"
 
 [[item_template]]
@@ -1333,6 +1540,9 @@ armor = 2
 bonding = 0
 material = 7
 max_durability = 25
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Lookout's Pants"
 
 [[item_template]]
@@ -1352,6 +1562,9 @@ armor = 0
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Lookout's Tunic"
 
 [[item_template]]
@@ -1371,6 +1584,9 @@ armor = 2
 bonding = 0
 material = 7
 max_durability = 16
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Lookout's Shoes"
 
 [[item_template]]
@@ -1390,6 +1606,9 @@ armor = 2
 bonding = 0
 material = 7
 max_durability = 25
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Warder's Pants"
 
 [[item_template]]
@@ -1409,6 +1628,9 @@ armor = 2
 bonding = 0
 material = 7
 max_durability = 16
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Warder's Boots"
 
 [[item_template]]
@@ -1428,6 +1650,9 @@ armor = 0
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Warder's Shirt"
 
 [[item_template]]
@@ -1447,6 +1672,9 @@ armor = 0
 bonding = 0
 material = 2
 max_durability = 20
+dmg_min = 5
+dmg_max = 10
+delay = 2300
 name = "Warder's Shortbow"
 
 [[item_template]]
@@ -1466,6 +1694,9 @@ armor = 0
 bonding = 0
 material = 2
 max_durability = 20
+dmg_min = 1
+dmg_max = 3
+delay = 1900
 name = "Neophyte's Mace"
 
 [[item_template]]
@@ -1485,6 +1716,9 @@ armor = 0
 bonding = 0
 material = 1
 max_durability = 16
+dmg_min = 1
+dmg_max = 2
+delay = 1600
 name = "Sharp Dagger"
 
 [[item_template]]
@@ -1504,6 +1738,9 @@ armor = 0
 bonding = 0
 material = 1
 max_durability = 16
+dmg_min = 1
+dmg_max = 2
+delay = 1600
 name = "Acolyte's Dagger"
 
 [[item_template]]
@@ -1523,6 +1760,9 @@ armor = 3
 bonding = 0
 material = 7
 max_durability = 35
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Acolyte's Robe"
 
 [[item_template]]
@@ -1542,6 +1782,9 @@ armor = 2
 bonding = 0
 material = 7
 max_durability = 25
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Scout's Pants"
 
 [[item_template]]
@@ -1561,6 +1804,9 @@ armor = 0
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Scout's Shirt"
 
 [[item_template]]
@@ -1580,6 +1826,9 @@ armor = 0
 bonding = 0
 material = 1
 max_durability = 25
+dmg_min = 3
+dmg_max = 5
+delay = 2900
 name = "Battleworn Claymore"
 
 [[item_template]]
@@ -1599,6 +1848,9 @@ armor = 0
 bonding = 0
 material = 2
 max_durability = 20
+dmg_min = 6
+dmg_max = 10
+delay = 2500
 name = "Weathered Crossbow"
 
 [[item_template]]
@@ -1618,6 +1870,9 @@ armor = 0
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Scout's Boots"
 
 [[item_template]]
@@ -1637,6 +1892,9 @@ armor = 0
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Recruit's Shirt"
 
 [[item_template]]
@@ -1656,6 +1914,9 @@ armor = 2
 bonding = 0
 material = 7
 max_durability = 25
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Recruit's Pants"
 
 [[item_template]]
@@ -1675,6 +1936,9 @@ armor = 0
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Recruit's Boots"
 
 [[item_template]]
@@ -1694,6 +1958,9 @@ armor = 0
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Squire's Shirt"
 
 [[item_template]]
@@ -1713,6 +1980,9 @@ armor = 2
 bonding = 0
 material = 7
 max_durability = 25
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Squire's Pants"
 
 [[item_template]]
@@ -1732,6 +2002,9 @@ armor = 2
 bonding = 0
 material = 7
 max_durability = 25
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Recruit's Pants"
 
 [[item_template]]
@@ -1751,6 +2024,9 @@ armor = 3
 bonding = 0
 material = 7
 max_durability = 35
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Recruit's Robe"
 
 [[item_template]]
@@ -1770,6 +2046,9 @@ armor = 0
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Initiate's Shirt"
 
 [[item_template]]
@@ -1789,6 +2068,9 @@ armor = 2
 bonding = 0
 material = 7
 max_durability = 25
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Initiate's Pants"
 
 [[item_template]]
@@ -1808,6 +2090,9 @@ armor = 2
 bonding = 0
 material = 7
 max_durability = 16
+dmg_min = 0
+dmg_max = 0
+delay = 0
 name = "Initiate's Boots"
 
 [[item_template]]
@@ -1827,6 +2112,9 @@ armor = 0
 bonding = 0
 material = 1
 max_durability = 200
+dmg_min = 1
+dmg_max = 3
+delay = 1800
 name = "Crude Throwing Axe"
 
 [[item_template]]
@@ -1846,6 +2134,9 @@ armor = 0
 bonding = 0
 material = 1
 max_durability = 200
+dmg_min = 1
+dmg_max = 2
+delay = 1600
 name = "Light Throwing Knife"
 
 [[starting_item]]

@@ -733,12 +733,14 @@ mod tests {
 
     #[test]
     fn mana_cost_uses_spell_level_scaling_and_base_mana_percent() {
-        let mut d = SpellDisplay::default();
-        d.base_level = 5;
-        d.max_level = 8;
-        d.mana_cost = 20;
-        d.mana_cost_per_level = 3;
-        d.mana_cost_pct = 10;
+        let d = SpellDisplay {
+            base_level: 5,
+            max_level: 8,
+            mana_cost: 20,
+            mana_cost_per_level: 3,
+            mana_cost_pct: 10,
+            ..Default::default()
+        };
         assert_eq!(d.mana_cost_at_level(4, 100), 30);
         assert_eq!(d.mana_cost_at_level(7, 100), 36);
         assert_eq!(d.mana_cost_at_level(20, 100), 39, "maxLevel caps scaling");

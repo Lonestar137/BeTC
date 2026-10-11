@@ -229,13 +229,11 @@ fn roll_entry(
             depth + 1,
             drops,
         );
-    } else if row.item != 0 {
-        if drops.len() < MAX_CORPSE_ITEMS {
-            drops.push(LootItem {
-                entry: row.item,
-                count: roll_inclusive(row.min_count_or_ref as u32, row.max_count, random),
-            });
-        }
+    } else if row.item != 0 && drops.len() < MAX_CORPSE_ITEMS {
+        drops.push(LootItem {
+            entry: row.item,
+            count: roll_inclusive(row.min_count_or_ref as u32, row.max_count, random),
+        });
     }
 }
 

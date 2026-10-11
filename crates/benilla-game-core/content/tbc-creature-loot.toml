@@ -13684,6 +13684,9 @@ armor = 0
 bonding = 0
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 118
@@ -13703,6 +13706,9 @@ armor = 0
 bonding = 0
 material = 3
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 159
@@ -13722,6 +13728,9 @@ armor = 0
 bonding = 0
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 182
@@ -13741,6 +13750,9 @@ armor = 0
 bonding = 4
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 727
@@ -13760,6 +13772,9 @@ armor = 0
 bonding = 2
 material = 1
 max_durability = 40
+dmg_min = 8
+dmg_max = 15
+delay = 2100
 
 [[item_template]]
 entry = 750
@@ -13779,6 +13794,9 @@ armor = 0
 bonding = 4
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 752
@@ -13798,6 +13816,9 @@ armor = 0
 bonding = 4
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 755
@@ -13817,6 +13838,9 @@ armor = 0
 bonding = 0
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 766
@@ -13836,6 +13860,9 @@ armor = 0
 bonding = 0
 material = 2
 max_durability = 30
+dmg_min = 4
+dmg_max = 8
+delay = 2000
 
 [[item_template]]
 entry = 767
@@ -13855,6 +13882,9 @@ armor = 0
 bonding = 0
 material = 2
 max_durability = 40
+dmg_min = 8
+dmg_max = 13
+delay = 2500
 
 [[item_template]]
 entry = 768
@@ -13874,6 +13904,9 @@ armor = 0
 bonding = 0
 material = 1
 max_durability = 35
+dmg_min = 7
+dmg_max = 13
+delay = 2600
 
 [[item_template]]
 entry = 770
@@ -13893,6 +13926,9 @@ armor = 0
 bonding = 0
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 772
@@ -13912,6 +13948,9 @@ armor = 0
 bonding = 4
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 773
@@ -13931,6 +13970,9 @@ armor = 0
 bonding = 4
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 774
@@ -13950,6 +13992,9 @@ armor = 0
 bonding = 0
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 778
@@ -13969,6 +14014,9 @@ armor = 0
 bonding = 0
 material = 1
 max_durability = 30
+dmg_min = 4
+dmg_max = 9
+delay = 2400
 
 [[item_template]]
 entry = 805
@@ -13988,6 +14036,9 @@ armor = 0
 bonding = 0
 material = 8
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 818
@@ -14007,6 +14058,9 @@ armor = 0
 bonding = 0
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 828
@@ -14026,6 +14080,9 @@ armor = 0
 bonding = 0
 material = 8
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 856
@@ -14045,6 +14102,9 @@ armor = 0
 bonding = 0
 material = 8
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 954
@@ -14064,6 +14124,9 @@ armor = 0
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 955
@@ -14083,6 +14146,9 @@ armor = 0
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1019
@@ -14102,6 +14168,9 @@ armor = 0
 bonding = 4
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1180
@@ -14121,6 +14190,9 @@ armor = 0
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1181
@@ -14140,6 +14212,9 @@ armor = 0
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1210
@@ -14159,6 +14234,9 @@ armor = 0
 bonding = 0
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1364
@@ -14178,6 +14256,9 @@ armor = 31
 bonding = 0
 material = 8
 max_durability = 45
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1366
@@ -14197,6 +14278,9 @@ armor = 17
 bonding = 0
 material = 8
 max_durability = 30
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1367
@@ -14216,6 +14300,9 @@ armor = 16
 bonding = 0
 material = 8
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1368
@@ -14235,6 +14322,9 @@ armor = 17
 bonding = 0
 material = 8
 max_durability = 16
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1369
@@ -14254,6 +14344,9 @@ armor = 18
 bonding = 0
 material = 8
 max_durability = 16
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1370
@@ -14273,6 +14366,9 @@ armor = 12
 bonding = 0
 material = 8
 max_durability = 16
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1372
@@ -14292,6 +14388,9 @@ armor = 3
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1374
@@ -14311,6 +14410,9 @@ armor = 5
 bonding = 0
 material = 7
 max_durability = 18
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1376
@@ -14330,6 +14432,9 @@ armor = 5
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1377
@@ -14349,6 +14454,9 @@ armor = 4
 bonding = 0
 material = 7
 max_durability = 12
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1378
@@ -14368,6 +14476,9 @@ armor = 4
 bonding = 0
 material = 7
 max_durability = 25
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1380
@@ -14387,6 +14498,9 @@ armor = 8
 bonding = 0
 material = 7
 max_durability = 35
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1389
@@ -14406,6 +14520,9 @@ armor = 0
 bonding = 0
 material = 2
 max_durability = 30
+dmg_min = 4
+dmg_max = 9
+delay = 2300
 
 [[item_template]]
 entry = 1399
@@ -14425,6 +14542,9 @@ armor = 0
 bonding = 0
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1411
@@ -14444,6 +14564,9 @@ armor = 0
 bonding = 0
 material = 2
 max_durability = 40
+dmg_min = 8
+dmg_max = 12
+delay = 3000
 
 [[item_template]]
 entry = 1412
@@ -14463,6 +14586,9 @@ armor = 0
 bonding = 0
 material = 1
 max_durability = 35
+dmg_min = 7
+dmg_max = 12
+delay = 3200
 
 [[item_template]]
 entry = 1413
@@ -14482,6 +14608,9 @@ armor = 0
 bonding = 0
 material = 1
 max_durability = 35
+dmg_min = 3
+dmg_max = 7
+delay = 2000
 
 [[item_template]]
 entry = 1414
@@ -14501,6 +14630,9 @@ armor = 0
 bonding = 0
 material = 2
 max_durability = 40
+dmg_min = 10
+dmg_max = 15
+delay = 3300
 
 [[item_template]]
 entry = 1415
@@ -14520,6 +14652,9 @@ armor = 0
 bonding = 0
 material = 2
 max_durability = 35
+dmg_min = 3
+dmg_max = 7
+delay = 1700
 
 [[item_template]]
 entry = 1416
@@ -14539,6 +14674,9 @@ armor = 0
 bonding = 0
 material = 1
 max_durability = 35
+dmg_min = 4
+dmg_max = 8
+delay = 2100
 
 [[item_template]]
 entry = 1417
@@ -14558,6 +14696,9 @@ armor = 0
 bonding = 0
 material = 1
 max_durability = 40
+dmg_min = 8
+dmg_max = 13
+delay = 3100
 
 [[item_template]]
 entry = 1418
@@ -14577,6 +14718,9 @@ armor = 22
 bonding = 0
 material = 8
 max_durability = 18
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1419
@@ -14596,6 +14740,9 @@ armor = 29
 bonding = 0
 material = 8
 max_durability = 25
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1420
@@ -14615,6 +14762,9 @@ armor = 20
 bonding = 0
 material = 8
 max_durability = 18
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1421
@@ -14634,6 +14784,9 @@ armor = 9
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1422
@@ -14653,6 +14806,9 @@ armor = 22
 bonding = 0
 material = 8
 max_durability = 16
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1423
@@ -14672,6 +14828,9 @@ armor = 34
 bonding = 0
 material = 8
 max_durability = 35
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1425
@@ -14691,6 +14850,9 @@ armor = 46
 bonding = 0
 material = 8
 max_durability = 55
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1427
@@ -14710,6 +14872,9 @@ armor = 12
 bonding = 0
 material = 7
 max_durability = 25
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1429
@@ -14729,6 +14894,9 @@ armor = 5
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1430
@@ -14748,6 +14916,9 @@ armor = 8
 bonding = 0
 material = 7
 max_durability = 14
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1431
@@ -14767,6 +14938,9 @@ armor = 12
 bonding = 0
 material = 7
 max_durability = 30
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1433
@@ -14786,6 +14960,9 @@ armor = 13
 bonding = 0
 material = 7
 max_durability = 40
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1438
@@ -14805,6 +14982,9 @@ armor = 135
 bonding = 0
 material = 1
 max_durability = 40
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1476
@@ -14824,6 +15004,9 @@ armor = 0
 bonding = 0
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1495
@@ -14843,6 +15026,9 @@ armor = 15
 bonding = 0
 material = 7
 max_durability = 25
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1497
@@ -14862,6 +15048,9 @@ armor = 12
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1498
@@ -14881,6 +15070,9 @@ armor = 16
 bonding = 0
 material = 7
 max_durability = 18
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1499
@@ -14900,6 +15092,9 @@ armor = 17
 bonding = 0
 material = 7
 max_durability = 35
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1501
@@ -14919,6 +15114,9 @@ armor = 22
 bonding = 0
 material = 7
 max_durability = 50
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1502
@@ -14938,6 +15136,9 @@ armor = 35
 bonding = 0
 material = 8
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1503
@@ -14957,6 +15158,9 @@ armor = 43
 bonding = 0
 material = 8
 max_durability = 30
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1504
@@ -14976,6 +15180,9 @@ armor = 23
 bonding = 0
 material = 8
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1505
@@ -14995,6 +15202,9 @@ armor = 10
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1506
@@ -15014,6 +15224,9 @@ armor = 36
 bonding = 0
 material = 8
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1507
@@ -15033,6 +15246,9 @@ armor = 54
 bonding = 0
 material = 8
 max_durability = 45
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1509
@@ -15052,6 +15268,9 @@ armor = 52
 bonding = 0
 material = 8
 max_durability = 55
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1510
@@ -15071,6 +15290,9 @@ armor = 0
 bonding = 0
 material = 2
 max_durability = 40
+dmg_min = 6
+dmg_max = 12
+delay = 2400
 
 [[item_template]]
 entry = 1511
@@ -15090,6 +15312,9 @@ armor = 0
 bonding = 0
 material = 1
 max_durability = 45
+dmg_min = 6
+dmg_max = 12
+delay = 2300
 
 [[item_template]]
 entry = 1512
@@ -15109,6 +15334,9 @@ armor = 0
 bonding = 0
 material = 1
 max_durability = 50
+dmg_min = 12
+dmg_max = 18
+delay = 3000
 
 [[item_template]]
 entry = 1513
@@ -15128,6 +15356,9 @@ armor = 0
 bonding = 0
 material = 1
 max_durability = 50
+dmg_min = 16
+dmg_max = 25
+delay = 3600
 
 [[item_template]]
 entry = 1514
@@ -15147,6 +15378,9 @@ armor = 0
 bonding = 0
 material = 2
 max_durability = 50
+dmg_min = 13
+dmg_max = 21
+delay = 3000
 
 [[item_template]]
 entry = 1515
@@ -15166,6 +15400,9 @@ armor = 0
 bonding = 0
 material = 2
 max_durability = 50
+dmg_min = 13
+dmg_max = 20
+delay = 3300
 
 [[item_template]]
 entry = 1516
@@ -15185,6 +15422,9 @@ armor = 0
 bonding = 0
 material = 1
 max_durability = 45
+dmg_min = 6
+dmg_max = 12
+delay = 2100
 
 [[item_template]]
 entry = 1730
@@ -15204,6 +15444,9 @@ armor = 62
 bonding = 0
 material = 5
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1731
@@ -15223,6 +15466,9 @@ armor = 80
 bonding = 0
 material = 5
 max_durability = 35
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1732
@@ -15242,6 +15488,9 @@ armor = 54
 bonding = 0
 material = 5
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1733
@@ -15261,6 +15510,9 @@ armor = 13
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1734
@@ -15280,6 +15532,9 @@ armor = 65
 bonding = 0
 material = 5
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1735
@@ -15299,6 +15554,9 @@ armor = 96
 bonding = 0
 material = 5
 max_durability = 50
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1737
@@ -15318,6 +15576,9 @@ armor = 123
 bonding = 0
 material = 5
 max_durability = 70
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 1972
@@ -15337,6 +15598,9 @@ armor = 0
 bonding = 1
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2055
@@ -15356,6 +15620,9 @@ armor = 0
 bonding = 0
 material = 2
 max_durability = 25
+dmg_min = 2
+dmg_max = 4
+delay = 1900
 
 [[item_template]]
 entry = 2057
@@ -15375,6 +15642,9 @@ armor = 0
 bonding = 0
 material = 1
 max_durability = 25
+dmg_min = 2
+dmg_max = 4
+delay = 2000
 
 [[item_template]]
 entry = 2070
@@ -15394,6 +15664,9 @@ armor = 0
 bonding = 0
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2075
@@ -15413,6 +15686,9 @@ armor = 0
 bonding = 2
 material = 2
 max_durability = 40
+dmg_min = 9
+dmg_max = 17
+delay = 2000
 
 [[item_template]]
 entry = 2138
@@ -15432,6 +15708,9 @@ armor = 0
 bonding = 0
 material = 1
 max_durability = 25
+dmg_min = 2
+dmg_max = 5
+delay = 1700
 
 [[item_template]]
 entry = 2140
@@ -15451,6 +15730,9 @@ armor = 0
 bonding = 2
 material = 1
 max_durability = 30
+dmg_min = 6
+dmg_max = 13
+delay = 1600
 
 [[item_template]]
 entry = 2210
@@ -15470,6 +15752,9 @@ armor = 12
 bonding = 0
 material = 1
 max_durability = 25
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2211
@@ -15489,6 +15774,9 @@ armor = 32
 bonding = 0
 material = 1
 max_durability = 30
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2212
@@ -15508,6 +15796,9 @@ armor = 61
 bonding = 0
 material = 1
 max_durability = 35
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2213
@@ -15527,6 +15818,9 @@ armor = 79
 bonding = 0
 material = 1
 max_durability = 35
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2214
@@ -15546,6 +15840,9 @@ armor = 282
 bonding = 0
 material = 1
 max_durability = 55
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2215
@@ -15565,6 +15862,9 @@ armor = 172
 bonding = 0
 material = 1
 max_durability = 45
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2396
@@ -15584,6 +15884,9 @@ armor = 45
 bonding = 0
 material = 5
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2398
@@ -15603,6 +15906,9 @@ armor = 102
 bonding = 0
 material = 5
 max_durability = 65
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2406
@@ -15622,6 +15928,9 @@ armor = 0
 bonding = 0
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2407
@@ -15641,6 +15950,9 @@ armor = 0
 bonding = 0
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2408
@@ -15660,6 +15972,9 @@ armor = 0
 bonding = 0
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2553
@@ -15679,6 +15994,9 @@ armor = 0
 bonding = 0
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2555
@@ -15698,6 +16016,9 @@ armor = 0
 bonding = 0
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2589
@@ -15717,6 +16038,9 @@ armor = 0
 bonding = 0
 material = 8
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2590
@@ -15736,6 +16060,9 @@ armor = 0
 bonding = 0
 material = 8
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2598
@@ -15755,6 +16082,9 @@ armor = 0
 bonding = 0
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2632
@@ -15774,6 +16104,9 @@ armor = 0
 bonding = 2
 material = 1
 max_durability = 35
+dmg_min = 8
+dmg_max = 15
+delay = 1600
 
 [[item_template]]
 entry = 2635
@@ -15793,6 +16126,9 @@ armor = 47
 bonding = 0
 material = 5
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2642
@@ -15812,6 +16148,9 @@ armor = 62
 bonding = 0
 material = 5
 max_durability = 30
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2643
@@ -15831,6 +16170,9 @@ armor = 42
 bonding = 0
 material = 5
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2644
@@ -15850,6 +16192,9 @@ armor = 5
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2645
@@ -15869,6 +16214,9 @@ armor = 48
 bonding = 0
 material = 5
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2646
@@ -15888,6 +16236,9 @@ armor = 73
 bonding = 0
 material = 5
 max_durability = 45
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2648
@@ -15907,6 +16258,9 @@ armor = 97
 bonding = 0
 material = 5
 max_durability = 65
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2649
@@ -15926,6 +16280,9 @@ armor = 24
 bonding = 0
 material = 5
 max_durability = 16
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2650
@@ -15945,6 +16302,9 @@ armor = 34
 bonding = 0
 material = 5
 max_durability = 25
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2651
@@ -15964,6 +16324,9 @@ armor = 25
 bonding = 0
 material = 5
 max_durability = 18
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2652
@@ -15983,6 +16346,9 @@ armor = 5
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2653
@@ -16002,6 +16368,9 @@ armor = 35
 bonding = 0
 material = 5
 max_durability = 18
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2654
@@ -16021,6 +16390,9 @@ armor = 37
 bonding = 0
 material = 5
 max_durability = 35
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2656
@@ -16040,6 +16412,9 @@ armor = 63
 bonding = 0
 material = 5
 max_durability = 55
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2657
@@ -16059,6 +16434,9 @@ armor = 0
 bonding = 0
 material = 8
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2672
@@ -16078,6 +16456,9 @@ armor = 0
 bonding = 0
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2763
@@ -16097,6 +16478,9 @@ armor = 0
 bonding = 0
 material = 1
 max_durability = 35
+dmg_min = 4
+dmg_max = 8
+delay = 1400
 
 [[item_template]]
 entry = 2770
@@ -16116,6 +16500,9 @@ armor = 0
 bonding = 0
 material = 2
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2773
@@ -16135,6 +16522,9 @@ armor = 0
 bonding = 0
 material = 2
 max_durability = 30
+dmg_min = 6
+dmg_max = 12
+delay = 2300
 
 [[item_template]]
 entry = 2774
@@ -16154,6 +16544,9 @@ armor = 0
 bonding = 0
 material = 1
 max_durability = 30
+dmg_min = 6
+dmg_max = 12
+delay = 2400
 
 [[item_template]]
 entry = 2777
@@ -16173,6 +16566,9 @@ armor = 0
 bonding = 0
 material = 2
 max_durability = 35
+dmg_min = 7
+dmg_max = 13
+delay = 1800
 
 [[item_template]]
 entry = 2778
@@ -16192,6 +16588,9 @@ armor = 0
 bonding = 0
 material = 1
 max_durability = 35
+dmg_min = 8
+dmg_max = 16
+delay = 2200
 
 [[item_template]]
 entry = 2835
@@ -16211,6 +16610,9 @@ armor = 0
 bonding = 0
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2957
@@ -16230,6 +16632,9 @@ armor = 21
 bonding = 2
 material = 7
 max_durability = 45
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2958
@@ -16249,6 +16654,9 @@ armor = 17
 bonding = 2
 material = 7
 max_durability = 35
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2959
@@ -16268,6 +16676,9 @@ armor = 11
 bonding = 0
 material = 7
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2960
@@ -16287,6 +16698,9 @@ armor = 10
 bonding = 0
 material = 7
 max_durability = 16
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2961
@@ -16306,6 +16720,9 @@ armor = 58
 bonding = 2
 material = 8
 max_durability = 55
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2962
@@ -16325,6 +16742,9 @@ armor = 48
 bonding = 2
 material = 8
 max_durability = 40
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2963
@@ -16344,6 +16764,9 @@ armor = 34
 bonding = 0
 material = 8
 max_durability = 25
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2964
@@ -16363,6 +16786,9 @@ armor = 33
 bonding = 0
 material = 8
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2965
@@ -16382,6 +16808,9 @@ armor = 115
 bonding = 2
 material = 5
 max_durability = 65
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2966
@@ -16401,6 +16830,9 @@ armor = 94
 bonding = 2
 material = 5
 max_durability = 50
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2967
@@ -16420,6 +16852,9 @@ armor = 70
 bonding = 0
 material = 5
 max_durability = 30
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2968
@@ -16439,6 +16874,9 @@ armor = 59
 bonding = 0
 material = 5
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2971
@@ -16458,6 +16896,9 @@ armor = 17
 bonding = 0
 material = 7
 max_durability = 25
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2972
@@ -16477,6 +16918,9 @@ armor = 16
 bonding = 0
 material = 7
 max_durability = 18
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2975
@@ -16496,6 +16940,9 @@ armor = 45
 bonding = 0
 material = 8
 max_durability = 30
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 2979
@@ -16515,6 +16962,9 @@ armor = 89
 bonding = 0
 material = 5
 max_durability = 35
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 3000
@@ -16534,6 +16984,9 @@ armor = 55
 bonding = 2
 material = 8
 max_durability = 55
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 3012
@@ -16553,6 +17006,9 @@ armor = 0
 bonding = 0
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 3013
@@ -16572,6 +17028,9 @@ armor = 0
 bonding = 0
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 3174
@@ -16591,6 +17050,9 @@ armor = 0
 bonding = 0
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 3189
@@ -16610,6 +17072,9 @@ armor = 0
 bonding = 0
 material = 1
 max_durability = 40
+dmg_min = 11
+dmg_max = 17
+delay = 3300
 
 [[item_template]]
 entry = 3190
@@ -16629,6 +17094,9 @@ armor = 0
 bonding = 0
 material = 2
 max_durability = 40
+dmg_min = 9
+dmg_max = 14
+delay = 2600
 
 [[item_template]]
 entry = 3192
@@ -16648,6 +17116,9 @@ armor = 0
 bonding = 2
 material = 1
 max_durability = 50
+dmg_min = 20
+dmg_max = 30
+delay = 3000
 
 [[item_template]]
 entry = 3200
@@ -16667,6 +17138,9 @@ armor = 20
 bonding = 0
 material = 8
 max_durability = 18
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 3207
@@ -16686,6 +17160,9 @@ armor = 28
 bonding = 0
 material = 8
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 3213
@@ -16705,6 +17182,9 @@ armor = 54
 bonding = 0
 material = 5
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 3214
@@ -16724,6 +17204,9 @@ armor = 42
 bonding = 0
 material = 5
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 3279
@@ -16743,6 +17226,9 @@ armor = 80
 bonding = 0
 material = 5
 max_durability = 35
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 3280
@@ -16762,6 +17248,9 @@ armor = 42
 bonding = 0
 material = 5
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 3281
@@ -16781,6 +17270,9 @@ armor = 68
 bonding = 0
 material = 5
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 3282
@@ -16800,6 +17292,9 @@ armor = 107
 bonding = 2
 material = 5
 max_durability = 50
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 3283
@@ -16819,6 +17314,9 @@ armor = 129
 bonding = 2
 material = 5
 max_durability = 70
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 3284
@@ -16838,6 +17336,9 @@ armor = 40
 bonding = 0
 material = 8
 max_durability = 30
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 3285
@@ -16857,6 +17358,9 @@ armor = 23
 bonding = 0
 material = 8
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 3286
@@ -16876,6 +17380,9 @@ armor = 37
 bonding = 0
 material = 8
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 3287
@@ -16895,6 +17402,9 @@ armor = 54
 bonding = 2
 material = 8
 max_durability = 45
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 3288
@@ -16914,6 +17424,9 @@ armor = 65
 bonding = 2
 material = 8
 max_durability = 60
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 3289
@@ -16933,6 +17446,9 @@ armor = 14
 bonding = 0
 material = 7
 max_durability = 25
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 3290
@@ -16952,6 +17468,9 @@ armor = 13
 bonding = 0
 material = 7
 max_durability = 16
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 3291
@@ -16971,6 +17490,9 @@ armor = 22
 bonding = 2
 material = 7
 max_durability = 35
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 3292
@@ -16990,6 +17512,9 @@ armor = 25
 bonding = 2
 material = 7
 max_durability = 50
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 3299
@@ -17009,6 +17534,9 @@ armor = 0
 bonding = 0
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 3300
@@ -17028,6 +17556,9 @@ armor = 0
 bonding = 0
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 3303
@@ -17047,6 +17578,9 @@ armor = 51
 bonding = 0
 material = 5
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 3304
@@ -17066,6 +17600,9 @@ armor = 81
 bonding = 0
 material = 5
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 3312
@@ -17085,6 +17622,9 @@ armor = 27
 bonding = 0
 material = 8
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 3363
@@ -17104,6 +17644,9 @@ armor = 3
 bonding = 0
 material = 7
 max_durability = 12
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 3365
@@ -17123,6 +17666,9 @@ armor = 4
 bonding = 0
 material = 7
 max_durability = 14
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 3370
@@ -17142,6 +17688,9 @@ armor = 8
 bonding = 0
 material = 7
 max_durability = 14
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 3373
@@ -17161,6 +17710,9 @@ armor = 7
 bonding = 0
 material = 7
 max_durability = 16
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 3374
@@ -17180,6 +17732,9 @@ armor = 13
 bonding = 0
 material = 7
 max_durability = 18
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 3375
@@ -17199,6 +17754,9 @@ armor = 9
 bonding = 0
 material = 7
 max_durability = 16
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 3471
@@ -17218,6 +17776,9 @@ armor = 108
 bonding = 2
 material = 5
 max_durability = 65
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 3609
@@ -17237,6 +17798,9 @@ armor = 0
 bonding = 0
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 3610
@@ -17256,6 +17820,9 @@ armor = 0
 bonding = 0
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 3641
@@ -17275,6 +17842,9 @@ armor = 7
 bonding = 0
 material = 7
 max_durability = 14
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 3642
@@ -17294,6 +17864,9 @@ armor = 7
 bonding = 0
 material = 7
 max_durability = 16
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 3643
@@ -17313,6 +17886,9 @@ armor = 11
 bonding = 0
 material = 7
 max_durability = 18
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 3644
@@ -17332,6 +17908,9 @@ armor = 9
 bonding = 0
 material = 7
 max_durability = 16
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 3649
@@ -17351,6 +17930,9 @@ armor = 189
 bonding = 0
 material = 1
 max_durability = 45
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 3650
@@ -17370,6 +17952,9 @@ armor = 135
 bonding = 0
 material = 1
 max_durability = 40
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 3652
@@ -17389,6 +17974,9 @@ armor = 311
 bonding = 2
 material = 1
 max_durability = 50
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 3654
@@ -17408,6 +17996,9 @@ armor = 311
 bonding = 2
 material = 1
 max_durability = 50
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 4302
@@ -17427,6 +18018,9 @@ armor = 0
 bonding = 0
 material = 1
 max_durability = 25
+dmg_min = 4
+dmg_max = 9
+delay = 1500
 
 [[item_template]]
 entry = 4408
@@ -17446,6 +18040,9 @@ armor = 0
 bonding = 0
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 4496
@@ -17465,6 +18062,9 @@ armor = 0
 bonding = 0
 material = 8
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 4536
@@ -17484,6 +18084,9 @@ armor = 0
 bonding = 0
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 4540
@@ -17503,6 +18106,9 @@ armor = 0
 bonding = 0
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 4560
@@ -17522,6 +18128,9 @@ armor = 0
 bonding = 0
 material = 1
 max_durability = 30
+dmg_min = 3
+dmg_max = 6
+delay = 1900
 
 [[item_template]]
 entry = 4561
@@ -17541,6 +18150,9 @@ armor = 0
 bonding = 2
 material = 1
 max_durability = 40
+dmg_min = 7
+dmg_max = 14
+delay = 1800
 
 [[item_template]]
 entry = 4562
@@ -17560,6 +18172,9 @@ armor = 0
 bonding = 2
 material = 1
 max_durability = 45
+dmg_min = 18
+dmg_max = 27
+delay = 3200
 
 [[item_template]]
 entry = 4563
@@ -17579,6 +18194,9 @@ armor = 0
 bonding = 0
 material = 2
 max_durability = 35
+dmg_min = 6
+dmg_max = 11
+delay = 2200
 
 [[item_template]]
 entry = 4564
@@ -17598,6 +18216,9 @@ armor = 0
 bonding = 2
 material = 2
 max_durability = 50
+dmg_min = 22
+dmg_max = 34
+delay = 3100
 
 [[item_template]]
 entry = 4565
@@ -17617,6 +18238,9 @@ armor = 0
 bonding = 0
 material = 1
 max_durability = 20
+dmg_min = 3
+dmg_max = 6
+delay = 1800
 
 [[item_template]]
 entry = 4566
@@ -17636,6 +18260,9 @@ armor = 0
 bonding = 2
 material = 2
 max_durability = 50
+dmg_min = 20
+dmg_max = 30
+delay = 2800
 
 [[item_template]]
 entry = 4569
@@ -17655,6 +18282,9 @@ armor = 0
 bonding = 2
 material = 2
 max_durability = 45
+dmg_min = 11
+dmg_max = 21
+delay = 2200
 
 [[item_template]]
 entry = 4577
@@ -17674,6 +18304,9 @@ armor = 0
 bonding = 2
 material = 1
 max_durability = 35
+dmg_min = 11
+dmg_max = 21
+delay = 2000
 
 [[item_template]]
 entry = 4604
@@ -17693,6 +18326,9 @@ armor = 0
 bonding = 0
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 4656
@@ -17712,6 +18348,9 @@ armor = 0
 bonding = 0
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 4658
@@ -17731,6 +18370,9 @@ armor = 7
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 4659
@@ -17750,6 +18392,9 @@ armor = 50
 bonding = 0
 material = 5
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 4662
@@ -17769,6 +18414,9 @@ armor = 7
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 4663
@@ -17788,6 +18436,9 @@ armor = 9
 bonding = 0
 material = 7
 max_durability = 16
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 4665
@@ -17807,6 +18458,9 @@ armor = 7
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 4666
@@ -17826,6 +18480,9 @@ armor = 27
 bonding = 0
 material = 8
 max_durability = 18
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 4668
@@ -17845,6 +18502,9 @@ armor = 8
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 4669
@@ -17864,6 +18524,9 @@ armor = 58
 bonding = 0
 material = 5
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 4671
@@ -17883,6 +18546,9 @@ armor = 8
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 4672
@@ -17902,6 +18568,9 @@ armor = 10
 bonding = 0
 material = 7
 max_durability = 16
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 4674
@@ -17921,6 +18590,9 @@ armor = 8
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 4675
@@ -17940,6 +18612,9 @@ armor = 29
 bonding = 0
 material = 8
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 4677
@@ -17959,6 +18634,9 @@ armor = 11
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 4678
@@ -17978,6 +18656,9 @@ armor = 73
 bonding = 0
 material = 5
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 4680
@@ -17997,6 +18678,9 @@ armor = 12
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 4681
@@ -18016,6 +18700,9 @@ armor = 73
 bonding = 0
 material = 5
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 4683
@@ -18035,6 +18722,9 @@ armor = 12
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 4684
@@ -18054,6 +18744,9 @@ armor = 13
 bonding = 0
 material = 7
 max_durability = 18
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 4686
@@ -18073,6 +18766,9 @@ armor = 11
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 4687
@@ -18092,6 +18788,9 @@ armor = 14
 bonding = 0
 material = 7
 max_durability = 18
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 4689
@@ -18111,6 +18810,9 @@ armor = 12
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 4690
@@ -18130,6 +18832,9 @@ armor = 35
 bonding = 0
 material = 8
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 4692
@@ -18149,6 +18854,9 @@ armor = 11
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 4693
@@ -18168,6 +18876,9 @@ armor = 37
 bonding = 0
 material = 8
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 4757
@@ -18187,6 +18898,9 @@ armor = 0
 bonding = 0
 material = 8
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 4766
@@ -18206,6 +18920,9 @@ armor = 0
 bonding = 2
 material = 1
 max_durability = 45
+dmg_min = 12
+dmg_max = 24
+delay = 2600
 
 [[item_template]]
 entry = 4775
@@ -18225,6 +18942,9 @@ armor = 0
 bonding = 0
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 4776
@@ -18244,6 +18964,9 @@ armor = 0
 bonding = 0
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 4813
@@ -18263,6 +18986,9 @@ armor = 0
 bonding = 0
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 4814
@@ -18282,6 +19008,9 @@ armor = 0
 bonding = 0
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 4865
@@ -18301,6 +19030,9 @@ armor = 0
 bonding = 0
 material = 8
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 5069
@@ -18320,6 +19052,9 @@ armor = 0
 bonding = 2
 material = 2
 max_durability = 30
+dmg_min = 9
+dmg_max = 17
+delay = 1500
 
 [[item_template]]
 entry = 5071
@@ -18339,6 +19074,9 @@ armor = 0
 bonding = 2
 material = 2
 max_durability = 35
+dmg_min = 10
+dmg_max = 19
+delay = 1400
 
 [[item_template]]
 entry = 5364
@@ -18358,6 +19096,9 @@ armor = 0
 bonding = 0
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 5465
@@ -18377,6 +19118,9 @@ armor = 0
 bonding = 0
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 5571
@@ -18396,6 +19140,9 @@ armor = 0
 bonding = 0
 material = 8
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 5572
@@ -18415,6 +19162,9 @@ armor = 0
 bonding = 0
 material = 8
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 5573
@@ -18434,6 +19184,9 @@ armor = 0
 bonding = 0
 material = 8
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 5574
@@ -18453,6 +19206,9 @@ armor = 0
 bonding = 0
 material = 8
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 6148
@@ -18472,6 +19228,9 @@ armor = 13
 bonding = 0
 material = 7
 max_durability = 25
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 6202
@@ -18491,6 +19250,9 @@ armor = 12
 bonding = 0
 material = 7
 max_durability = 16
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 6203
@@ -18510,6 +19272,9 @@ armor = 189
 bonding = 0
 material = 1
 max_durability = 45
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 6266
@@ -18529,6 +19294,9 @@ armor = 25
 bonding = 2
 material = 7
 max_durability = 50
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 6267
@@ -18548,6 +19316,9 @@ armor = 20
 bonding = 2
 material = 7
 max_durability = 35
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 6268
@@ -18567,6 +19338,9 @@ armor = 65
 bonding = 2
 material = 8
 max_durability = 60
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 6269
@@ -18586,6 +19360,9 @@ armor = 54
 bonding = 2
 material = 8
 max_durability = 45
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 6271
@@ -18605,6 +19382,9 @@ armor = 0
 bonding = 0
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 6336
@@ -18624,6 +19404,9 @@ armor = 129
 bonding = 2
 material = 5
 max_durability = 70
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 6337
@@ -18643,6 +19426,9 @@ armor = 107
 bonding = 2
 material = 5
 max_durability = 50
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 6342
@@ -18662,6 +19448,9 @@ armor = 0
 bonding = 0
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 6506
@@ -18681,6 +19470,9 @@ armor = 75
 bonding = 0
 material = 5
 max_durability = 35
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 6507
@@ -18700,6 +19492,9 @@ armor = 45
 bonding = 0
 material = 5
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 6508
@@ -18719,6 +19514,9 @@ armor = 8
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 6509
@@ -18738,6 +19536,9 @@ armor = 58
 bonding = 0
 material = 5
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 6510
@@ -18757,6 +19558,9 @@ armor = 68
 bonding = 0
 material = 5
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 6511
@@ -18776,6 +19580,9 @@ armor = 21
 bonding = 2
 material = 7
 max_durability = 45
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 6512
@@ -18795,6 +19602,9 @@ armor = 25
 bonding = 2
 material = 7
 max_durability = 50
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 6513
@@ -18814,6 +19624,9 @@ armor = 10
 bonding = 0
 material = 7
 max_durability = 16
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 6514
@@ -18833,6 +19646,9 @@ armor = 9
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 6515
@@ -18852,6 +19668,9 @@ armor = 12
 bonding = 0
 material = 7
 max_durability = 16
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 6517
@@ -18871,6 +19690,9 @@ armor = 29
 bonding = 0
 material = 8
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 6518
@@ -18890,6 +19712,9 @@ armor = 38
 bonding = 0
 material = 8
 max_durability = 30
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 6519
@@ -18909,6 +19734,9 @@ armor = 23
 bonding = 0
 material = 8
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 6520
@@ -18928,6 +19756,9 @@ armor = 8
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 6521
@@ -18947,6 +19778,9 @@ armor = 35
 bonding = 0
 material = 8
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 6527
@@ -18966,6 +19800,9 @@ armor = 25
 bonding = 2
 material = 7
 max_durability = 50
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 6549
@@ -18985,6 +19822,9 @@ armor = 12
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 6555
@@ -19004,6 +19844,9 @@ armor = 12
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 6889
@@ -19023,6 +19866,9 @@ armor = 0
 bonding = 0
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 7073
@@ -19042,6 +19888,9 @@ armor = 0
 bonding = 0
 material = 8
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 7074
@@ -19061,6 +19910,9 @@ armor = 0
 bonding = 0
 material = 8
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 7096
@@ -19080,6 +19932,9 @@ armor = 0
 bonding = 0
 material = 8
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 7097
@@ -19099,6 +19954,9 @@ armor = 0
 bonding = 0
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 7108
@@ -19118,6 +19976,9 @@ armor = 207
 bonding = 2
 material = 1
 max_durability = 45
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 7109
@@ -19137,6 +19998,9 @@ armor = 135
 bonding = 0
 material = 1
 max_durability = 40
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 7280
@@ -19156,6 +20020,9 @@ armor = 51
 bonding = 2
 material = 8
 max_durability = 40
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 7288
@@ -19175,6 +20042,9 @@ armor = 0
 bonding = 0
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 7350
@@ -19194,6 +20064,9 @@ armor = 8
 bonding = 0
 material = 7
 max_durability = 16
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 7351
@@ -19213,6 +20086,9 @@ armor = 14
 bonding = 0
 material = 7
 max_durability = 25
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 8177
@@ -19232,6 +20108,9 @@ armor = 0
 bonding = 0
 material = 1
 max_durability = 35
+dmg_min = 9
+dmg_max = 15
+delay = 3200
 
 [[item_template]]
 entry = 8178
@@ -19251,6 +20130,9 @@ armor = 0
 bonding = 2
 material = 1
 max_durability = 45
+dmg_min = 20
+dmg_max = 30
+delay = 3500
 
 [[item_template]]
 entry = 8179
@@ -19270,6 +20152,9 @@ armor = 0
 bonding = 0
 material = 2
 max_durability = 25
+dmg_min = 5
+dmg_max = 11
+delay = 2000
 
 [[item_template]]
 entry = 8180
@@ -19289,6 +20174,9 @@ armor = 0
 bonding = 2
 material = 2
 max_durability = 35
+dmg_min = 12
+dmg_max = 24
+delay = 2600
 
 [[item_template]]
 entry = 8181
@@ -19308,6 +20196,9 @@ armor = 0
 bonding = 0
 material = 1
 max_durability = 30
+dmg_min = 9
+dmg_max = 18
+delay = 2700
 
 [[item_template]]
 entry = 8182
@@ -19327,6 +20218,9 @@ armor = 0
 bonding = 0
 material = 1
 max_durability = 30
+dmg_min = 8
+dmg_max = 15
+delay = 2600
 
 [[item_template]]
 entry = 9742
@@ -19346,6 +20240,9 @@ armor = 12
 bonding = 0
 material = 7
 max_durability = 16
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 9743
@@ -19365,6 +20262,9 @@ armor = 15
 bonding = 0
 material = 7
 max_durability = 25
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 9744
@@ -19384,6 +20284,9 @@ armor = 9
 bonding = 0
 material = 7
 max_durability = 16
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 9745
@@ -19403,6 +20306,9 @@ armor = 10
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 9746
@@ -19422,6 +20328,9 @@ armor = 15
 bonding = 0
 material = 7
 max_durability = 18
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 9747
@@ -19441,6 +20350,9 @@ armor = 23
 bonding = 2
 material = 7
 max_durability = 40
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 9750
@@ -19460,6 +20372,9 @@ armor = 33
 bonding = 0
 material = 8
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 9751
@@ -19479,6 +20394,9 @@ armor = 40
 bonding = 0
 material = 8
 max_durability = 30
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 9752
@@ -19498,6 +20416,9 @@ armor = 26
 bonding = 0
 material = 8
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 9753
@@ -19517,6 +20438,9 @@ armor = 239
 bonding = 2
 material = 1
 max_durability = 50
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 9754
@@ -19536,6 +20460,9 @@ armor = 10
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 9755
@@ -19555,6 +20482,9 @@ armor = 39
 bonding = 0
 material = 8
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 9756
@@ -19574,6 +20504,9 @@ armor = 60
 bonding = 2
 material = 8
 max_durability = 45
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 9758
@@ -19593,6 +20526,9 @@ armor = 65
 bonding = 0
 material = 5
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 9759
@@ -19612,6 +20548,9 @@ armor = 84
 bonding = 0
 material = 5
 max_durability = 35
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 9760
@@ -19631,6 +20570,9 @@ armor = 51
 bonding = 0
 material = 5
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 9761
@@ -19650,6 +20592,9 @@ armor = 10
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 9762
@@ -19669,6 +20614,9 @@ armor = 77
 bonding = 0
 material = 5
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 9763
@@ -19688,6 +20636,9 @@ armor = 119
 bonding = 2
 material = 5
 max_durability = 55
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 9764
@@ -19707,6 +20658,9 @@ armor = 274
 bonding = 2
 material = 1
 max_durability = 50
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 14086
@@ -19726,6 +20680,9 @@ armor = 13
 bonding = 0
 material = 7
 max_durability = 25
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 14087
@@ -19745,6 +20702,9 @@ armor = 7
 bonding = 0
 material = 7
 max_durability = 14
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 14088
@@ -19764,6 +20724,9 @@ armor = 7
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 14089
@@ -19783,6 +20746,9 @@ armor = 11
 bonding = 0
 material = 7
 max_durability = 16
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 14090
@@ -19802,6 +20768,9 @@ armor = 18
 bonding = 2
 material = 7
 max_durability = 35
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 14091
@@ -19821,6 +20790,9 @@ armor = 21
 bonding = 2
 material = 7
 max_durability = 45
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 14093
@@ -19840,6 +20812,9 @@ armor = 9
 bonding = 0
 material = 7
 max_durability = 16
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 14094
@@ -19859,6 +20834,9 @@ armor = 21
 bonding = 2
 material = 7
 max_durability = 45
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 14095
@@ -19878,6 +20856,9 @@ armor = 9
 bonding = 0
 material = 7
 max_durability = 16
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 14097
@@ -19897,6 +20878,9 @@ armor = 23
 bonding = 2
 material = 7
 max_durability = 40
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 14098
@@ -19916,6 +20900,9 @@ armor = 9
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 14099
@@ -19935,6 +20922,9 @@ armor = 12
 bonding = 0
 material = 7
 max_durability = 16
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 14102
@@ -19954,6 +20944,9 @@ armor = 15
 bonding = 0
 material = 7
 max_durability = 18
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 14110
@@ -19973,6 +20966,9 @@ armor = 16
 bonding = 0
 material = 7
 max_durability = 25
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 14115
@@ -19992,6 +20988,9 @@ armor = 11
 bonding = 0
 material = 7
 max_durability = 18
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 14116
@@ -20011,6 +21010,9 @@ armor = 12
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 15003
@@ -20030,6 +21032,9 @@ armor = 25
 bonding = 0
 material = 8
 max_durability = 18
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 15004
@@ -20049,6 +21054,9 @@ armor = 34
 bonding = 0
 material = 8
 max_durability = 25
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 15005
@@ -20068,6 +21076,9 @@ armor = 21
 bonding = 0
 material = 8
 max_durability = 18
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 15006
@@ -20087,6 +21098,9 @@ armor = 135
 bonding = 0
 material = 1
 max_durability = 40
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 15007
@@ -20106,6 +21120,9 @@ armor = 7
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 15008
@@ -20125,6 +21142,9 @@ armor = 33
 bonding = 0
 material = 8
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 15009
@@ -20144,6 +21164,9 @@ armor = 51
 bonding = 2
 material = 8
 max_durability = 40
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 15010
@@ -20163,6 +21186,9 @@ armor = 58
 bonding = 2
 material = 8
 max_durability = 55
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 15013
@@ -20182,6 +21208,9 @@ armor = 28
 bonding = 0
 material = 8
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 15015
@@ -20201,6 +21230,9 @@ armor = 12
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 15297
@@ -20220,6 +21252,9 @@ armor = 24
 bonding = 0
 material = 8
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 15298
@@ -20239,6 +21274,9 @@ armor = 274
 bonding = 2
 material = 1
 max_durability = 50
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 15299
@@ -20258,6 +21296,9 @@ armor = 9
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 15300
@@ -20277,6 +21318,9 @@ armor = 41
 bonding = 0
 material = 8
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 15301
@@ -20296,6 +21340,9 @@ armor = 42
 bonding = 0
 material = 8
 max_durability = 30
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 15302
@@ -20315,6 +21362,9 @@ armor = 31
 bonding = 0
 material = 8
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 15303
@@ -20334,6 +21384,9 @@ armor = 60
 bonding = 2
 material = 8
 max_durability = 45
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 15472
@@ -20353,6 +21406,9 @@ armor = 53
 bonding = 0
 material = 5
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 15473
@@ -20372,6 +21428,9 @@ armor = 70
 bonding = 0
 material = 5
 max_durability = 30
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 15474
@@ -20391,6 +21450,9 @@ armor = 39
 bonding = 0
 material = 5
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 15475
@@ -20410,6 +21472,9 @@ armor = 7
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 15476
@@ -20429,6 +21494,9 @@ armor = 64
 bonding = 0
 material = 5
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 15477
@@ -20448,6 +21516,9 @@ armor = 101
 bonding = 2
 material = 5
 max_durability = 50
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 15478
@@ -20467,6 +21538,9 @@ armor = 112
 bonding = 0
 material = 1
 max_durability = 40
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 15479
@@ -20486,6 +21560,9 @@ armor = 115
 bonding = 2
 material = 5
 max_durability = 65
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 15480
@@ -20505,6 +21582,9 @@ armor = 69
 bonding = 0
 material = 5
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 15481
@@ -20524,6 +21604,9 @@ armor = 84
 bonding = 0
 material = 5
 max_durability = 35
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 15482
@@ -20543,6 +21626,9 @@ armor = 48
 bonding = 0
 material = 5
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 15483
@@ -20562,6 +21648,9 @@ armor = 9
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 15484
@@ -20581,6 +21670,9 @@ armor = 73
 bonding = 0
 material = 5
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 15485
@@ -20600,6 +21692,9 @@ armor = 119
 bonding = 2
 material = 5
 max_durability = 55
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 15486
@@ -20619,6 +21714,9 @@ armor = 239
 bonding = 2
 material = 1
 max_durability = 50
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 15490
@@ -20638,6 +21736,9 @@ armor = 12
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 15895
@@ -20657,6 +21758,9 @@ armor = 112
 bonding = 0
 material = 1
 max_durability = 40
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 15925
@@ -20676,6 +21780,9 @@ armor = 0
 bonding = 2
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 15932
@@ -20695,6 +21802,9 @@ armor = 0
 bonding = 2
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 15944
@@ -20714,6 +21824,9 @@ armor = 0
 bonding = 2
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 15969
@@ -20733,6 +21846,9 @@ armor = 0
 bonding = 2
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 2000
 
 [[item_template]]
 entry = 20482
@@ -20752,6 +21868,9 @@ armor = 0
 bonding = 4
 material = 3
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 20483
@@ -20771,6 +21890,9 @@ armor = 0
 bonding = 1
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 20772
@@ -20790,6 +21912,9 @@ armor = 0
 bonding = 4
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 20797
@@ -20809,6 +21934,9 @@ armor = 0
 bonding = 4
 material = 1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 20799
@@ -20828,6 +21956,9 @@ armor = 0
 bonding = 4
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 20812
@@ -20847,6 +21978,9 @@ armor = 0
 bonding = 0
 material = 8
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 20813
@@ -20866,6 +22000,9 @@ armor = 0
 bonding = 0
 material = 8
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 20842
@@ -20885,6 +22022,9 @@ armor = 0
 bonding = 0
 material = 8
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 20843
@@ -20904,6 +22044,9 @@ armor = 0
 bonding = 0
 material = 8
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 20845
@@ -20923,6 +22066,9 @@ armor = 0
 bonding = 0
 material = 8
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 20846
@@ -20942,6 +22088,9 @@ armor = 0
 bonding = 0
 material = 8
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 20847
@@ -20961,6 +22110,9 @@ armor = 0
 bonding = 0
 material = 8
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 20848
@@ -20980,6 +22132,9 @@ armor = 0
 bonding = 0
 material = 8
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 20857
@@ -20999,6 +22154,9 @@ armor = 0
 bonding = 0
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 20934
@@ -21018,6 +22176,9 @@ armor = 0
 bonding = 4
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 20935
@@ -21037,6 +22198,9 @@ armor = 0
 bonding = 4
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 21002
@@ -21056,6 +22220,9 @@ armor = 3
 bonding = 0
 material = 7
 max_durability = 12
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 21003
@@ -21075,6 +22242,9 @@ armor = 4
 bonding = 0
 material = 7
 max_durability = 14
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 21004
@@ -21094,6 +22264,9 @@ armor = 5
 bonding = 0
 material = 7
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 21005
@@ -21113,6 +22286,9 @@ armor = 4
 bonding = 0
 material = 7
 max_durability = 12
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 21006
@@ -21132,6 +22308,9 @@ armor = 4
 bonding = 0
 material = 7
 max_durability = 25
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 21007
@@ -21151,6 +22330,9 @@ armor = 8
 bonding = 0
 material = 7
 max_durability = 35
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 21008
@@ -21170,6 +22352,9 @@ armor = 5
 bonding = 0
 material = 7
 max_durability = 18
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 21009
@@ -21189,6 +22374,9 @@ armor = 18
 bonding = 0
 material = 8
 max_durability = 16
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 21010
@@ -21208,6 +22396,9 @@ armor = 16
 bonding = 0
 material = 8
 max_durability = 20
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 21011
@@ -21227,6 +22418,9 @@ armor = 12
 bonding = 0
 material = 8
 max_durability = 16
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 21012
@@ -21246,6 +22440,9 @@ armor = 17
 bonding = 0
 material = 8
 max_durability = 16
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 21013
@@ -21265,6 +22462,9 @@ armor = 17
 bonding = 0
 material = 8
 max_durability = 30
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 21014
@@ -21284,6 +22484,9 @@ armor = 31
 bonding = 0
 material = 8
 max_durability = 45
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 21015
@@ -21303,6 +22506,9 @@ armor = 24
 bonding = 0
 material = 5
 max_durability = 16
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 21016
@@ -21322,6 +22528,9 @@ armor = 63
 bonding = 0
 material = 5
 max_durability = 55
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 21017
@@ -21341,6 +22550,9 @@ armor = 37
 bonding = 0
 material = 5
 max_durability = 35
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 21018
@@ -21360,6 +22572,9 @@ armor = 35
 bonding = 0
 material = 5
 max_durability = 18
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 21019
@@ -21379,6 +22594,9 @@ armor = 25
 bonding = 0
 material = 5
 max_durability = 18
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 21020
@@ -21398,6 +22616,9 @@ armor = 34
 bonding = 0
 material = 5
 max_durability = 25
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 21021
@@ -21417,6 +22638,9 @@ armor = 32
 bonding = 0
 material = 1
 max_durability = 30
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 21022
@@ -21436,6 +22660,9 @@ armor = 12
 bonding = 0
 material = 1
 max_durability = 25
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 21781
@@ -21455,6 +22682,9 @@ armor = 0
 bonding = 4
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 21808
@@ -21474,6 +22704,9 @@ armor = 0
 bonding = 4
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 22892
@@ -21493,6 +22726,9 @@ armor = 0
 bonding = 4
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 23333
@@ -21512,6 +22748,9 @@ armor = 0
 bonding = 0
 material = 3
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 23334
@@ -21531,6 +22770,9 @@ armor = 0
 bonding = 0
 material = 3
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0
 
 [[item_template]]
 entry = 27668
@@ -21550,3 +22792,6 @@ armor = 0
 bonding = 0
 material = -1
 max_durability = 0
+dmg_min = 0
+dmg_max = 0
+delay = 0

@@ -31,6 +31,11 @@ ITEM_FIELDS = (
     "bonding",
     "Material",
     "MaxDurability",
+    # Server-side weapon damage and speed (the 2.4.3 client's Item.dbc carries display
+    # data only). Slot 1 is the weapon swing; the floats are rounded to whole points.
+    "dmg_min1",
+    "dmg_max1",
+    "delay",
 )
 
 
@@ -187,9 +192,16 @@ def convert(source_path, zone_pack_path):
                 "ItemLevel": "item_level",
                 "Material": "material",
                 "MaxDurability": "max_durability",
+                "dmg_min1": "dmg_min",
+                "dmg_max1": "dmg_max",
             }.get(name, name.lower())
             value = item[name]
-            output.append(f"{key} = {json.dumps(value) if name == 'name' else int(value)}")
+            if name == "name":
+                output.append(f"{key} = {json.dumps(value)}")
+            elif name in ("dmg_min1", "dmg_max1"):
+                output.append(f"{key} = {int(round(float(value)))}")
+            else:
+                output.append(f"{key} = {int(value)}")
         output.append("")
     return "\n".join(output).rstrip() + "\n", len(creatures), len(loot_tables), len(reference_tables), len(items)
 
