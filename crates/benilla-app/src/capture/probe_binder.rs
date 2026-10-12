@@ -6,8 +6,8 @@
 //! pass=<n> fail=<m>`, and it exits. An environmental problem SKIPs; a wrong value FAILs.
 //! Non-combat; the switches are `docs/CONTRIBUTING.md`, "Running it unattended".
 //!
-//! - `UNIT_NPC_FLAG_INNKEEPER` is `0x80` (vmangos `UnitDefines.h:664`); the `(65536)` beside
-//!   `GOSSIP_OPTION_INNKEEPER` in `GossipDef.h:45` is a later client's value.
+//! - Build-8606 `UNIT_NPC_FLAG_INNKEEPER` is `0x10000` (CMaNGOS TBC `Unit.h`); `0x80` is the
+//!   generic vendor bit.
 //! - Every `GOSSIP_OPTION_INNKEEPER` row in the world DB sends icon 5.
 //! - The wire label is the row's broadcast text ("Make this inn your home."), not `option_text`.
 //! - vmangos does not condition-filter a GM's menu, so a probe in GM mode sees extra rows: the
@@ -35,8 +35,8 @@ const INNKEEPER_AT: [f32; 3] = [9802.21, 982.608, 1313.98];
 const INNKEEPER_MAP: u32 = 1;
 /// Her creature template entry, the primary identity check.
 const INNKEEPER_ENTRY: u32 = 6736;
-/// `UNIT_NPC_FLAG_INNKEEPER` on 1.12, the scan's fallback identity check.
-const NPC_FLAG_INNKEEPER: u32 = 0x80;
+/// `UNIT_NPC_FLAG_INNKEEPER` on build 8606, the scan's fallback identity check.
+const NPC_FLAG_INNKEEPER: u32 = 0x10000;
 /// The wire `GOSSIP_ICON` byte every `GOSSIP_OPTION_INNKEEPER` row sends.
 const ICON_INNKEEPER: u8 = 5;
 /// The type string [`crate::ui_gossip`]'s table must produce for [`ICON_INNKEEPER`].

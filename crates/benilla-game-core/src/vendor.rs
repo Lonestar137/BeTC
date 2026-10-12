@@ -1,6 +1,6 @@
-//! Converted vendor inventories (`npc_vendor`) for the selected starting-zone creatures. The
-//! pinned dump omits `UNIT_NPC_FLAG_VENDOR` from the creature templates and keeps the stock here;
-//! the converter ORs the bit in from this same join (see `scripts/import-tbc-content.py`).
+//! Converted direct (`npc_vendor`) and reusable (`npc_vendor_template`) inventories for creatures
+//! in the base-world spawn pack. The build-8606 `UNIT_NPC_FLAGS` values come from the creature
+//! templates; vendor stock is joined through `VendorTemplateId` where present.
 
 use std::sync::OnceLock;
 
@@ -87,13 +87,19 @@ mod tests {
         }
     }
 
-    /// Build-8606 zone vendors: the Sunstrider reagent/gear sellers and an innkeeper with food
-    /// and drink. The exact row counts come from the pinned dump's `npc_vendor`.
+    /// Build-8606 zone vendors: direct Sunstrider stock and Shara's reusable general-goods stock.
     #[test]
-    fn known_sunstrider_vendors_carry_their_converted_stock() {
+    fn direct_and_vendor_template_stock_are_converted() {
         let rows: Vec<_> = vendor_items(15289).collect();
         assert_eq!(rows.len(), 6, "Raelis Dawnstar's six stock lines");
         assert!(rows.iter().all(|row| row.buy_count >= 1));
+
+        let shara: Vec<_> = vendor_items(15287).collect();
+        assert_eq!(shara.len(), 4, "Shara Sunwing's reusable stock lines");
+        assert!(shara.iter().any(|row| row.item == 159));
+        assert!(shara.iter().any(|row| row.item == 2512));
+        assert!(shara.iter().any(|row| row.item == 20_857));
+        assert!(shara.iter().any(|row| row.item == 25_861));
 
         let innkeeper: Vec<_> = vendor_items(15433).collect();
         assert_eq!(innkeeper.len(), 12, "Innkeeper Delaniel's food and drink");

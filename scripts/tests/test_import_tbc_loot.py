@@ -53,12 +53,15 @@ CREATE TABLE `item_template` (
   `armor` int NOT NULL,
   `bonding` int NOT NULL,
   `Material` int NOT NULL,
-  `MaxDurability` int NOT NULL
+  `MaxDurability` int NOT NULL,
+  `dmg_min1` float NOT NULL,
+  `dmg_max1` float NOT NULL,
+  `delay` int NOT NULL
 ) ENGINE=MyISAM;
 INSERT INTO `creature_template` VALUES (100,2,8,100);
 INSERT INTO `creature_loot_template` VALUES (100,1000,25,0,1,2,0,'direct'),(100,500,100,0,-500,1,0,'reference');
 INSERT INTO `reference_loot_template` VALUES (500,2000,100,1,1,1,0,'nested item');
-INSERT INTO `item_template` VALUES (1000,0,0,'Direct Item',11,1,20,4,0,-1,-1,1,20,0,0,0,0),(2000,0,0,'Nested Item',12,1,30,5,0,-1,-1,1,20,0,0,0,0);
+INSERT INTO `item_template` VALUES (1000,0,0,'Direct Item',11,1,20,4,0,-1,-1,1,20,0,0,0,0,0,0,0),(2000,0,0,'Nested Item',12,1,30,5,0,-1,-1,1,20,0,0,0,0,0,0,0);
 """
 
 

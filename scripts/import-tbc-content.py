@@ -1,23 +1,50 @@
 #!/usr/bin/env python3
-"""Convert selected CMaNGOS TBC creature rows into the offline runtime content pack.
+"""Convert the base-world CMaNGOS TBC creature spawns into the offline runtime content pack.
 
-The source SQL stays outside the repository. This intentionally understands only MySQL bulk INSERT
-rows for creature_template, creature, creature_movement and creature_addon; it is not a general SQL
-parser.
+Every non-event ``creature`` row with a template (all maps, overworld and instances), its
+``creature_template`` row, and the ``creature_movement``/``creature_addon`` rows that belong to it
+are imported. Positive-only ``game_event_creature.event`` associations are omitted; negative
+associations identify baseline spawns that an active event would remove. The source SQL stays
+outside the repository. This intentionally understands only MySQL bulk INSERT rows for those
+tables; it is not a general SQL parser.
 """
 
 import argparse
+import gzip
 import json
 import pathlib
+import re
 
 
 SOURCE = "https://github.com/cmangos/tbc-db"
 REVISION = "866723612d93791e442fb1b18d642118fa682edd"
-SCHEMA_VERSION = 2
-ZONES = {
-    "sunstrider": (530, 9_400.0, 11_300.0, -7_400.0, -5_300.0),
-    "northshire": (0, -9_300.0, -8_600.0, -700.0, 500.0),
-}
+SCHEMA_VERSION = 3
+EVENT_POLICY = "base-world-only"
+
+
+def open_source(path):
+    path = pathlib.Path(path)
+    if path.suffix == ".gz":
+        return gzip.open(path, "rt", encoding="utf-8", errors="replace")
+    return path.open(encoding="utf-8", errors="replace")
+
+
+def table_columns(path, table):
+    prefix = f"CREATE TABLE `{table}` ("
+    columns = []
+    active = False
+    with open_source(path) as source:
+        for line in source:
+            if line.startswith(prefix):
+                active = True
+                continue
+            if active:
+                column = re.match(r"\s*`([^`]+)`", line)
+                if column:
+                    columns.append(column.group(1))
+                if line.startswith(") ENGINE"):
+                    return columns
+    raise ValueError(f"source is missing CREATE TABLE `{table}`")
 
 
 def tuples(source):
@@ -72,7 +99,7 @@ def value(source):
 
 def rows(path, table):
     prefix = f"INSERT INTO `{table}` VALUES "
-    with path.open(encoding="utf-8", errors="replace") as source:
+    with open_source(path) as source:
         for line in source:
             if line.startswith(prefix):
                 for row in tuples(line[len(prefix) :].rstrip().rstrip(";")):
@@ -81,30 +108,67 @@ def rows(path, table):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("source", type=pathlib.Path, help="CMaNGOS full SQL dump")
+    parser.add_argument("source", type=pathlib.Path, help="CMaNGOS SQL dump (plain or gzip-compressed)")
     parser.add_argument("output", type=pathlib.Path, help="generated TOML content pack")
-    parser.add_argument("--zone", choices=ZONES, action="append")
     args = parser.parse_args()
 
-    bounds = [ZONES[zone] for zone in (args.zone or ZONES)]
+    event_columns = {
+        name.lower(): index
+        for index, name in enumerate(table_columns(args.source, "game_event_creature"))
+    }
+    if {"guid", "event"} - event_columns.keys():
+        raise SystemExit("game_event_creature must contain guid and event columns")
+    event_associations = {}
+    for row in rows(args.source, "game_event_creature"):
+        guid = int(row[event_columns["guid"]])
+        event_id = int(row[event_columns["event"]])
+        if event_id:
+            event_associations.setdefault(guid, set()).add(event_id)
+
+    template_columns = {
+        name.lower(): index
+        for index, name in enumerate(table_columns(args.source, "creature_template"))
+    }
+    template_fields = {
+        "entry",
+        "name",
+        "subname",
+        "minlevel",
+        "displayid1",
+        "faction",
+        "scale",
+        "creaturetype",
+        "npcflags",
+    }
+    if missing := template_fields - template_columns.keys():
+        raise SystemExit(f"creature_template is missing columns: {sorted(missing)}")
+
     spawns = []
     entries = set()
     movement_types = {}
+    excluded_event_guids = set()
+    excluded_events = {}
     for row in rows(args.source, "creature"):
         guid, entry, map_id, _mask, x, y, z, orientation, respawn_min, respawn_max, distance, movement = row
         if not int(entry):
             continue
-        if any(
-            int(map_id) == zone_map and min_x <= float(x) <= max_x and min_y <= float(y) <= max_y
-            for zone_map, min_x, max_x, min_y, max_y in bounds
-        ):
-            spawns.append((guid, entry, map_id, x, y, z, orientation, respawn_min, respawn_max, distance, movement))
-            entries.add(entry)
-            movement_types[guid] = int(movement)
+        associated_events = event_associations.get(int(guid), set())
+        positive_events = {event_id for event_id in associated_events if event_id > 0}
+        negative_events = {event_id for event_id in associated_events if event_id < 0}
+        # Positive rows exist only during an event; negative rows mark a baseline spawn removed by
+        # that event. If both signs are present, the negative association keeps the baseline copy.
+        if positive_events and not negative_events:
+            excluded_event_guids.add(int(guid))
+            for event_id in positive_events:
+                excluded_events[event_id] = excluded_events.get(event_id, 0) + 1
+            continue
+        spawns.append((guid, entry, map_id, x, y, z, orientation, respawn_min, respawn_max, distance, movement))
+        entries.add(entry)
+        movement_types[guid] = int(movement)
 
     templates = {}
     for row in rows(args.source, "creature_template"):
-        entry = row[0]
+        entry = row[template_columns["entry"]]
         if entry in entries:
             templates[entry] = row
 
@@ -112,34 +176,25 @@ def main():
     if missing:
         raise SystemExit(f"missing creature templates for entries: {', '.join(missing)}")
 
-    # The pinned dump keeps vendor stock in `npc_vendor` and does not carry
-    # `UNIT_NPC_FLAG_VENDOR` (0x4) in `creature_template.NpcFlags`: verified against the dump,
-    # none of the zone vendors' flags have the bit. The server derives the service from the
-    # `npc_vendor` join at load, so the converter ORs the bit in from the same join; without it
-    # the client's service ladder never offers Buy and an innkeeper arm wins instead.
-    vendor_entries = {row[0] for row in rows(args.source, "npc_vendor")}
-
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with args.output.open("w", encoding="utf-8") as output:
         output.write(f"schema_version = {SCHEMA_VERSION}\n")
         output.write(f'source = "{SOURCE}"\n')
         output.write(f'revision = "{REVISION}"\n')
         output.write('license = "GPL-3.0"\n\n')
+        output.write(f'event_policy = "{EVENT_POLICY}"\n\n')
         for entry in sorted(entries, key=int):
             row = templates[entry]
             output.write("[[template]]\n")
             output.write(f"entry = {entry}\n")
-            output.write(f"name = {json.dumps(row[1])}\n")
-            output.write(f"subname = {json.dumps(row[2])}\n")
-            output.write(f"level = {row[4]}\n")
-            output.write(f"display_id = {row[7]}\n")
-            output.write(f"faction = {row[15]}\n")
-            output.write(f"scale = {row[16]}\n")
-            output.write(f"creature_type = {row[18]}\n")
-            npc_flags = int(row[22])
-            if entry in vendor_entries:
-                npc_flags |= 0x4  # UNIT_NPC_FLAG_VENDOR, from the npc_vendor join above
-            output.write(f"npc_flags = {npc_flags}\n\n")
+            output.write(f'name = {json.dumps(row[template_columns["name"]])}\n')
+            output.write(f'subname = {json.dumps(row[template_columns["subname"]] or "")}\n')
+            output.write(f'level = {row[template_columns["minlevel"]]}\n')
+            output.write(f'display_id = {row[template_columns["displayid1"]]}\n')
+            output.write(f'faction = {row[template_columns["faction"]]}\n')
+            output.write(f'scale = {row[template_columns["scale"]]}\n')
+            output.write(f'creature_type = {row[template_columns["creaturetype"]]}\n')
+            output.write(f'npc_flags = {row[template_columns["npcflags"]]}\n\n')
         for row in sorted(spawns, key=lambda spawn: int(spawn[0])):
             guid, entry, map_id, x, y, z, orientation, respawn_min, respawn_max, distance, movement = row
             output.write("[[spawn]]\n")
@@ -181,9 +236,13 @@ def main():
         output.seek(output.tell() - 1)
         output.truncate()
 
+    event_summary = ", ".join(
+        f"{event_id}={count}" for event_id, count in sorted(excluded_events.items())
+    ) or "none"
     print(
         f"wrote {len(templates)} templates, {len(spawns)} spawns, "
-        f"{sum(map(len, waypoints.values()))} waypoints and creature addons to {args.output}"
+        f"{sum(map(len, waypoints.values()))} waypoints and creature addons to {args.output}; "
+        f"excluded {len(excluded_event_guids)} event-only spawns ({event_summary})"
     )
 
 

@@ -3,7 +3,7 @@
 # addons. It is listed in no addon list, fires no `ADDON_LOADED` and cannot be switched off; a dev
 # build boots without it under `WOW_STOCK_UI=1`. A test names its files, so it does not grow.
 
-## Interface: 11200
+## Interface: 20400
 
 # The scroll parts of our options window and script log.
 ScrollTemplates.xml

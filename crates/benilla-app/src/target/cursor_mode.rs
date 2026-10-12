@@ -102,23 +102,33 @@ impl WorldCursor {
     }
 }
 
-/// `UNIT_NPC_FLAGS` bits, 1.12 values (vmangos `UnitDefines.h`); REPAIR (`0x4000`) is left out
-/// because the ladder never tests it.
+/// Build-8606 `UNIT_NPC_FLAGS` bits (CMaNGOS TBC `Unit.h`). Vendor-specialty and trainer-specialty
+/// flags feed the same UI service as their generic flag; REPAIR is not a world-cursor service.
 pub(crate) mod npc_flags {
     pub const GOSSIP: u32 = 0x1;
     pub const QUESTGIVER: u32 = 0x2;
-    pub const VENDOR: u32 = 0x4;
-    pub const FLIGHTMASTER: u32 = 0x8;
     pub const TRAINER: u32 = 0x10;
-    pub const SPIRITHEALER: u32 = 0x20;
-    pub const SPIRITGUIDE: u32 = 0x40;
-    pub const INNKEEPER: u32 = 0x80;
-    pub const BANKER: u32 = 0x100;
-    pub const PETITIONER: u32 = 0x200;
-    pub const TABARDDESIGNER: u32 = 0x400;
-    pub const BATTLEMASTER: u32 = 0x800;
-    pub const AUCTIONEER: u32 = 0x1000;
-    pub const STABLEMASTER: u32 = 0x2000;
+    pub const TRAINER_CLASS: u32 = 0x20;
+    pub const TRAINER_PROFESSION: u32 = 0x40;
+    pub const TRAINER_MASK: u32 = TRAINER | TRAINER_CLASS | TRAINER_PROFESSION;
+    pub const VENDOR: u32 = 0x80;
+    pub const VENDOR_AMMO: u32 = 0x100;
+    pub const VENDOR_FOOD: u32 = 0x200;
+    pub const VENDOR_POISON: u32 = 0x400;
+    pub const VENDOR_REAGENT: u32 = 0x800;
+    pub const VENDOR_MASK: u32 =
+        VENDOR | VENDOR_AMMO | VENDOR_FOOD | VENDOR_POISON | VENDOR_REAGENT;
+    pub const REPAIR: u32 = 0x1000;
+    pub const FLIGHTMASTER: u32 = 0x2000;
+    pub const SPIRITHEALER: u32 = 0x4000;
+    pub const SPIRITGUIDE: u32 = 0x8000;
+    pub const INNKEEPER: u32 = 0x10000;
+    pub const BANKER: u32 = 0x20000;
+    pub const PETITIONER: u32 = 0x40000;
+    pub const TABARDDESIGNER: u32 = 0x80000;
+    pub const BATTLEMASTER: u32 = 0x100000;
+    pub const AUCTIONEER: u32 = 0x200000;
+    pub const STABLEMASTER: u32 = 0x400000;
 }
 
 pub(super) const UNIT_FLAG_SKINNABLE: u32 = 0x0400_0000;
@@ -442,12 +452,12 @@ fn service_cursor(service: u32, quest_status: Option<u32>) -> Option<CursorKind>
     // Bits 0 and 1 both give Speak, so they fold into one test; only bit 1 is gated.
     if service & GOSSIP != 0 || (service & QUESTGIVER != 0 && questgiver_has_quest(quest_status)) {
         Some(CursorKind::Speak)
-    } else if service & VENDOR != 0 {
+    } else if service & TRAINER_MASK != 0 {
+        Some(CursorKind::Trainer)
+    } else if service & VENDOR_MASK != 0 {
         Some(CursorKind::Pickup)
     } else if service & FLIGHTMASTER != 0 {
         Some(CursorKind::Taxi)
-    } else if service & TRAINER != 0 {
-        Some(CursorKind::Trainer)
     } else if service & (SPIRITHEALER | SPIRITGUIDE) != 0 {
         Some(CursorKind::Speak)
     } else if service & INNKEEPER != 0 {
@@ -1278,8 +1288,19 @@ mod tests {
         assert_eq!(service_cursor(GOSSIP, None), Some(CursorKind::Speak));
         assert_eq!(service_cursor(QUESTGIVER, has), Some(CursorKind::Speak));
         assert_eq!(service_cursor(VENDOR, None), Some(CursorKind::Pickup));
+        for flag in [VENDOR_AMMO, VENDOR_FOOD, VENDOR_POISON, VENDOR_REAGENT] {
+            assert_eq!(service_cursor(flag, None), Some(CursorKind::Pickup));
+        }
         assert_eq!(service_cursor(FLIGHTMASTER, None), Some(CursorKind::Taxi));
         assert_eq!(service_cursor(TRAINER, None), Some(CursorKind::Trainer));
+        assert_eq!(
+            service_cursor(TRAINER_CLASS, None),
+            Some(CursorKind::Trainer)
+        );
+        assert_eq!(
+            service_cursor(TRAINER_PROFESSION, None),
+            Some(CursorKind::Trainer)
+        );
         assert_eq!(service_cursor(SPIRITHEALER, None), Some(CursorKind::Speak));
         assert_eq!(service_cursor(INNKEEPER, None), Some(CursorKind::Interact));
         assert_eq!(service_cursor(BANKER, None), Some(CursorKind::Buy));
@@ -1294,9 +1315,26 @@ mod tests {
             service_cursor(INNKEEPER | BANKER, None),
             Some(CursorKind::Interact)
         );
-        // REPAIR (`0x4000`) is never tested.
-        assert_eq!(service_cursor(0x4000, None), None);
+        // REPAIR (`0x1000`) and the two unknown low bits have no cursor arm.
+        assert_eq!(service_cursor(REPAIR, None), None);
+        assert_eq!(service_cursor(0x4 | 0x8, None), None);
         assert_eq!(service_cursor(0, None), None);
+
+        #[cfg(feature = "offline")]
+        {
+            let content = benilla_game_core::content::creature_content();
+            for entry in [15_287, 15_289] {
+                let vendor = content
+                    .template(entry)
+                    .expect("converted Sunstrider vendor");
+                assert_eq!(
+                    service_cursor(vendor.npc_flags, None),
+                    Some(CursorKind::Pickup),
+                    "{} must show the vendor cursor from its build-8606 flags",
+                    vendor.name
+                );
+            }
+        }
     }
 
     #[test]
@@ -1343,7 +1381,7 @@ mod tests {
     }
 
     /// `UNIT_NPC_FLAGS` REPAIR, the service bit the ladder never tests.
-    const REPAIR_ONLY: u32 = 0x4000;
+    const REPAIR_ONLY: u32 = npc_flags::REPAIR;
 
     #[test]
     fn questgiver_flag_alone_is_not_talkable() {

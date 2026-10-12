@@ -25,10 +25,16 @@ use crate::names::NameCache;
 /// Seconds between writes: answers arrive in bursts on zone-in, and a crash costs only re-asking.
 const SAVE_DEBOUNCE: f32 = 10.0;
 
-pub(crate) struct NamePersistPlugin;
+/// Server creature-name caches are not authoritative for converted offline content.
+pub(crate) struct NamePersistPlugin {
+    pub(crate) mode: crate::GameMode,
+}
 
 impl Plugin for NamePersistPlugin {
     fn build(&self, app: &mut App) {
+        if self.mode == crate::GameMode::Offline {
+            return;
+        }
         app.init_resource::<NameCacheFile>()
             .add_systems(Update, (load_name_cache, save_name_cache).chain());
         // The exit write catches the last burst, which the debounce would not.
@@ -129,7 +135,7 @@ fn write_now(file: &mut NameCacheFile, names: &NameCache) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::local_state::test_env::{EnvGuard, ENV_LOCK};
+    use crate::local_state::test_env::{ENV_LOCK, EnvGuard};
 
     /// A roster with a pick in flight and no realm: [`crate::ui_macro::identity`] answers
     /// `("Realm", <name>)`.
@@ -241,6 +247,75 @@ mod tests {
             "a landed record moves the counter the gated feeds watch"
         );
 
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn offline_mode_does_not_replace_converted_names_from_the_realm_cache() {
+        use benilla_protocol::guid;
+
+        const CREATURE_ENTRY: u32 = 1234;
+        let unit_guid = (u64::from(guid::HIGH_UNIT) << 48) | (u64::from(CREATURE_ENTRY) << 24) | 1;
+        let _lock = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let tmp =
+            std::env::temp_dir().join(format!("benilla-offline-namecache-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        let _capture = EnvGuard::unset("WOW_CAPTURE");
+        let _home = EnvGuard::set("BENILLA_HOME", tmp.to_str().expect("utf-8 temp path"));
+
+        let mut on_disk = NameCache::default();
+        on_disk.insert_creature(
+            CREATURE_ENTRY,
+            Some(crate::names::CreatureRecord {
+                name: "Stale Network Name".into(),
+                subname: None,
+                creature_type: 1,
+                pet_family: 0,
+                rank: 0,
+                type_flags: 0,
+                civilian: false,
+                racial_leader: false,
+                display_id: 0,
+            }),
+        );
+        let path = crate::local_state::name_cache_path("Realm").expect("a state folder");
+        std::fs::create_dir_all(path.parent().expect("cache dir")).expect("cache dir");
+        std::fs::write(&path, on_disk.to_tsv("Realm")).expect("write the realm cache");
+
+        let mut names = NameCache::default();
+        names.insert_creature(
+            CREATURE_ENTRY,
+            Some(crate::names::CreatureRecord {
+                name: "Kobold Vermin".into(),
+                subname: None,
+                creature_type: 7,
+                pet_family: 0,
+                rank: 0,
+                type_flags: 0,
+                civilian: false,
+                racial_leader: false,
+                display_id: 0,
+            }),
+        );
+        let mut app = App::new();
+        app.insert_resource(roster_with_pick("Nelprifour", 1))
+            .insert_resource(crate::GameMode::Offline)
+            .insert_resource(names)
+            .add_plugins(NamePersistPlugin {
+                mode: crate::GameMode::Offline,
+            });
+        app.update();
+
+        assert_eq!(
+            app.world().resource::<NameCache>().peek(unit_guid),
+            Some("Kobold Vermin")
+        );
+        assert!(
+            !app.world().contains_resource::<NameCacheFile>(),
+            "offline play must not load or save the network creature cache"
+        );
         let _ = std::fs::remove_dir_all(&tmp);
     }
 }

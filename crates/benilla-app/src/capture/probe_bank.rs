@@ -4,7 +4,7 @@
 //! fail=<m>`, and exits. Non-combat; the switches are `docs/CONTRIBUTING.md`, "Running it
 //! unattended".
 //!
-//! The banker is Soleil Stonemantle (entry 5099, Ironforge), whose `npc_flags` is 256, banker
+//! The banker is Soleil Stonemantle (entry 5099, Ironforge), whose `npc_flags` is `0x20000`, banker
 //! only, so `CMSG_BANKER_ACTIVATE` opens the bank with no gossip in between.
 //!
 //! The slot purchase funds itself with `.modify money <n>`, which adds `n` copper and needs
@@ -25,8 +25,8 @@ use crate::ui_bank::{BankOpen, BankPrices};
 const BANKER_AT: [f32; 3] = [-4895.64, -1004.66, 504.024];
 /// Her creature template entry, one of the two identity checks.
 const BANKER_ENTRY: u32 = 5099;
-/// `UNIT_NPC_FLAG_BANKER` (bit 8), the other identity check.
-const NPC_FLAG_BANKER: u32 = 0x100;
+/// Build-8606 `UNIT_NPC_FLAG_BANKER` (bit 17), the other identity check.
+const NPC_FLAG_BANKER: u32 = 0x20000;
 /// Wider than the server's interact range, so a slightly-off `.go` landing still finds her.
 const SCAN_RANGE: f32 = 12.0;
 /// The deposit/withdraw fixture: Linen Cloth.

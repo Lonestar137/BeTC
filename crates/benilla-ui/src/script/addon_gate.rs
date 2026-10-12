@@ -2,16 +2,16 @@
 //! The first check that fires decides, in the reference's order: missing, the visiting guard (a
 //! cycle is loadable), enabled, banned, corrupt, version, dependencies, demand.
 //!
-//! The version gate is an exact `==` against a hard-coded 11200 (`0x51d7d0`), so 11201 is out of
-//! date and a missing `## Interface` compares as 0. With `checkAddonVersion` off the reason is
-//! reset to none, so force-load falls through to the dependency and demand checks.
+//! The version gate is an exact `==` against build 8606's 20400 interface, so 20401 is out of date
+//! and a missing `## Interface` compares as 0. With `checkAddonVersion` off the reason is reset to
+//! none, so force-load falls through to the dependency and demand checks.
 //!
 //! The reason renders once (`0x51e930`): the addon's own token, else `DEP_` and the deepest failing
 //! dependency's token, else nil. `BANNED`, `CORRUPT` and `INSECURE` read the server's
 //! `SMSG_ADDON_INFO` signature state, which is not modelled; they are never produced.
 
-/// The `## Interface` this client implements, the reference's hard-coded `0x2bc0`.
-pub const CLIENT_INTERFACE: u32 = 11200;
+/// The `## Interface` this build-8606 client implements.
+pub const CLIENT_INTERFACE: u32 = 20400;
 
 /// One addon as the gate reads it; every addon registry lowers into this.
 pub struct GateRow<'a> {
@@ -160,13 +160,22 @@ mod tests {
     #[test]
     fn the_version_gate_is_exact_and_force_load_erases_it() {
         let mut a = row("A", vec![]);
-        a.interface = 11201;
+        a.interface = 20401;
         let rows = vec![a];
         assert_eq!(
             can_load(&rows, 0, false, true).token().as_deref(),
             Some("INTERFACE_VERSION")
         );
         assert_eq!(can_load(&rows, 0, false, false), Verdict::Loadable);
+
+        let mut classic = row("Classic", vec![]);
+        classic.interface = 11200;
+        let rows = vec![classic];
+        assert_eq!(
+            can_load(&rows, 0, false, true).token().as_deref(),
+            Some("INTERFACE_VERSION"),
+            "the frozen 1.12 interface is not this TBC client's interface"
+        );
 
         let mut b = row("B", vec![]);
         b.interface = 0; // no ## Interface line

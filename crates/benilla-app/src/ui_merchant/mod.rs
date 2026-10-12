@@ -23,8 +23,8 @@ use benilla_protocol::messages::BAG_PLAYER_INVENTORY;
 /// A vendor row's unlimited `current_count` (vmangos `ItemHandler.cpp:795`), `-1` to Lua.
 const STOCK_UNLIMITED: u32 = 0xFFFF_FFFF;
 
-/// `UNIT_NPC_FLAG_REPAIR`, the bit `CanMerchantRepair` tests (`0x4fadb0`).
-const NPC_FLAG_REPAIR: u32 = 0x4000;
+/// Build-8606 `UNIT_NPC_FLAG_REPAIR`, the bit `CanMerchantRepair` tests (`0x4fadb0`).
+const NPC_FLAG_REPAIR: u32 = crate::target::cursor_mode::npc_flags::REPAIR;
 
 /// The first absolute buyback slot (`BUYBACK_SLOT_START`, slots 69-80).
 const BUYBACK_SLOT_FIRST: u32 = 69;

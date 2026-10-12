@@ -157,6 +157,8 @@ Do not rebuild these; extend them.
   network feature resolves.
 - **Some 2.4.3 UI globals** already exist (`IsPassiveSpell`, `GetCursorInfo`,
   `SetBagPortraitTexture`, `GetContainerNumFreeSlots`).
+- **AddOn interface gate.** `benilla-ui/src/script/addon_gate.rs` accepts build 8606's `20400`
+  interface and rejects older or missing versions when `checkAddonVersion` is enabled.
 
 ### Vanilla systems that must be updated
 
@@ -171,7 +173,6 @@ Do not rebuild these; extend them.
 | Wire event surface | `SessionEvent` (~275 variants) and `ClientCommand` (~252) are pure Vanilla concepts | `benilla-protocol/src/events.rs:112`; `benilla-app/src/net.rs` | Narrow to the UI-consumed subset in Stage A; delete translations in Stage B |
 | Lua VM surface | 5.0-restoring compat hunks and the `lua50` library | `third_party/lua-src/BENILLA.md`; `benilla-ui/src/script/lua50.rs`, `script/lua50/table_size.rs` | Go to the stock 5.1 library (see creations) |
 | Handler globals | `this`/`event`/`arg1..N` set beside the positional args | `benilla-ui/src/script/event.rs:218-276` | Keep positional `(self, event, ...)`; drop globals except measured 2.4.3 reads |
-| Interface gate | `CLIENT_INTERFACE = 11200` | `benilla-ui/src/script/addon_gate.rs:14` | `20400` |
 | Catalogues and surface gates | All `reference/1.12-*.tsv` plus six gates | `reference/`; `benilla-ui/src/script/tests/{reference_surface,widget_surface}.rs`; `benilla-app/src/ui_script/{surface,shape,event_shape,verb_event}_gate.rs`; `scripts/api-coverage.sh` | Generate 2.4.3 catalogues; repoint every gate |
 | Glue presentation | Hand-built Bevy UI that parses `GlueStrings` in Rust | `benilla-app/src/glue/`, `glue_strings.rs` | Replace with stock GlueXML execution |
 | Combat rules | Fireball-hardcoded fallback; auras stored but never apply; no world query | `benilla-game-core/src/lib.rs:26-38,1654-1807`; `offline.rs:1677-1696` | Generalize effects; implement `WorldQuery` (see creations) |

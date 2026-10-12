@@ -438,7 +438,7 @@ pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
         lua.create_function(|lua, ()| {
             let mut model = lua.app_data_mut::<Model>().expect("model app_data");
             // `0x4fbff0`: nothing, not even the purse test, unless the open merchant repairs
-            // (`0x4fadb0`, `UNIT_NPC_FLAGS` bit 14).
+            // (`0x4fadb0`, build-8606 `UNIT_NPC_FLAG_REPAIR`, `0x1000`).
             if model.merchant.as_ref().is_some_and(|m| m.can_repair) {
                 model.repair_all = true;
             }

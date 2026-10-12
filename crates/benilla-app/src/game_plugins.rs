@@ -264,7 +264,7 @@ impl PluginGroup for GamePlugins {
             .add(UiTradePlugin)
             .add(UiItemTextPlugin)
             .add(UiSavedPlugin)
-            .add(NamePersistPlugin)
+            .add(NamePersistPlugin { mode: self.mode })
             .add(UiStablePlugin)
             .add(TabardUiPlugin)
             .add(UiTrainerPlugin)

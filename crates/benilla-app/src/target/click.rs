@@ -1299,43 +1299,43 @@ fn unit_branch(attack: bool, dead_fork: bool, leg: DeadUnitLeg) -> UnitBranch {
     }
 }
 
-/// The reference's NPC-service ladder, `0x5f0130`'s first-match-wins walk over `UNIT_NPC_FLAGS`,
-/// low bit to high. The cursor classifier `0x482200` walks the same bits but projects them lossily
-/// (Speak is bits 0, 1, 5, 6, 9, 10, 11 and 13; Buy is 8 and 12), so the send keys on the bit.
+/// The reference's NPC-service ladder, `0x5f0130`'s first-match-wins walk over build-8606
+/// `UNIT_NPC_FLAGS`. Vendor/trainer specialty flags share their service arm; the cursor classifier
+/// `0x482200` projects those arms to its smaller cursor table.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum ServiceArm {
-    /// Bit 0: `0x5f02a4` → `0x5df4d0`.
+    /// `UNIT_NPC_FLAG_GOSSIP`: `0x5f02a4` → `0x5df4d0`.
     Gossip,
-    /// Bit 1, and the target's cached questgiver status ∉ {0, 1} (`0x5f02c0` → `0x5df490`).
+    /// `UNIT_NPC_FLAG_QUESTGIVER` and cached status ∉ {0, 1} (`0x5f02c0` → `0x5df490`).
     Questgiver,
-    /// Bit 2: `0x5f0317` → `0x5df5d0`.
-    Vendor,
-    /// Bit 3: `0x5f034e` → `0x5ed020`.
-    FlightMaster,
-    /// Bit 4: `0x5f0385` → `0x5df680`.
+    /// `UNIT_NPC_FLAG_TRAINER` and its class/profession forms (`0x5f0385` → `0x5df680`).
     Trainer,
-    /// Bit 5: `0x5f03bc` → `0x5df730`. Ghost-gated, and sends nothing.
+    /// `UNIT_NPC_FLAG_VENDOR` and its ammo/food/poison/reagent forms (`0x5f0317` → `0x5df5d0`).
+    Vendor,
+    /// `UNIT_NPC_FLAG_FLIGHTMASTER` (`0x5f034e` → `0x5ed020`).
+    FlightMaster,
+    /// `UNIT_NPC_FLAG_SPIRITHEALER` (`0x5f03bc` → `0x5df730`). Ghost-gated, and sends nothing.
     SpiritHealer,
-    /// Bit 6: `0x5f03f3` → `0x5df950`. Ghost-gated.
+    /// `UNIT_NPC_FLAG_SPIRITGUIDE` (`0x5f03f3` → `0x5df950`). Ghost-gated.
     SpiritGuide,
-    /// Bit 7: `0x5f042a` → `0x5dfdc0`. Sends nothing.
+    /// `UNIT_NPC_FLAG_INNKEEPER` (`0x5f042a` → `0x5dfdc0`). Sends nothing.
     Innkeeper,
-    /// Bit 8: `0x5f0461` → `0x5dffe0`.
+    /// `UNIT_NPC_FLAG_BANKER` (`0x5f0461` → `0x5dffe0`).
     Banker,
-    /// Bit 9: `0x5f04e3` → `0x5e0060`.
+    /// `UNIT_NPC_FLAG_PETITIONER` (`0x5f04e3` → `0x5e0060`).
     Petitioner,
-    /// Bit 10: `0x5f051a` → `0x5e00e0`.
+    /// `UNIT_NPC_FLAG_TABARDDESIGNER` (`0x5f051a` → `0x5e00e0`).
     TabardDesigner,
-    /// Bit 11: `0x5f0551` → `0x5e01a0`.
+    /// `UNIT_NPC_FLAG_BATTLEMASTER` (`0x5f0551` → `0x5e01a0`).
     Battlemaster,
-    /// Bit 12: `0x5f0588` → `0x5e0220`.
+    /// `UNIT_NPC_FLAG_AUCTIONEER` (`0x5f0588` → `0x5e0220`).
     Auctioneer,
-    /// Bit 13: `0x5f05bc` → `0x5e02a0`.
+    /// `UNIT_NPC_FLAG_STABLEMASTER` (`0x5f05bc` → `0x5e02a0`).
     StableMaster,
 }
 
-/// The ladder; `None` when no consulted bit is set (`0x5f05ca`). REPAIR (bit 14) has no arm, and
-/// the reference's redundant `bits 9 AND 10` test reaches bit 9's handler, so it is omitted.
+/// The ladder; `None` when no supported service flag is set (`0x5f05ca`). REPAIR and unknown flags
+/// have no right-click service arm.
 pub(crate) fn service_arm(npc_flags: u32, quest_status: Option<u32>) -> Option<ServiceArm> {
     use cursor_mode::npc_flags as f;
     let bit = |m: u32| npc_flags & m != 0;
@@ -1344,12 +1344,12 @@ pub(crate) fn service_arm(npc_flags: u32, quest_status: Option<u32>) -> Option<S
     } else if bit(f::QUESTGIVER) && cursor_mode::questgiver_has_quest(quest_status) {
         // The cursor ladder's own predicate (`0x482362`), shared so the two cannot disagree.
         ServiceArm::Questgiver
-    } else if bit(f::VENDOR) {
+    } else if bit(f::TRAINER_MASK) {
+        ServiceArm::Trainer
+    } else if bit(f::VENDOR_MASK) {
         ServiceArm::Vendor
     } else if bit(f::FLIGHTMASTER) {
         ServiceArm::FlightMaster
-    } else if bit(f::TRAINER) {
-        ServiceArm::Trainer
     } else if bit(f::SPIRITHEALER) {
         ServiceArm::SpiritHealer
     } else if bit(f::SPIRITGUIDE) {
@@ -1711,9 +1711,15 @@ mod tests {
         let has = Some(benilla_protocol::messages::dialog_status::AVAILABLE);
         for (flags, arm) in [
             (f::GOSSIP, ServiceArm::Gossip),
-            (f::VENDOR, ServiceArm::Vendor),
-            (f::FLIGHTMASTER, ServiceArm::FlightMaster),
             (f::TRAINER, ServiceArm::Trainer),
+            (f::TRAINER_CLASS, ServiceArm::Trainer),
+            (f::TRAINER_PROFESSION, ServiceArm::Trainer),
+            (f::VENDOR, ServiceArm::Vendor),
+            (f::VENDOR_AMMO, ServiceArm::Vendor),
+            (f::VENDOR_FOOD, ServiceArm::Vendor),
+            (f::VENDOR_POISON, ServiceArm::Vendor),
+            (f::VENDOR_REAGENT, ServiceArm::Vendor),
+            (f::FLIGHTMASTER, ServiceArm::FlightMaster),
             (f::SPIRITHEALER, ServiceArm::SpiritHealer),
             (f::SPIRITGUIDE, ServiceArm::SpiritGuide),
             (f::INNKEEPER, ServiceArm::Innkeeper),
@@ -1732,9 +1738,28 @@ mod tests {
             Some(ServiceArm::Questgiver)
         );
         assert_eq!(service_arm(f::QUESTGIVER, None), None);
-        // REPAIR (bit 14) has no arm, and an empty field matches nothing.
-        assert_eq!(service_arm(0x4000, None), None);
+        // REPAIR (`0x1000`) and unknown bits have no arm, and an empty field matches nothing.
+        assert_eq!(service_arm(f::REPAIR, None), None);
+        assert_eq!(service_arm(0x4 | 0x8, None), None);
         assert_eq!(service_arm(0, None), None);
+        assert_eq!(service_arm(128, None), Some(ServiceArm::Vendor));
+        assert_eq!(service_arm(4224, None), Some(ServiceArm::Vendor));
+        assert_eq!(service_arm(4, None), None);
+        #[cfg(feature = "offline")]
+        {
+            let content = benilla_game_core::content::creature_content();
+            for entry in [15_287, 15_289] {
+                let vendor = content
+                    .template(entry)
+                    .expect("converted Sunstrider vendor");
+                assert_eq!(
+                    service_arm(vendor.npc_flags, None),
+                    Some(ServiceArm::Vendor),
+                    "{} has the build-8606 vendor flag",
+                    vendor.name
+                );
+            }
+        }
     }
 
     #[test]
@@ -1753,14 +1778,14 @@ mod tests {
                 Some(ServiceArm::Gossip)
             );
         }
-        // Banker (bit 8) before auctioneer (bit 12), both Buy(3) to the cursor.
+        // Banker before auctioneer, both Buy to the cursor.
         assert_eq!(
             service_arm(f::BANKER | f::AUCTIONEER, None),
             Some(ServiceArm::Banker)
         );
-        // Trainer (bit 4) before innkeeper (bit 7).
+        // Trainer before vendor and innkeeper in the TBC service order.
         assert_eq!(
-            service_arm(f::TRAINER | f::INNKEEPER, None),
+            service_arm(f::TRAINER | f::VENDOR | f::INNKEEPER, None),
             Some(ServiceArm::Trainer)
         );
     }
@@ -2279,7 +2304,11 @@ mod tests {
         let vendor = world
             .spawn((
                 Guid(VENDOR),
-                store(&[(F_HEALTH, 100), (F_MAXHEALTH, 100), (F_NPC_FLAGS, 0x4)]),
+                store(&[
+                    (F_HEALTH, 100),
+                    (F_MAXHEALTH, 100),
+                    (F_NPC_FLAGS, crate::target::cursor_mode::npc_flags::VENDOR),
+                ]),
                 Transform::from_translation(at),
                 crate::net::NetEntity {
                     kind: benilla_protocol::EntityKind::Unit,

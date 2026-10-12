@@ -8,10 +8,11 @@ from pathlib import Path
 SCRIPT = Path(__file__).resolve().parents[1] / "validate-tbc-content.py"
 
 VALID_PACK = '''\
-schema_version = 2
+schema_version = 3
 source = "https://example.invalid/tbc-db"
 revision = "0123456789abcdef0123456789abcdef01234567"
 license = "GPL-3.0"
+event_policy = "base-world-only"
 
 [[template]]
 entry = 10
@@ -81,7 +82,7 @@ class ValidateTbcContentTests(unittest.TestCase):
         self.assertIn("1 templates, 1 spawns, 0 waypoints, 0 addons", result.stdout)
 
     def test_accepts_each_supported_movement_type(self):
-        for movement_type in (0, 1, 2, 4):
+        for movement_type in (0, 1, 2, 3, 4):
             with self.subTest(movement_type=movement_type):
                 result = self.run_validator(
                     VALID_PACK.replace("movement_type = 2", f"movement_type = {movement_type}")
@@ -90,8 +91,9 @@ class ValidateTbcContentTests(unittest.TestCase):
 
     def test_rejects_schema_and_provenance_errors(self):
         cases = (
-            (VALID_PACK.replace("schema_version = 2", "schema_version = 3"), "schema_version"),
+            (VALID_PACK.replace("schema_version = 3", "schema_version = 2"), "schema_version"),
             (VALID_PACK.replace('source = "https://example.invalid/tbc-db"\n', ""), "source"),
+            (VALID_PACK.replace('event_policy = "base-world-only"\n', ""), "event_policy"),
             (
                 VALID_PACK.replace(
                     'revision = "0123456789abcdef0123456789abcdef01234567"', "revision = 7"
@@ -112,6 +114,10 @@ class ValidateTbcContentTests(unittest.TestCase):
                 "40-character lowercase hexadecimal",
             ),
             (VALID_PACK.replace('license = "GPL-3.0"', 'license = "  "'), "license"),
+            (
+                VALID_PACK.replace('event_policy = "base-world-only"', 'event_policy = "active"'),
+                "event_policy: expected 'base-world-only'",
+            ),
         )
         for pack, message in cases:
             with self.subTest(message=message):
@@ -182,7 +188,7 @@ movement_type = 0
                 VALID_PACK.replace("entry = 10\nmap_id = 530", "entry = 11\nmap_id = 530"),
                 "no template",
             ),
-            (VALID_PACK.replace("movement_type = 2", "movement_type = 3"), "unsupported value 3"),
+            (VALID_PACK.replace("movement_type = 2", "movement_type = 5"), "unsupported value 5"),
         )
         for pack, message in cases:
             with self.subTest(message=message):

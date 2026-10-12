@@ -25,8 +25,8 @@ const TAXI_PATH: u32 = 6;
 /// Dungar Longdrink's spawn (vmangos `creature` guid 79658, entry 352, map 0); the flight master
 /// is then found in the streamed world by his npc flag.
 const FLIGHTMASTER_AT: [f32; 3] = [-8835.8, 490.1, 109.7];
-/// `UNIT_NPC_FLAG_FLIGHTMASTER` (bit 3).
-const NPC_FLAG_FLIGHTMASTER: u32 = 0x8;
+/// Build-8606 `UNIT_NPC_FLAG_FLIGHTMASTER` (bit 13).
+const NPC_FLAG_FLIGHTMASTER: u32 = 0x2000;
 /// vmangos `PLAYER_FLIGHT_SPEED` in yd/s (`WaypointMovementGenerator.cpp:390`).
 const FLIGHT_SPEED: f32 = 32.0;
 

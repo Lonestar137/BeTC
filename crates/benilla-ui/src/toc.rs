@@ -153,7 +153,7 @@ mod tests {
     #[test]
     fn default_state_is_enabled_unless_the_manifest_says_disabled() {
         let d = |body: &str| Toc::parse(body).default_state();
-        assert!(d("## Interface: 11200\n"), "absent: the ctor's own 1");
+        assert!(d("## Interface: 20400\n"), "absent: the ctor's own 1");
         assert!(d("## DefaultState: enabled\n"));
         assert!(!d("## DefaultState: disabled\n"));
         assert!(
@@ -176,13 +176,13 @@ mod tests {
     #[test]
     fn vanilla_1_12_shape() {
         let toc = Toc::parse(
-            "## Interface: 11200\n\
+            "## Interface: 20400\n\
              ## Title: FrameXML\n\
              ## Secure: 1\n\
              GlobalStrings.lua\n\
              Fonts.xml\n",
         );
-        assert_eq!(toc.interface_versions(), vec![11200]);
+        assert_eq!(toc.interface_versions(), vec![20400]);
         assert_eq!(toc.directive("Secure"), Some("1"));
         assert!(!toc.load_on_demand());
         assert_eq!(toc.files.len(), 2);

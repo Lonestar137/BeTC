@@ -48,7 +48,7 @@ impl Fixtures {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
             dir.join(format!("{name}.toc")),
-            "## Interface: 11200\nbody.lua\n",
+            "## Interface: 20400\nbody.lua\n",
         )
         .unwrap();
         std::fs::write(dir.join("body.lua"), body).unwrap();

@@ -9,10 +9,19 @@ import tomllib
 from pathlib import Path
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
+EVENT_POLICY = "base-world-only"
 F32_MAX = 3.4028234663852886e38
 
-ROOT_FIELDS = {"schema_version", "source", "revision", "license", "template", "spawn"}
+ROOT_FIELDS = {
+    "schema_version",
+    "source",
+    "revision",
+    "license",
+    "event_policy",
+    "template",
+    "spawn",
+}
 OPTIONAL_TABLES = {"waypoint", "addon"}
 
 # Field specs are aligned with the Rust deserialization types in
@@ -61,7 +70,8 @@ TABLE_FIELDS = {
 
 # Source values are asserted in crates/benilla-game-core/src/content.rs and behavior is described in
 # crates/benilla-game-core/RULES.md; only 2 currently drives waypoint movement in presentation.
-MOVEMENT_TYPES = {0, 1, 2, 4}
+# Type 3 appears across the world pack and is carried verbatim as idle.
+MOVEMENT_TYPES = {0, 1, 2, 3, 4}
 
 # The vendor pack (crates/benilla-game-core/src/vendor.rs): npc_vendor stock lines plus the
 # item_template rows those lines need, in the QuestItemTemplate shape quest.rs deserializes.
@@ -138,7 +148,7 @@ def validate_document(document):
     if not isinstance(document, dict):
         return ["document: expected a TOML table"], {}
 
-    metadata_fields = {"schema_version", "source", "revision", "license"}
+    metadata_fields = {"schema_version", "source", "revision", "license", "event_policy"}
     for key in sorted(metadata_fields - document.keys()):
         errors.append(f"{key}: missing required root field")
     for key in sorted(document.keys() - ROOT_FIELDS - OPTIONAL_TABLES):
@@ -156,6 +166,8 @@ def validate_document(document):
             not isinstance(document[key], str) or not document[key].strip()
         ):
             errors.append(f"{key}: expected a non-empty provenance string")
+    if "event_policy" in document and document["event_policy"] != EVENT_POLICY:
+        errors.append(f"event_policy: expected {EVENT_POLICY!r}")
     revision = document.get("revision")
     if isinstance(revision, str) and re.fullmatch(r"[0-9a-f]{40}", revision) is None:
         errors.append("revision: expected a 40-character lowercase hexadecimal commit hash")

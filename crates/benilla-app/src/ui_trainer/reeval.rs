@@ -117,8 +117,11 @@ pub(super) fn re_derive(
             }
         }
     }
-    // 3 · every learn effect known: known (`0x4d7fc6`), over whatever the loop left.
-    if learn_effects > 0 && known_effects == learn_effects {
+    // 3 · every learn effect known: known (`0x4d7fc6`), over whatever the loop left. A plain
+    //     trainer offer has no learn effect; its wire spell is the taught spell itself.
+    let direct_spell_known = learn_effects == 0
+        && known_or_higher(wire.spell, &player.known, skill_lines);
+    if (learn_effects > 0 && known_effects == learn_effects) || direct_spell_known {
         state = GRAY;
     }
     // 4 · still 0: the skill leg. A slot below the requirement is unavailable (`0x4d811f`); no

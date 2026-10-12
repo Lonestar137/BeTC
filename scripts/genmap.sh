@@ -112,6 +112,7 @@ field() { grep -m1 "^$2" "$1" 2>/dev/null | sed -E "s/^$2[[:space:]]*=[[:space:]
       /^@echo off/ { next }
       { line = $0
         sub(/^[[:space:]]*(r?"""|#|\/\/|rem)[[:space:]]?/, "", line)
+        sub(/"""[[:space:]]*$/, "", line)
         if (line ~ /^[[:space:]]*$/) { if (got) exit; else next }
         if (line ~ /^"""/) exit
         got = 1; out = out (out ? " " : "") line }

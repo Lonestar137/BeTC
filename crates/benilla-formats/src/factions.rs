@@ -247,6 +247,12 @@ impl FactionCatalog {
         self.templates.get(&id)
     }
 
+    /// Every `FactionTemplate.dbc` row, keyed by its `UNIT_FIELD_FACTIONTEMPLATE` id; the adapter
+    /// walks this to build the offline population's per-faction reaction table.
+    pub fn templates(&self) -> impl Iterator<Item = (u32, &FactionTemplate)> {
+        self.templates.iter().map(|(&id, template)| (id, template))
+    }
+
     /// Every race with a `ChrRaces.dbc` row, and its template id.
     pub fn race_templates(&self) -> impl Iterator<Item = (u8, u32)> + '_ {
         self.race_templates.iter().map(|(&race, &id)| (race, id))
@@ -714,17 +720,19 @@ mod tests {
         );
     }
 
+    /// Every faction the world spawn pack references must have a `FactionTemplate.dbc` row: the
+    /// adapter turns the comparator into population reactions, so an unresolved faction would
+    /// silently misclassify every creature using it.
     #[test]
-    fn build_8606_sunstrider_spawn_factions_match_the_combat_hostile_set() {
-        use std::collections::{BTreeMap, BTreeSet};
+    fn build_8606_every_world_spawn_faction_resolves_in_the_faction_tables() {
+        use std::collections::BTreeSet;
 
         const CREATURE_PACK: &str =
-            include_str!("../../benilla-game-core/content/tbc-starting-zones.toml");
+            include_str!("../../benilla-game-core/content/tbc-world-spawns.toml");
 
-        // Read only template/spawn key fields; keep the catalog crate free of a content-parser
+        // Read only template factions; keep the catalog crate free of a content-parser
         // dependency.
-        let mut template_factions = BTreeMap::new();
-        let mut map_530_entries = BTreeSet::new();
+        let mut template_factions = BTreeSet::new();
         let section_separator: String = [']', ']'].into_iter().collect();
         let numeric_field = |body: &str, field: &str| {
             let prefix = format!("{field} = ");
@@ -738,55 +746,34 @@ mod tests {
             let (table, body) = section
                 .split_once(section_separator.as_str())
                 .expect("content pack array-of-table header");
-            match table.trim() {
-                "template" => {
-                    let entry = numeric_field(body, "entry").expect("template entry");
-                    let faction = numeric_field(body, "faction").expect("template faction");
-                    assert!(template_factions.insert(entry, faction).is_none());
-                }
-                "spawn" if numeric_field(body, "map_id") == Some(530) => {
-                    map_530_entries.insert(numeric_field(body, "entry").expect("spawn entry"));
-                }
-                _ => {}
+            if table.trim() == "template" {
+                template_factions.insert(numeric_field(body, "faction").expect("template faction"));
             }
         }
-        let map_530_factions: BTreeSet<_> = map_530_entries
-            .iter()
-            .map(|entry| {
-                *template_factions
-                    .get(entry)
-                    .unwrap_or_else(|| panic!("map-530 spawn references missing template {entry}"))
-            })
-            .collect();
-        assert!(!map_530_factions.is_empty());
+        assert!(
+            template_factions.len() > 300,
+            "the world pack names {} factions",
+            template_factions.len()
+        );
 
         let data = crate::wow_data_or_skip!();
         let mut chain = crate::open_chain(&data).expect("open chain");
         let catalog = load_faction_catalog(&mut chain).expect("load build-8606 factions");
+        for faction in &template_factions {
+            assert!(
+                catalog.template(*faction).is_some(),
+                "FactionTemplate.dbc is missing content faction {faction}"
+            );
+        }
+
+        // The comparator stays authoritative for a boundary case: the Mana Wyrm is neutral to a
+        // Blood Elf in both directions (the Sunstrider conversion relies on it).
         let blood_elf = catalog
             .template(1610)
             .expect("Blood Elf player faction template");
-        let reaction = |id: u32| {
-            catalog
-                .template(id)
-                .unwrap_or_else(|| panic!("FactionTemplate.dbc is missing faction {id}"))
-                .reaction_toward(blood_elf)
-        };
-        let hostile_factions: BTreeSet<_> = map_530_factions
-            .iter()
-            .copied()
-            .filter(|&id| reaction(id) == Reaction::Hostile)
-            .collect();
-        let attackable_factions: BTreeSet<_> = map_530_factions
-            .into_iter()
-            .filter(|&id| reaction(id) != Reaction::Friendly)
-            .collect();
-        let expected_hostile_factions = BTreeSet::from([12, 14, 16, 38, 91, 114]);
-        assert_eq!(hostile_factions, expected_hostile_factions);
-        assert_eq!(
-            attackable_factions,
-            BTreeSet::from([7, 12, 14, 15, 16, 38, 91, 114, 188, 189, 1703])
-        );
+        let mana_wyrm = catalog.template(7).expect("Mana Wyrm faction template");
+        assert_eq!(mana_wyrm.reaction_toward(blood_elf), Reaction::Neutral);
+        assert_eq!(blood_elf.reaction_toward(mana_wyrm), Reaction::Neutral);
     }
 
     #[test]

@@ -2412,7 +2412,7 @@ fn the_chat_cache_restore_is_finished_before_player_login() {
     std::fs::create_dir_all(&probe).expect("hermetic home + probe addon dir");
     std::fs::write(
         probe.join("ChatOrderProbe.toc"),
-        "## Interface: 11200\nChatOrderProbe.lua\n",
+        "## Interface: 20400\nChatOrderProbe.lua\n",
     )
     .expect("probe toc");
     std::fs::write(

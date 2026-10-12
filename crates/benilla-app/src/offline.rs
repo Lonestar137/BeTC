@@ -17,7 +17,7 @@ use crate::net::{CharActionResultMessage, CharListMessage, CharRequest, OfflineC
 mod persistence;
 use persistence::OfflinePersistence;
 
-const OFFLINE_CONTENT_RADIUS_YARDS: f32 = benilla_game_core::SUNSTRIDER_CONTENT_RADIUS_YARDS;
+const OFFLINE_CONTENT_RADIUS_YARDS: f32 = benilla_game_core::CONTENT_RADIUS_YARDS;
 const OFFLINE_CREATURE_WALK_SPEED_YARDS_PER_SEC: f32 = 2.5;
 const OFFLINE_CREATURE_AI_STEP_MS: u32 = 200;
 /// NPC interaction range in yards: matches the client's 5.5556 yd service range
@@ -356,6 +356,31 @@ fn read_checked_document<T>(
     }
 }
 
+/// The offline population's per-faction reaction table for a character's race, built from the
+/// installed build-8606 `FactionTemplate.dbc` comparator (unit template toward the race's player
+/// template). A missing catalog or race template reads every template friendly, so the population
+/// stays inert rather than guessing hostility.
+fn unit_reactions(
+    factions: Option<&crate::target::Factions>,
+    race: u8,
+) -> benilla_game_core::UnitReactions {
+    use benilla_formats::Reaction;
+    let Some(catalog) = factions.map(|factions| factions.catalog()) else {
+        return benilla_game_core::UnitReactions::default();
+    };
+    let Some(player) = catalog.race_template(race) else {
+        return benilla_game_core::UnitReactions::default();
+    };
+    benilla_game_core::UnitReactions::from_pairs(catalog.templates().map(|(id, template)| {
+        let reaction = match template.reaction_toward(player) {
+            Reaction::Hostile => benilla_game_core::UnitReaction::Hostile,
+            Reaction::Neutral => benilla_game_core::UnitReaction::Neutral,
+            Reaction::Friendly => benilla_game_core::UnitReaction::Friendly,
+        };
+        (id, reaction)
+    }))
+}
+
 fn drive_local_requests(
     channels: Res<OfflineChannels>,
     mut core: ResMut<OfflineGameCore>,
@@ -379,6 +404,9 @@ fn drive_local_requests(
                 };
                 if core.0.select_character(&id).is_err() {
                     continue;
+                }
+                if let Some(race) = core.0.snapshot(&id).map(|snapshot| snapshot.appearance.race) {
+                    core.0.set_unit_reactions(unit_reactions(factions.as_deref(), race));
                 }
                 match core.0.enter_world() {
                     Ok(snapshot) => {
@@ -720,70 +748,7 @@ fn emit_world_entry_with_talents(
                 remaining_ms,
             })
     }));
-    if snapshot.position.map_id != 530 {
-        for hostile in hostiles {
-            let entry = hostile_entry();
-            let guid = hostile_guid(hostile.spawn_id);
-            // This installed model is covered by the build-8606 display-catalog test. The prior Mana
-            // Wyrm path had no display row, making the adapter emit a deliberate fallback cube.
-            let model_path = "Creature\\Wolf\\Wolf.m2";
-            let display_id =
-                creatures.and_then(|catalog| catalog.display_for_model_path(model_path));
-            if display_id.is_none() {
-                warn!(
-                "offline Sunstrider hostile has no renderable build-8606 display for {model_path}"
-            );
-            }
-            let scale = display_id
-                .and_then(|display_id| {
-                    creatures.and_then(|catalog| catalog.model_scale(display_id))
-                })
-                .unwrap_or(1.0);
-            let mut mob_fields = vec![
-                (2, 0x9), // OBJECT_FIELD_TYPE: object and unit
-                (3, entry),
-                (4, scale.to_bits()), // OBJECT_FIELD_SCALE_X: display/model scale folded by the adapter
-                (22, hostile.health),
-                (28, hostile.max_health),
-                (34, 1),
-                (35, 14), // Monster faction template
-                (130, 1.5f32.to_bits()),
-            ];
-            if let Some(display_id) = display_id {
-                mob_fields.extend([(131, display_id), (132, display_id)]);
-            }
-            names.insert_creature(
-                entry,
-                Some(crate::names::CreatureRecord {
-                    name: hostile_name().to_string(),
-                    subname: None,
-                    creature_type: 1,
-                    pet_family: 0,
-                    rank: 0,
-                    type_flags: 0,
-                    civilian: false,
-                    racial_leader: false,
-                    display_id: display_id.unwrap_or(0),
-                }),
-            );
-            events.push(SessionEvent::ObjectCreate {
-                guid,
-                kind: EntityKind::Unit,
-                display_id,
-                position: [hostile.position.x, hostile.position.y, hostile.position.z],
-                orientation: hostile.position.orientation,
-                scale,
-                speeds: None,
-                mover: None,
-                transport_progress: None,
-                transport: None,
-                spline: None,
-                fields: ObjectFields::from_pairs(&mob_fields)
-                    .into_created(benilla_protocol::messages::ObjectType::Unit),
-            });
-        }
-    }
-    let content = benilla_game_core::content::starting_zone_content();
+    let content = benilla_game_core::content::creature_content();
     for spawn in content.spawns_near(
         snapshot.position.map_id,
         snapshot.position.x,
@@ -824,7 +789,7 @@ fn emit_world_entry_with_talents(
 #[allow(clippy::too_many_arguments)]
 fn emit_imported_spawn(
     events: &mut Vec<SessionEvent>,
-    content: &benilla_game_core::content::StartingZoneContent,
+    content: &benilla_game_core::content::CreatureContent,
     spawn: &benilla_game_core::content::CreatureSpawn,
     creatures: Option<&crate::entities::Creatures>,
     hostiles: &[HostileState],
@@ -1068,20 +1033,6 @@ fn starting_position(race: u8) -> Option<WorldPosition> {
     })
 }
 
-fn hostile_entry() -> u32 {
-    91_002
-}
-
-fn hostile_name() -> &'static str {
-    "Dawnpath Stalker"
-}
-
-fn hostile_guid(spawn_id: u32) -> u64 {
-    (u64::from(benilla_protocol::guid::HIGH_UNIT) << 48)
-        | (u64::from(hostile_entry()) << 24)
-        | u64::from(spawn_id & 0x00ff_ffff)
-}
-
 fn imported_guid(entry: u32, source_guid: u32) -> u64 {
     (u64::from(benilla_protocol::guid::HIGH_UNIT) << 48)
         | (u64::from(entry) << 24)
@@ -1292,9 +1243,6 @@ fn pulse_from_trigger(
 }
 
 fn combat_target_guid(hostile: &HostileState) -> Option<u64> {
-    if hostile.position.map_id != 530 {
-        return Some(hostile_guid(hostile.spawn_id));
-    }
     Some(imported_guid(hostile.creature_entry, hostile.spawn_id))
 }
 
@@ -2810,19 +2758,18 @@ fn imported_spawn_for_guid(
 ) -> Option<&'static benilla_game_core::content::CreatureSpawn> {
     let entry = benilla_protocol::guid::entry(guid)?;
     let source_guid = (guid & 0x00ff_ffff) as u32;
-    benilla_game_core::content::starting_zone_content()
+    benilla_game_core::content::creature_content()
         .spawn
         .iter()
         .find(|spawn| {
-            spawn.map_id == 530
-                && spawn.entry == entry
+            spawn.entry == entry
                 && spawn.source_guid & 0x00ff_ffff == source_guid
         })
 }
 
 fn quest_npc_entry(core: &GameCore, guid: u64) -> Option<u32> {
     let spawn = imported_spawn_for_guid(guid)?;
-    let template = benilla_game_core::content::starting_zone_content().template(spawn.entry)?;
+    let template = benilla_game_core::content::creature_content().template(spawn.entry)?;
     let interaction_flags = crate::target::cursor_mode::npc_flags::GOSSIP
         | crate::target::cursor_mode::npc_flags::QUESTGIVER;
     if template.npc_flags & interaction_flags == 0 {
@@ -2848,7 +2795,7 @@ fn quest_npc_in_range(core: &GameCore, guid: u64) -> Option<u32> {
 
 fn quest_giver_guid(core: &GameCore, npc_entry: u32) -> Option<u64> {
     let player = core.snapshot(core.active()?)?.position;
-    benilla_game_core::content::starting_zone_content()
+    benilla_game_core::content::creature_content()
         .spawns_near(
             player.map_id,
             player.x,
@@ -2902,10 +2849,16 @@ fn send_offline_gossip_menu(
         .iter()
         .find(|quest| quest.giver_creature_entries.contains(&npc_entry))
     else {
-        // No quest for this NPC: an empty gossip frame would strand the player, so a vendor
-        // behind the GOSSIP bit falls through to its stock instead. The service ladder itself
-        // stays untouched: GOSSIP still outranks VENDOR when the NPC has something to say.
-        send_offline_vendor_inventory(core, channels, buyback, guid);
+        // The static slice has no converted gossip-menu option rows. Preserve useful services
+        // behind the GOSSIP bit: trainers open their converted trainer list, and vendors fall
+        // through to stock rather than opening an empty frame.
+        if let Some(template) = imported_template_for_guid(guid) {
+            if template.npc_flags & crate::target::cursor_mode::npc_flags::TRAINER_MASK != 0 {
+                send_offline_trainer_list(core, channels, guid, None, None);
+            } else if template.npc_flags & crate::target::cursor_mode::npc_flags::VENDOR_MASK != 0 {
+                send_offline_vendor_inventory(core, channels, buyback, guid);
+            }
+        }
         return;
     };
     send_gameplay_events(
@@ -2924,7 +2877,7 @@ fn imported_template_for_guid(
     guid: u64,
 ) -> Option<&'static benilla_game_core::content::CreatureTemplate> {
     let spawn = imported_spawn_for_guid(guid)?;
-    benilla_game_core::content::starting_zone_content().template(spawn.entry)
+    benilla_game_core::content::creature_content().template(spawn.entry)
 }
 
 /// Whether the guid's spawn is within the client's 5.5556 yd service range of the active player.
@@ -5332,9 +5285,6 @@ fn stream_offline_spawns(
     let Some(position) = core.0.snapshot(&id).map(|snapshot| snapshot.position) else {
         return;
     };
-    if position.map_id != 530 {
-        return;
-    }
     let moved = last.is_none_or(|last| {
         (last.x - position.x).powi(2) + (last.y - position.y).powi(2)
             > OFFLINE_STREAM_STEP_YARDS * OFFLINE_STREAM_STEP_YARDS
@@ -5345,7 +5295,7 @@ fn stream_offline_spawns(
     *last = Some(position);
     core.0
         .populate_near(position, OFFLINE_CONTENT_RADIUS_YARDS);
-    let content = benilla_game_core::content::starting_zone_content();
+    let content = benilla_game_core::content::creature_content();
     let mut events = Vec::new();
     for spawn in content.spawns_near(
         position.map_id,
@@ -5631,6 +5581,39 @@ mod tests {
     /// (mirrors `benilla-game-core`'s test helper).
     fn disarm(core: &mut GameCore) {
         let _ = core.unequip_to_backpack(15);
+    }
+
+    fn test_reactions(race: u8) -> benilla_game_core::UnitReactions {
+        use benilla_game_core::UnitReaction::{Friendly, Hostile, Neutral};
+
+        let (hostile, neutral): (&[u32], &[u32]) = if race == 10 {
+            (&[12, 14, 16, 38, 91, 114], &[7, 15, 188, 189, 1703])
+        } else if race == 1 {
+            (&[17], &[25, 31])
+        } else {
+            (&[], &[])
+        };
+        benilla_game_core::UnitReactions::from_pairs(
+            hostile
+                .iter()
+                .copied()
+                .map(|faction| (faction, Hostile))
+                .chain(neutral.iter().copied().map(|faction| (faction, Neutral)))
+                .chain([(1604, Friendly)]),
+        )
+    }
+
+    fn enter_test_world(core: &mut GameCore, race: u8) {
+        core.set_unit_reactions(test_reactions(race));
+        core.enter_world().unwrap();
+    }
+
+    fn northshire_hostile(core: &GameCore) -> benilla_game_core::HostileState {
+        core.hostiles()
+            .iter()
+            .find(|hostile| hostile.creature_entry == 38)
+            .copied()
+            .expect("Northshire population includes a Defias Thug")
     }
 
     #[test]
@@ -6180,9 +6163,17 @@ mod tests {
             start,
         )
         .unwrap();
-        core.enter_world().unwrap();
-        let spawn_id = benilla_game_core::HOSTILE_SPAWN_ID;
-        let hostile = core.hostile(spawn_id).unwrap();
+        enter_test_world(&mut core, 1);
+        let hostile = northshire_hostile(&core);
+        let spawn_id = hostile.spawn_id;
+        core.update_active(
+            WorldPosition {
+                x: hostile.position.x + 10.0,
+                ..hostile.position
+            },
+            0,
+        )
+        .unwrap();
         let spawn = [hostile.position.x, hostile.position.y, hostile.position.z];
         let waypoint = |point, x| benilla_game_core::content::CreatureWaypoint {
             source_guid: spawn_id,
@@ -6193,7 +6184,7 @@ mod tests {
             orientation: 0.0,
             wait_ms: 0,
         };
-        let guid = hostile_guid(spawn_id);
+        let guid = imported_guid(hostile.creature_entry, spawn_id);
         let mut patrols = OfflinePatrols::default();
         patrols.0.insert(
             guid,
@@ -6256,7 +6247,7 @@ mod tests {
 
     #[test]
     fn offline_world_entry_emits_the_nearby_imported_population_with_stable_ids() {
-        let content = benilla_game_core::content::starting_zone_content();
+        let content = benilla_game_core::content::creature_content();
         let template_entries: std::collections::BTreeSet<_> = content
             .template
             .iter()
@@ -6282,6 +6273,7 @@ mod tests {
                 starting_position(race).unwrap(),
             )
             .unwrap();
+            core.set_unit_reactions(test_reactions(race));
             let snapshot = core.enter_world().unwrap();
 
             let (_pick_tx, picks) = crossbeam_channel::unbounded();
@@ -6370,37 +6362,19 @@ mod tests {
                 emitted, expected,
                 "emitted population must match nearby source spawns"
             );
-            let practice_guids = [
-                hostile_guid(benilla_game_core::HOSTILE_SPAWN_ID),
-                hostile_guid(benilla_game_core::HOSTILE_SPAWN_ID + 1),
-                hostile_guid(benilla_game_core::HOSTILE_SPAWN_ID + 2),
-            ];
-            let emitted_practice_guids: Vec<_> = events
-                .iter()
-                .filter_map(|event| match event {
-                    SessionEvent::ObjectCreate { guid, .. } if practice_guids.contains(guid) => {
-                        Some(*guid)
-                    }
-                    _ => None,
-                })
-                .collect();
-            if snapshot.position.map_id == 530 {
-                assert!(
-                    emitted_practice_guids.is_empty(),
-                    "Sunstrider uses source spawns, not duplicate practice actors"
-                );
-            } else {
+            for spawn in &nearby {
+                let template = content.template(spawn.entry).unwrap();
                 assert_eq!(
-                    emitted_practice_guids.len(),
-                    practice_guids.len(),
-                    "the non-Sunstrider practice harness remains available"
+                    names.peek(imported_guid(spawn.entry, spawn.source_guid)),
+                    Some(template.name.as_str()),
+                    "every streamed creature must have its converted name cached"
                 );
             }
             assert!(patrols.0.values().any(|patrol| patrol.waypoints.len() > 1));
 
-            if snapshot.position.map_id == 530 {
+            {
                 // Travel beyond the entry radius: the next query streams the newly-near spawns
-                // and never repeats a GUID the entry already emitted.
+                // on this map and never repeats a GUID the entry already emitted.
                 let entry_guids: std::collections::HashSet<u64> = events
                     .iter()
                     .filter_map(|event| match event {
@@ -6420,7 +6394,7 @@ mod tests {
                     .spawn
                     .iter()
                     .filter(|spawn| {
-                        spawn.map_id == 530
+                        spawn.map_id == snapshot.position.map_id
                             && content
                                 .template(spawn.entry)
                                 .is_some_and(|template| !is_dnd_test_creature(template))
@@ -6494,6 +6468,22 @@ mod tests {
         }
     }
 
+    #[test]
+    fn imported_spawn_identity_resolves_outside_sunstrider() {
+        let content = benilla_game_core::content::creature_content();
+        let spawn = content
+            .spawn
+            .iter()
+            .find(|spawn| spawn.map_id != 530)
+            .expect("the full world pack includes non-Sunstrider maps");
+        let resolved = imported_spawn_for_guid(imported_guid(spawn.entry, spawn.source_guid))
+            .expect("a non-Sunstrider unit GUID resolves to its converted spawn");
+
+        assert_eq!(resolved.map_id, spawn.map_id);
+        assert_eq!(resolved.entry, spawn.entry);
+        assert_eq!(resolved.source_guid, spawn.source_guid);
+    }
+
     /// The "Show as Experience Bar" box's `SetWatchedFactionIndex` reaches the offline adapter as
     /// `CMSG_SET_WATCHED_FACTION`; watching is not optimistic (`0x4d6b60`), so the answer must be
     /// the descriptor update stock `ReputationFrame.xml` waits for.
@@ -6517,7 +6507,7 @@ mod tests {
             starting_position(10).unwrap(),
         )
         .unwrap();
-        core.enter_world().unwrap();
+        enter_test_world(&mut core, 10);
         let player_guid = core.active().unwrap().presentation_guid();
 
         let (_pick_tx, picks) = crossbeam_channel::unbounded();
@@ -6594,9 +6584,9 @@ mod tests {
             starting_position(10).unwrap(),
         )
         .unwrap();
-        core.enter_world().unwrap();
+        enter_test_world(&mut core, 10);
 
-        let erona = benilla_game_core::content::starting_zone_content()
+        let erona = benilla_game_core::content::creature_content()
             .spawn
             .iter()
             .find(|spawn| spawn.map_id == 530 && spawn.entry == 15_278)
@@ -6635,6 +6625,72 @@ mod tests {
     }
 
     #[test]
+    fn offline_gossip_hello_on_a_trainer_opens_its_trainer_list() {
+        let content = benilla_game_core::content::creature_content();
+        let spawn = content
+            .spawn
+            .iter()
+            .find(|spawn| spawn.map_id == 530 && spawn.entry == 15_285)
+            .expect("converted Pathstalker Kariel spawn");
+        let id = CharacterId::parse("0000000000000000000000000000000c").unwrap();
+        let mut core = GameCore::default();
+        core.create_character(
+            id,
+            "Shalara",
+            Appearance {
+                race: 10,
+                class: 4,
+                gender: 0,
+                skin: 0,
+                face: 0,
+                hair_style: 0,
+                hair_color: 0,
+                facial_hair: 0,
+            },
+            starting_position(10).unwrap(),
+        )
+        .unwrap();
+        enter_test_world(&mut core, 10);
+        core.update_active(
+            WorldPosition {
+                map_id: spawn.map_id,
+                x: spawn.x,
+                y: spawn.y,
+                z: spawn.z,
+                orientation: spawn.orientation,
+            },
+            0,
+        )
+        .unwrap();
+        let guid = imported_guid(spawn.entry, spawn.source_guid);
+
+        let (_pick_tx, picks) = crossbeam_channel::unbounded();
+        let (events, received) = crossbeam_channel::unbounded();
+        let (commands, command_receiver) = crossbeam_channel::unbounded();
+        commands
+            .send(crate::net::ClientCommand::GossipHello { guid })
+            .unwrap();
+        let mut app = App::new();
+        app.insert_resource(OfflineChannels {
+            picks,
+            events,
+            commands: command_receiver,
+        })
+        .insert_resource(OfflineGameCore(core))
+        .insert_resource(OfflinePersistence::new(false))
+        .insert_resource(Time::<()>::default());
+        app.world_mut()
+            .run_system_once(drive_offline_gameplay)
+            .expect("trainer GossipHello is handled");
+
+        assert!(received.try_iter().any(|event| matches!(
+            event,
+            SessionEvent::TrainerList { trainer, services, .. }
+                if trainer == guid && !services.is_empty()
+        )));
+    }
+
+    #[test]
     fn offline_quest_interaction_enforces_range_and_completes_the_stock_reward_flow() {
         let id = CharacterId::parse("00000000000000000000000000000001").unwrap();
         let mut core = GameCore::default();
@@ -6654,9 +6710,9 @@ mod tests {
             starting_position(10).unwrap(),
         )
         .unwrap();
-        core.enter_world().unwrap();
+        enter_test_world(&mut core, 10);
 
-        let erona = benilla_game_core::content::starting_zone_content()
+        let erona = benilla_game_core::content::creature_content()
             .spawn
             .iter()
             .find(|spawn| spawn.map_id == 530 && spawn.entry == 15_278)
@@ -6823,7 +6879,7 @@ mod tests {
 
     /// A blood elf standing on the converted vendor `entry`'s spawn, and its presentation guid.
     fn vendor_at(entry: u32) -> (GameCore, CharacterId, u64) {
-        let spawn = benilla_game_core::content::starting_zone_content()
+        let spawn = benilla_game_core::content::creature_content()
             .spawn
             .iter()
             .find(|spawn| spawn.map_id == 530 && spawn.entry == entry)
@@ -7070,7 +7126,7 @@ mod tests {
 
     #[test]
     fn one_point_waypoint_path_tracks_its_leg_without_repeating() {
-        let content = benilla_game_core::content::starting_zone_content();
+        let content = benilla_game_core::content::creature_content();
         let spawn = content
             .spawn
             .iter()
@@ -7299,10 +7355,10 @@ mod tests {
             starting_position(10).unwrap(),
         )
         .unwrap();
-        core.enter_world().unwrap();
+        enter_test_world(&mut core, 10);
         disarm(&mut core);
 
-        let content = benilla_game_core::content::starting_zone_content();
+        let content = benilla_game_core::content::creature_content();
         let nearby: Vec<_> = content
             .spawns_near(
                 530,
@@ -7318,8 +7374,8 @@ mod tests {
             .expect("combat state refers to a converted spawn");
         let hostile_template = content.template(hostile_spawn.entry).unwrap();
         assert!(
-            benilla_game_core::SUNSTRIDER_ATTACKABLE_FACTION_TEMPLATES
-                .contains(&hostile_template.faction),
+            test_reactions(10).reaction(hostile_template.faction)
+                != benilla_game_core::UnitReaction::Friendly,
             "combat state holds an attackable faction, got {}",
             hostile_template.faction
         );
@@ -7539,7 +7595,7 @@ mod tests {
             starting_position(10).unwrap(),
         )
         .unwrap();
-        core.enter_world().unwrap();
+        enter_test_world(&mut core, 10);
         disarm(&mut core);
         let wyrm = core
             .hostiles()
@@ -7677,7 +7733,7 @@ mod tests {
     }
 
     #[test]
-    fn offline_action_bar_cast_damages_and_respawns_a_spawned_hostile() {
+    fn offline_action_bar_cast_damages_and_respawns_an_imported_hostile() {
         let appearance = Appearance {
             race: 1,
             class: 8,
@@ -7697,7 +7753,9 @@ mod tests {
             starting_position(1).unwrap(),
         )
         .unwrap();
-        core.enter_world().unwrap();
+        enter_test_world(&mut core, 1);
+        let hostile = northshire_hostile(&core);
+        let hostile_guid = imported_guid(hostile.creature_entry, hostile.spawn_id);
 
         let (_pick_tx, picks) = crossbeam_channel::unbounded();
         let (events, received) = crossbeam_channel::unbounded();
@@ -7778,9 +7836,8 @@ mod tests {
                 ))
                 .count()
                 >= 3,
-            "the legacy combat harness remains available outside Sunstrider"
+            "nearby converted creatures are emitted"
         );
-        let hostile_guid = hostile_guid(benilla_game_core::HOSTILE_SPAWN_ID);
         let mob = entry_events.iter().find_map(|event| match event {
             SessionEvent::ObjectCreate {
                 guid,
@@ -7796,6 +7853,7 @@ mod tests {
             Some(benilla_protocol::messages::ObjectType::Unit)
         );
 
+        core.update_active(hostile.position, 0).unwrap();
         for expected_health in [30, 0] {
             start_offline_cast(
                 &mut core,
@@ -7863,16 +7921,12 @@ mod tests {
             }
         }
         assert_eq!(
-            core.hostile(benilla_game_core::HOSTILE_SPAWN_ID)
-                .unwrap()
-                .health,
+            core.hostile(hostile.spawn_id).unwrap().health,
             0
         );
         advance_offline_combat(&mut core, &channels, benilla_game_core::HOSTILE_RESPAWN_MS);
         assert_eq!(
-            core.hostile(benilla_game_core::HOSTILE_SPAWN_ID)
-                .unwrap()
-                .health,
+            core.hostile(hostile.spawn_id).unwrap().health,
             60
         );
         assert!(matches!(
@@ -7903,13 +7957,14 @@ mod tests {
             starting_position(1).unwrap(),
         )
         .unwrap();
-        core.enter_world().unwrap();
+        enter_test_world(&mut core, 1);
         disarm(&mut core);
-        let start = core.snapshot(&id).unwrap().position;
+        let hostile = northshire_hostile(&core);
+        let target = imported_guid(hostile.creature_entry, hostile.spawn_id);
         core.update_active(
             WorldPosition {
-                x: start.x + 8.0,
-                ..start
+                x: hostile.position.x + 2.0,
+                ..hostile.position
             },
             0,
         )
@@ -7928,7 +7983,6 @@ mod tests {
         .insert_resource(OfflinePersistence::new(false))
         .insert_resource(Time::<()>::default());
 
-        let target = hostile_guid(benilla_game_core::HOSTILE_SPAWN_ID);
         commands
             .send(crate::net::ClientCommand::AttackSwing { guid: target })
             .unwrap();
@@ -8013,7 +8067,7 @@ mod tests {
             starting_position(10).unwrap(),
         )
         .unwrap();
-        core.enter_world().unwrap();
+        enter_test_world(&mut core, 10);
         let hostile = core.hostiles().first().copied().expect("imported target");
         core.update_active(
             WorldPosition {
@@ -8038,7 +8092,7 @@ mod tests {
         .insert_resource(Time::<()>::default())
         .insert_resource(spells);
 
-        let target = hostile_guid(hostile.spawn_id);
+        let target = imported_guid(hostile.creature_entry, hostile.spawn_id);
         commands
             .send(crate::net::ClientCommand::CastSpell {
                 spell_id: 75,
@@ -8117,7 +8171,7 @@ mod tests {
             starting_position(10).unwrap(),
         )
         .unwrap();
-        core.enter_world().unwrap();
+        enter_test_world(&mut core, 10);
         assert!(
             core.snapshot(&id)
                 .unwrap()
@@ -8173,7 +8227,7 @@ mod tests {
         // The pet joins its owner's attack and swings the creature baseline at the target.
         commands
             .send(crate::net::ClientCommand::AttackSwing {
-                guid: hostile_guid(hostile.spawn_id),
+                guid: imported_guid(hostile.creature_entry, hostile.spawn_id),
             })
             .unwrap();
         app.world_mut()
@@ -8281,7 +8335,7 @@ mod tests {
             starting_position(10).unwrap(),
         )
         .unwrap();
-        core.enter_world().unwrap();
+        enter_test_world(&mut core, 10);
         let hostile = core.hostiles().first().copied().expect("imported target");
         core.update_active(hostile.position, 0).unwrap();
 
@@ -8326,7 +8380,7 @@ mod tests {
         // The sweep rides the totem's own attacker state at the engaged target.
         commands
             .send(crate::net::ClientCommand::AttackSwing {
-                guid: hostile_guid(hostile.spawn_id),
+                guid: imported_guid(hostile.creature_entry, hostile.spawn_id),
             })
             .unwrap();
         app.world_mut()
@@ -8390,7 +8444,7 @@ mod tests {
             starting_position(10).unwrap(),
         )
         .unwrap();
-        core.enter_world().unwrap();
+        enter_test_world(&mut core, 10);
         let hostile = core.hostiles().first().copied().expect("imported target");
         core.update_active(hostile.position, 0).unwrap();
 
@@ -8469,7 +8523,7 @@ mod tests {
             starting_position(10).unwrap(),
         )
         .unwrap();
-        core.enter_world().unwrap();
+        enter_test_world(&mut core, 10);
         let hostile = core.hostiles().first().copied().expect("imported target");
         core.update_active(hostile.position, 0).unwrap();
 
@@ -8490,7 +8544,7 @@ mod tests {
         // Dealt: the swing's rage moves the bar.
         commands
             .send(crate::net::ClientCommand::AttackSwing {
-                guid: hostile_guid(hostile.spawn_id),
+                guid: imported_guid(hostile.creature_entry, hostile.spawn_id),
             })
             .unwrap();
         app.world_mut()
@@ -8565,7 +8619,7 @@ mod tests {
             starting_position(10).unwrap(),
         )
         .unwrap();
-        core.enter_world().unwrap();
+        enter_test_world(&mut core, 10);
         let first = core.hostiles()[0];
         let second = core.hostiles()[1];
         core.update_active(first.position, 0).unwrap();
@@ -8586,7 +8640,7 @@ mod tests {
 
         commands
             .send(crate::net::ClientCommand::AttackSwing {
-                guid: hostile_guid(first.spawn_id),
+                guid: imported_guid(first.creature_entry, first.spawn_id),
             })
             .unwrap();
         app.world_mut()
@@ -8604,7 +8658,7 @@ mod tests {
                 matches!(
                     event,
                     SessionEvent::AttackStop { victim, .. }
-                        if *victim == hostile_guid(first.spawn_id)
+                        if *victim == imported_guid(first.creature_entry, first.spawn_id)
                 )
             }) {
                 stopped = true;
@@ -8620,7 +8674,7 @@ mod tests {
         }
         commands
             .send(crate::net::ClientCommand::AttackSwing {
-                guid: hostile_guid(second.spawn_id),
+                guid: imported_guid(second.creature_entry, second.spawn_id),
             })
             .unwrap();
         app.world_mut()
@@ -8631,7 +8685,7 @@ mod tests {
             events.iter().any(|event| matches!(
                 event,
                 SessionEvent::AttackStart { victim, .. }
-                    if *victim == hostile_guid(second.spawn_id)
+                    if *victim == imported_guid(second.creature_entry, second.spawn_id)
             )),
             "the second mob takes the attack: {events:?}"
         );
@@ -8657,8 +8711,8 @@ mod tests {
             starting_position(1).unwrap(),
         )
         .unwrap();
-        core.enter_world().unwrap();
-        let hostile = core.hostile(benilla_game_core::HOSTILE_SPAWN_ID).unwrap();
+        enter_test_world(&mut core, 1);
+        let hostile = northshire_hostile(&core);
         core.update_active(hostile.position, 0).unwrap();
         core.advance_creature_ai(benilla_game_core::CREATURE_SWING_MS);
         core.begin_fireball(
@@ -8808,8 +8862,17 @@ mod tests {
             starting_position(1).unwrap(),
         )
         .unwrap();
-        core.enter_world().unwrap();
-        let target = hostile_guid(benilla_game_core::HOSTILE_SPAWN_ID);
+        enter_test_world(&mut core, 1);
+        let hostile = northshire_hostile(&core);
+        let target = imported_guid(hostile.creature_entry, hostile.spawn_id);
+        core.update_active(
+            WorldPosition {
+                x: hostile.position.x + 10.0,
+                ..hostile.position
+            },
+            0,
+        )
+        .unwrap();
         let (_pick_tx, picks) = crossbeam_channel::unbounded();
         let (events, received) = crossbeam_channel::unbounded();
         let (_command_tx, commands) = crossbeam_channel::unbounded();
@@ -8832,10 +8895,7 @@ mod tests {
                 if *guid == target && path.len() == 2
         )));
 
-        let contact = core
-            .hostile(benilla_game_core::HOSTILE_SPAWN_ID)
-            .unwrap()
-            .position;
+        let contact = core.hostile(hostile.spawn_id).unwrap().position;
         core.update_active(contact, 0).unwrap();
         advance_offline_creature_ai(&mut core, &channels, &mut patrols, 0);
         assert!(matches!(
@@ -8884,8 +8944,8 @@ mod tests {
         let mut core = GameCore::default();
         core.create_character(id.clone(), "Alaera", appearance, start)
             .unwrap();
-        core.enter_world().unwrap();
-        let target = core.hostiles()[0];
+        enter_test_world(&mut core, 1);
+        let target = northshire_hostile(&core);
         core.update_active(target.position, 0).unwrap();
         core.advance_creature_ai(benilla_game_core::CREATURE_SWING_MS * 40);
         assert_eq!(core.active_health(), 0);
@@ -8948,7 +9008,10 @@ mod tests {
             starting_position(1).unwrap(),
         )
         .unwrap();
-        core.enter_world().unwrap();
+        enter_test_world(&mut core, 1);
+        let hostile = northshire_hostile(&core);
+        let target = imported_guid(hostile.creature_entry, hostile.spawn_id);
+        core.update_active(hostile.position, 0).unwrap();
 
         let (_pick_tx, picks) = crossbeam_channel::unbounded();
         let (events, received) = crossbeam_channel::unbounded();
@@ -8963,7 +9026,6 @@ mod tests {
         .insert_resource(OfflinePersistence::new(false))
         .insert_resource(Time::<()>::default());
 
-        let target = hostile_guid(benilla_game_core::HOSTILE_SPAWN_ID);
         commands
             .send(crate::net::ClientCommand::CastSpell {
                 spell_id: benilla_game_core::FIREBALL_SPELL_ID,
@@ -9032,7 +9094,10 @@ mod tests {
             starting_position(1).unwrap(),
         )
         .unwrap();
-        core.enter_world().unwrap();
+        enter_test_world(&mut core, 1);
+        let hostile = northshire_hostile(&core);
+        let target = imported_guid(hostile.creature_entry, hostile.spawn_id);
+        core.update_active(hostile.position, 0).unwrap();
 
         let (_pick_tx, picks) = crossbeam_channel::unbounded();
         let (events, received) = crossbeam_channel::unbounded();
@@ -9048,7 +9113,6 @@ mod tests {
         .insert_resource(Time::<()>::default())
         .insert_resource(spells);
 
-        let target = hostile_guid(benilla_game_core::HOSTILE_SPAWN_ID);
         commands
             .send(crate::net::ClientCommand::CastSpell {
                 spell_id: benilla_game_core::FIREBALL_SPELL_ID,
@@ -9147,7 +9211,7 @@ mod tests {
             starting_position(1).unwrap(),
         )
         .unwrap();
-        core.enter_world().unwrap();
+        enter_test_world(&mut core, 1);
         let saved_position = WorldPosition {
             map_id: 0,
             x: -8900.0,
@@ -9185,7 +9249,7 @@ mod tests {
         );
         assert!(
             core.hostiles().is_empty(),
-            "leaving clears the practice mobs"
+            "leaving clears the loaded creatures"
         );
         assert_eq!(core.snapshot(&id).unwrap().position, saved_position);
         assert!(matches!(received.try_recv(), Ok(SessionEvent::LoggedOut)));
@@ -9409,7 +9473,7 @@ mod tests {
     }
 
     #[test]
-    fn build_8606_practice_hostiles_are_attackable_by_human_and_blood_elf_players() {
+    fn build_8606_unit_reactions_match_the_imported_world_factions() {
         let Some(data) = benilla_formats::wow_data() else {
             eprintln!("skipping: no client install");
             return;
@@ -9423,26 +9487,51 @@ mod tests {
             benilla_formats::load_faction_catalog(&mut chain)
                 .expect("load build-8606 faction templates"),
         );
-        let reputations = crate::net::Reputations::default();
+        let content = benilla_game_core::content::creature_content();
         for race in [1, 10] {
-            let player_faction = factions.race_template(race).expect("race faction template");
-            let player = crate::net::ObjectStore(
-                ObjectFields::from_pairs(&[(35, player_faction)])
-                    .into_created(benilla_protocol::messages::ObjectType::Player),
-            );
-            let hostile = crate::net::ObjectStore(
-                ObjectFields::from_pairs(&[(35, 14)])
-                    .into_created(benilla_protocol::messages::ObjectType::Unit),
-            );
-            assert!(
-                crate::target::can_attack(
-                    Some(&hostile),
-                    Some(&factions),
-                    &reputations,
-                    Some(&player),
-                ),
-                "race {race} must see Monster template 14 as hostile"
-            );
+            let player = factions
+                .catalog()
+                .race_template(race)
+                .expect("race faction template");
+            let reactions = unit_reactions(Some(&factions), race);
+            for (id, template) in factions.catalog().templates() {
+                let expected = match template.reaction_toward(player) {
+                    benilla_formats::Reaction::Hostile => benilla_game_core::UnitReaction::Hostile,
+                    benilla_formats::Reaction::Neutral => benilla_game_core::UnitReaction::Neutral,
+                    benilla_formats::Reaction::Friendly => {
+                        benilla_game_core::UnitReaction::Friendly
+                    }
+                };
+                assert_eq!(
+                    reactions.reaction(id),
+                    expected,
+                    "race {race}, faction template {id}"
+                );
+            }
+            for creature in &content.template {
+                assert_eq!(
+                    reactions.reaction(creature.faction),
+                    match factions
+                        .catalog()
+                        .template(creature.faction)
+                        .expect("every imported faction resolves")
+                        .reaction_toward(player)
+                    {
+                        benilla_formats::Reaction::Hostile => {
+                            benilla_game_core::UnitReaction::Hostile
+                        }
+                        benilla_formats::Reaction::Neutral => {
+                            benilla_game_core::UnitReaction::Neutral
+                        }
+                        benilla_formats::Reaction::Friendly => {
+                            benilla_game_core::UnitReaction::Friendly
+                        }
+                    },
+                    "race {race}, creature {}, faction {}",
+                    creature.entry,
+                    creature.faction
+                );
+            }
         }
     }
 

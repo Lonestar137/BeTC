@@ -429,7 +429,7 @@ mod tests {
     #[test]
     fn the_cores_load_list_is_the_chain_tocs_rows_in_order() {
         let _chain =
-            lay_letters("## Interface: 11200\r\n# a comment\r\nb.lua\r\n\r\nx.xml\r\na.lua\r\n");
+            lay_letters("## Interface: 20400\r\n# a comment\r\nb.lua\r\n\r\nx.xml\r\na.lua\r\n");
         let core = reference_ui::core().expect("the laid toc");
         assert_eq!(
             core.toc.files,

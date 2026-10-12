@@ -56,7 +56,7 @@ const WINDOW_TIMEOUT_SECS: f64 = 20.0;
 /// reports the lag.
 const GATE_TIMEOUT_SECS: f64 = 3.0;
 
-/// The vendor fork's NPC: Brother Danil (entry 152), `npc_flags` 4, vendor only, so no other arm
+/// The vendor fork's NPC: Brother Danil (entry 152), `npc_flags` 0x80, vendor only, so no other arm
 /// reaches him; at his own Northshire spawn.
 const VENDOR_ENTRY: u32 = 152;
 const VENDOR_AT: [f32; 3] = [-8901.59, -112.716, 82.0314];

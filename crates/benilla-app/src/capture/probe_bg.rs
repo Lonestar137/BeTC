@@ -142,9 +142,9 @@ const GHOST_SAMPLES: u32 = 11;
 /// How many 3 s samples the flag leg takes after the use.
 const FLAG_SAMPLES: u32 = 5;
 
-/// `SPIRITGUIDE`, `UNIT_NPC_FLAGS` bit 6: the flag the reference's area-spirit-healer scan
+/// `SPIRITGUIDE`, `UNIT_NPC_FLAGS` bit 15: the flag the reference's area-spirit-healer scan
 /// `0x4924c0` keys on.
-const NPC_FLAG_SPIRITGUIDE: u32 = 1 << 6;
+const NPC_FLAG_SPIRITGUIDE: u32 = 0x8000;
 
 /// A Lua frame that records every battleground event the stock interface listens for, with its
 /// `arg1`: a chat kind that reaches the VM logs nothing, so only a tap shows the countdown's

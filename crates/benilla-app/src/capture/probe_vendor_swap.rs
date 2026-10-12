@@ -31,9 +31,9 @@ use crate::player::Player;
 use crate::portrait::{BoothPanes, PortraitImages, PortraitSource};
 use crate::ui_merchant::MerchantOpen;
 
-/// Brog Hamfist `<General Supplies>`: `creature_template.entry = 151`, `npc_flags = 4`.
+/// Brog Hamfist `<General Supplies>`: `creature_template.entry = 151`, `npc_flags = 0x80`.
 const BROG_ENTRY: u32 = 151;
-/// Barkeep Dobbins: `entry = 465`, `npc_flags = 4`.
+/// Barkeep Dobbins: `entry = 465`, `npc_flags = 0x80`.
 const DOBBINS_ENTRY: u32 = 465;
 /// Midway between the two spawns (Brog -9465.29, 9.63; Dobbins -9459.98, 8.41; both z 57.15),
 /// ~2.8 yd from each, inside the 5.5556 yd service reach.

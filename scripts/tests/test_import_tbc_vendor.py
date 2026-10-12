@@ -1,6 +1,7 @@
 import importlib.util
 import pathlib
 import tempfile
+import tomllib
 import unittest
 
 
@@ -10,7 +11,21 @@ IMPORTER = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(IMPORTER)
 
 
-SOURCE = """CREATE TABLE `npc_vendor` (
+SOURCE = """CREATE TABLE `creature_template` (
+  `entry` int NOT NULL,
+  `VendorTemplateId` int NOT NULL
+) ENGINE=MyISAM;
+CREATE TABLE `npc_vendor` (
+  `entry` int NOT NULL,
+  `item` int NOT NULL,
+  `maxcount` int NOT NULL,
+  `incrtime` int NOT NULL,
+  `slot` int NOT NULL,
+  `ExtendedCost` int NOT NULL,
+  `condition_id` int NOT NULL,
+  `comments` text
+) ENGINE=MyISAM;
+CREATE TABLE `npc_vendor_template` (
   `entry` int NOT NULL,
   `item` int NOT NULL,
   `maxcount` int NOT NULL,
@@ -43,13 +58,15 @@ CREATE TABLE `item_template` (
   `delay` int NOT NULL,
   `BuyCount` int NOT NULL
 ) ENGINE=MyISAM;
+INSERT INTO `creature_template` VALUES (100,438),(555,0);
 INSERT INTO `npc_vendor` VALUES (100,1000,2,9000,0,0,0,'limited'),(100,2000,0,0,0,0,0,'unlimited'),(999,3000,0,0,0,0,0,'other zone');
-INSERT INTO `item_template` VALUES (1000,0,5,'Spring Water',11,1,25,1,0,-1,-1,5,20,0,0,-1,0,0,0,0,1),(2000,2,7,'Sword',12,2,100,20,21,-1,-1,10,1,0,0,1,40,3.4,6.6,2000,1);
+INSERT INTO `npc_vendor_template` VALUES (438,2000,0,0,0,0,0,'duplicate direct stock'),(438,3000,0,0,0,0,0,'reusable stock');
+INSERT INTO `item_template` VALUES (1000,0,5,'Spring Water',11,1,25,1,0,-1,-1,5,20,0,0,-1,0,0,0,0,1),(2000,2,7,'Sword',12,2,100,20,21,-1,-1,10,1,0,0,1,40,3.4,6.6,2000,1),(3000,0,5,'Bread',13,1,10,1,0,-1,-1,5,20,0,0,-1,0,0,0,0,1);
 """
 
 
 class ImportTbcVendorTests(unittest.TestCase):
-    def test_imports_zone_stock_and_item_templates_deterministically(self):
+    def test_imports_direct_and_vendor_template_stock_deterministically(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
             source = root / "world.sql"
@@ -62,13 +79,20 @@ class ImportTbcVendorTests(unittest.TestCase):
 
         content, vendors, items = first
         self.assertEqual(first, second)
-        self.assertEqual((vendors, items), (2, 2))
+        self.assertEqual((vendors, items), (3, 3))
         self.assertNotIn("other zone", content)
         self.assertIn("maxcount = 2", content)
         self.assertIn("incrtime = 9000", content)
         self.assertIn("buy_count = 1", content)
         self.assertIn('name = "Spring Water"', content)
         self.assertIn("dmg_min = 3", content, "the weapon damage rounds to whole points")
+        rows = tomllib.loads(content)["vendor"]
+        self.assertEqual([row["item"] for row in rows], [1000, 2000, 3000])
+        self.assertEqual(
+            sum(row["item"] == 2000 for row in rows),
+            1,
+            "direct and reusable stock do not duplicate the same item",
+        )
 
     def test_missing_item_template_is_a_conversion_error(self):
         source = SOURCE.replace(
@@ -90,7 +114,7 @@ class ImportTbcVendorTests(unittest.TestCase):
             zone_pack = root / "zones.toml"
             source_path.write_text(SOURCE, encoding="utf-8")
             zone_pack.write_text('[[template]]\nentry = 555\n', encoding="utf-8")
-            with self.assertRaisesRegex(IMPORTER.ImportError, "no npc_vendor rows"):
+            with self.assertRaisesRegex(IMPORTER.ImportError, "no vendor rows"):
                 IMPORTER.convert(source_path, zone_pack)
 
 

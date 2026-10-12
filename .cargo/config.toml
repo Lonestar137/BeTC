@@ -3,3 +3,10 @@
 # `release`). Env vars still prefix it: `WOW_USER=<account> WOW_PASS=<password> cargo play`.
 [alias]
 play = "run --profile play -p benilla"
+
+# Link with mold: `-C link-arg=-fuse-ld=` makes the `cc` driver invoke it, and the binary is
+# supplied by `shell.nix` on Nix and by apt in CI. Linux-only, so other hosts keep their default
+# linker. Cargo fingerprints include rustflags, so the first build after this change is cold; warm
+# relinks are not.
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]

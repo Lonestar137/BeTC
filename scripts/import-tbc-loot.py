@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Convert the pinned TBC creature loot tables used by the selected starting-zone pack."""
+"""Convert the pinned TBC creature loot tables used by the checked-in world spawn pack."""
 
 import argparse
 import importlib.util
@@ -51,11 +51,11 @@ def _sql_helpers():
     return module
 
 
-def table_columns(source_path, table):
+def table_columns(source_path, table, open_source):
     prefix = f"CREATE TABLE `{table}` ("
     columns = []
     active = False
-    with source_path.open(encoding="utf-8", errors="replace") as source:
+    with open_source(source_path) as source:
         for line in source:
             if line.startswith(prefix):
                 active = True
@@ -69,13 +69,13 @@ def table_columns(source_path, table):
     raise ImportError(f"source is missing CREATE TABLE `{table}`")
 
 
-def convert(source_path, zone_pack_path):
+def convert(source_path, spawn_pack_path):
     helpers = _sql_helpers()
     template_entries = {
         int(template["entry"])
-        for template in tomllib.loads(zone_pack_path.read_text(encoding="utf-8"))["template"]
+        for template in tomllib.loads(spawn_pack_path.read_text(encoding="utf-8"))["template"]
     }
-    creature_columns = table_columns(source_path, "creature_template")
+    creature_columns = table_columns(source_path, "creature_template", helpers.open_source)
     creature_index = {name: index for index, name in enumerate(creature_columns)}
     creature_rows = {}
     for row in helpers.rows(source_path, "creature_template"):
@@ -140,7 +140,7 @@ def convert(source_path, zone_pack_path):
         for row in rows
         if int(row[4]) >= 0 and int(row[1]) > 0
     }
-    item_columns = table_columns(source_path, "item_template")
+    item_columns = table_columns(source_path, "item_template", helpers.open_source)
     missing_fields = set(ITEM_FIELDS) - set(item_columns)
     if missing_fields:
         raise ImportError(f"unsupported item_template columns: missing {sorted(missing_fields)}")
@@ -159,7 +159,7 @@ def convert(source_path, zone_pack_path):
         f"revision = {json.dumps(REVISION)}",
         f"license = {json.dumps(LICENSE)}",
         'extraction_command = "python3 scripts/import-tbc-loot.py <TBC-DB full SQL dump> '
-        "crates/benilla-game-core/content/tbc-starting-zones.toml "
+        "crates/benilla-game-core/content/tbc-world-spawns.toml "
         'crates/benilla-game-core/content/tbc-creature-loot.toml"',
         "",
     ]
@@ -229,11 +229,11 @@ def _write_table(table_id, rows, table_name):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", type=pathlib.Path, help="pinned CMaNGOS TBC full SQL dump")
-    parser.add_argument("zone_pack", type=pathlib.Path, help="converted starting-zone content pack")
+    parser.add_argument("spawn_pack", type=pathlib.Path, help="converted world spawn pack")
     parser.add_argument("output", type=pathlib.Path, help="generated creature loot TOML")
     args = parser.parse_args()
     try:
-        content, creatures, tables, references, items = convert(args.source, args.zone_pack)
+        content, creatures, tables, references, items = convert(args.source, args.spawn_pack)
     except (OSError, UnicodeError, ImportError, ValueError, KeyError) as error:
         parser.error(str(error))
     args.output.parent.mkdir(parents=True, exist_ok=True)

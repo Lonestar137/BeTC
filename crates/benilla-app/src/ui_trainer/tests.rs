@@ -1108,7 +1108,14 @@ mod re_derive {
 
     fn catalog() -> SpellCatalog {
         // Every wrapper has a record: the admission gate (`0x4d7dcd`) skips a row without one.
-        let displays = [OPENER, RANK1_WRAPPER, RANK2_WRAPPER, PET_WRAPPER]
+        let displays = [
+            OPENER,
+            RANK1_WRAPPER,
+            RANK2_WRAPPER,
+            PET_WRAPPER,
+            RANK1,
+            RANK2,
+        ]
             .into_iter()
             .map(|id| (id, SpellDisplay::default()))
             .collect();
@@ -1178,6 +1185,31 @@ mod re_derive {
         assert_eq!(
             state(&service(RANK1_WRAPPER), 0, &p),
             trainer_spell_state::GRAY
+        );
+    }
+
+    #[test]
+    fn a_known_direct_spell_offer_reads_gray_without_a_learn_effect() {
+        assert_eq!(
+            state(&service(RANK1), 0, &player()),
+            trainer_spell_state::GREEN,
+            "an unknown direct spell stays learnable"
+        );
+
+        let mut p = player();
+        p.known.insert(RANK1);
+        assert_eq!(
+            state(&service(RANK1), 0, &p),
+            trainer_spell_state::GRAY,
+            "plain trainer offers use their wire spell as the taught spell"
+        );
+
+        p.known.clear();
+        p.known.insert(RANK2);
+        assert_eq!(
+            state(&service(RANK1), 0, &p),
+            trainer_spell_state::GRAY,
+            "a higher known rank also marks the direct offer known"
         );
     }
 

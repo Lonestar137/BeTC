@@ -17,6 +17,7 @@ let
 in
 pkgs.mkShell {
   nativeBuildInputs = with pkgs; [
+    mold
     pkg-config
     rustup
     stdenv.cc

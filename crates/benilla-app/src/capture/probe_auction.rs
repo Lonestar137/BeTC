@@ -33,11 +33,11 @@ use crate::ui_auction::AuctionOpen;
 /// Auctioneer Fitch's spawn (vmangos `creature` guid 12696, map 0), the `.go xyz` target; the
 /// unit itself is found by its npc flag.
 const AUCTIONEER_AT: [f32; 3] = [-8821.53, 659.886, 97.4645];
-/// Her creature template entry, reported only; her `npc_flags` is 4096, auctioneer only, so the
-/// right-click route sends `AuctionHello` with no gossip in between.
+/// Her creature template entry, reported only; her `npc_flags` is 0x200000, auctioneer only, so
+/// the right-click route sends `AuctionHello` with no gossip in between.
 const AUCTIONEER_ENTRY: u32 = 8719;
-/// `UNIT_NPC_FLAG_AUCTIONEER` (bit 12).
-const NPC_FLAG_AUCTIONEER: u32 = 0x1000;
+/// Build-8606 `UNIT_NPC_FLAG_AUCTIONEER` (bit 21).
+const NPC_FLAG_AUCTIONEER: u32 = 0x200000;
 /// Wider than the interact range, so a slightly-off `.go` landing still finds one; the nearest is
 /// greeted, as several auctioneers stand a few yards apart.
 const SCAN_RANGE: f32 = 12.0;

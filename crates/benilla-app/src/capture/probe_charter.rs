@@ -5,7 +5,7 @@
 //! `PROBE_CHARTER: <step> PASS/FAIL/SKIP <detail>` line per step, then
 //! `PROBE_CHARTER: DONE pass=<n> fail=<m>`. Inert without the env.
 //!
-//! The registrar is Aldwin Laughlin (entry 4974, spawn guid 79681, map 0), `npc_flags` `0x601`:
+//! The registrar is Aldwin Laughlin (entry 4974, spawn guid 79681, map 0), `npc_flags` `0xC0001`:
 //! the buy handler wants the petitioner flag and also refuses anything that is not a tabard
 //! designer (`PetitionsHandler.cpp:44-52`). His menu 708 sends two unconditional rows, the charter
 //! at wire index 0 with icon 7 (`petition` in the reference's `0x84b7ac` table) and the tabard

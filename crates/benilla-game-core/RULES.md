@@ -1,6 +1,6 @@
 # Initial Offline Gameplay Rules
 
-Schema version: 2.
+Schema version: 3.
 
 These are project-owned rules and imported TBC creature behavior. Fireball's name, icon, range, cast
 time, and mana cost are read from the installed build's Spell.dbc; creature display models are
@@ -14,23 +14,27 @@ placement uses the Northshire position already established in this repository's 
 probes. The other race positions are authored area anchors and should be visually checked against
 build 8606 before expanding their content. Saved character positions always take precedence.
 
-## Sunstrider First Encounter
+## Imported Creature Population And Reactions
 
-- Sunstrider Isle uses its converted source population at source spawn positions. Basic combat state
-  is created for imported creatures whose build-8606 `FactionTemplate.dbc` row is not friendly
-  toward the Blood Elf player template 1610. Hostile templates in the map-530 pack are 12, 14, 16,
-  38, 91 and 114; neutral templates 7, 15, 188, 189 and 1703 are also attackable, matching the
-  client's `CanAttack` behavior for neutral units. Friendly templates are not combat targets even
-  though they share the same unit presentation. The legacy practice combat harness is used only
-  outside map 530.
+- The local creature pack converts source templates and spawn positions across all 62 source maps.
+  World entry and movement stream nearby spawns from the character's current map; their stable
+  presentation GUIDs retain both the source creature entry and spawn GUID.
+- The pack is a base-world snapshot: spawns with only positive `game_event_creature.event`
+  associations are excluded, while spawns with a negative association remain as baseline creatures
+  that an active source event would remove. The offline slice has no event activation or calendar
+  scheduler, so seasonal NPCs do not appear until an event is explicitly implemented.
+- Before world entry, the offline adapter builds a reaction table from the installed build-8606
+  `FactionTemplate.dbc`: each unit template is compared toward the active character's race template.
+  Hostile units are attackable and aggressive, neutral units are attackable but do not acquire by
+  proximity, and friendly units are not combat targets. Missing faction data or a missing race
+  template defaults to friendly rather than inventing hostility.
 - Imported visuals use display IDs resolved against the installed build-8606 creature catalog.
 - Each imported combat target has 60 health and respawns 30,000 simulation milliseconds after death;
   combat state and updates retain its converted `source_guid` identity.
-- Hostile faction templates 12, 14, 16, 38, 91, and 114 acquire within 20 yards. Neutral but
-  attackable templates do not acquire by proximity, but retaliate when attacked. Friendly templates
-  never enter combat. Acquired creatures pursue directly at 7 yards per second, attack inside 2
-  yards for 5 physical damage every 2,000 simulation milliseconds, and evade/return to their spawn
-  when the player exceeds a 40-yard leash. This first pass has no collision or line-of-sight query.
+- Hostile units acquire within 20 yards. Neutral but attackable units retaliate when attacked.
+  Acquired creatures pursue directly at 7 yards per second, attack inside 2 yards for 5 physical
+  damage every 2,000 simulation milliseconds, and evade/return to their spawn when the player
+  exceeds a 40-yard leash. This first pass has no collision or line-of-sight query.
 - New characters start with 100 health. Mana-using classes have a project-sized 100-mana pool;
   class-stat-derived pool sizes are not implemented yet. Current health and the pools are saved
   with the character, including zero health, and restored on world entry. Creature damage updates
@@ -248,8 +252,8 @@ effect works.
   acquisition and chase begin at the creature's visible location. Patrol progress is not saved.
 - Imported creature addon stand state, NPC emote state and sheath state are applied when the unit
   enters the world.
-- Waypoint movement type 2 follows its source path. Other source movement types, including type 4
-  present in this pack, currently stay at their spawn position. Random-radius movement type 1,
+- Waypoint movement type 2 follows its source path. Other source movement types, including types 1,
+  3 and 4 present in this pack, currently stay at their spawn position. Random-radius movement,
   non-waypoint movement types, waypoint ScriptId actions, and addon auras/mounts are not implemented
   yet; they are not substituted with invented behaviors.
 
@@ -272,8 +276,8 @@ yet the source's full stat curves.
 
 ## Creature Loot Data
 
-- Starting-zone creature loot tables, nested reference tables, gold ranges, and referenced item
-  templates are converted from the same pinned CMaNGOS TBC database revision into
+- World creature loot tables, nested reference tables, gold ranges, and referenced item templates
+  are converted from the same pinned CMaNGOS TBC database revision into
   `content/tbc-creature-loot.toml`; runtime never reads SQL.
 - Independent chances, exclusive loot groups, nested reference tables, and item-count ranges are
   preserved by the deterministic loot roller. Rolls consume the character's persisted RNG stream.

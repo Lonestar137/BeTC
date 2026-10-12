@@ -112,7 +112,7 @@ fn shagu(root: &Path) {
         root,
         "ZZShagu",
         &[
-            ("ZZShagu.toc", "## Interface: 11200\nconfig.lua\n"),
+            ("ZZShagu.toc", "## Interface: 20400\nconfig.lua\n"),
             ("config.lua", SHAGU_ADVANCED_OPTIONS),
         ],
     );
@@ -270,7 +270,7 @@ fn a_pfui_shaped_skin_keeps_every_rung_centred_in_the_narrowed_menu() {
                 root,
                 "ZZpfUI",
                 &[
-                    ("ZZpfUI.toc", "## Interface: 11200\nskin.lua\n"),
+                    ("ZZpfUI.toc", "## Interface: 20400\nskin.lua\n"),
                     ("skin.lua", PFUI_SHAPED_SKIN),
                 ],
             );

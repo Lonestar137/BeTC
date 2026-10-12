@@ -1567,10 +1567,10 @@ mod tests {
     #[test]
     fn the_status_column_reports_the_gates_reason_in_the_references_precedence() {
         let mut p = panel(vec![
-            addon("Solo", &[], 11200),
-            addon("Lib", &[], 11200),
-            addon("Needs", &["Lib"], 11200),
-            addon("Orphan", &["Nowhere"], 11200),
+            addon("Solo", &[], 20400),
+            addon("Lib", &[], 20400),
+            addon("Needs", &["Lib"], 20400),
+            addon("Orphan", &["Nowhere"], 20400),
             addon("Old", &[], 11100),
             addon("Silent", &[], 0),
         ]);
@@ -1614,8 +1614,8 @@ mod tests {
     #[test]
     fn the_title_colour_follows_addonlist_luas_rule_with_the_dep_disabled_exception() {
         let mut p = panel(vec![
-            addon("Lib", &[], 11200),
-            addon("Needs", &["Lib"], 11200),
+            addon("Lib", &[], 20400),
+            addon("Needs", &["Lib"], 20400),
             addon("Old", &[], 11100),
         ]);
         assert_eq!(p.title_colour(0), GOLD, "loadable = gold");
@@ -1635,7 +1635,7 @@ mod tests {
     fn the_all_view_feeds_the_gate_any_character_on() {
         let mut p = panel_for(
             2,
-            vec![addon("Lib", &[], 11200), addon("Needs", &["Lib"], 11200)],
+            vec![addon("Lib", &[], 20400), addon("Needs", &["Lib"], 20400)],
         );
         // Char0 turned Lib off and Char1 on; with no row Char1 would follow Char0.
         set(&mut p, Some(0), 0, false);
@@ -1658,7 +1658,7 @@ mod tests {
 
     #[test]
     fn the_all_view_box_is_a_tri_state_over_every_character() {
-        let mut p = panel_for(3, vec![addon("A", &[], 11200)]);
+        let mut p = panel_for(3, vec![addon("A", &[], 20400)]);
         assert_eq!(p.box_state(0), BoxState::On, "enabled for all three");
 
         set(&mut p, None, 0, true); // a row for each, so one can differ
@@ -1682,7 +1682,7 @@ mod tests {
     /// In the All view a mixed box counts as checked, so a click disables for every character.
     #[test]
     fn an_all_view_click_follows_the_references_checkbutton() {
-        let mut p = panel_for(3, vec![addon("A", &[], 11200)]);
+        let mut p = panel_for(3, vec![addon("A", &[], 20400)]);
         set(&mut p, None, 0, true);
         set(&mut p, Some(1), 0, false); // mixed
 
@@ -1709,7 +1709,7 @@ mod tests {
     /// No enable file is touched until Okay; Cancel (`ResetAddOns`) is `close`.
     #[test]
     fn edits_are_staged_and_cancel_discards_them() {
-        let mut p = panel(vec![addon("A", &[], 11200), addon("B", &[], 11200)]);
+        let mut p = panel(vec![addon("A", &[], 20400), addon("B", &[], 20400)]);
         assert_eq!(p.bits, vec![vec![true, true]]);
         set(&mut p, Some(0), 0, false);
         assert_eq!(p.bits, vec![vec![false, true]]);
@@ -1740,7 +1740,7 @@ mod tests {
         for name in ["Alpha", "Beta"] {
             let dir = home.join("AddOns").join(name);
             std::fs::create_dir_all(&dir).unwrap();
-            std::fs::write(dir.join(format!("{name}.toc")), "## Interface: 11200\n").unwrap();
+            std::fs::write(dir.join(format!("{name}.toc")), "## Interface: 20400\n").unwrap();
         }
         let _c = crate::local_state::test_env::EnvGuard::unset("WOW_CAPTURE");
         let _h =
@@ -1816,7 +1816,7 @@ mod tests {
         for name in ["Alpha", "Beta"] {
             let dir = home.join("AddOns").join(name);
             std::fs::create_dir_all(&dir).unwrap();
-            std::fs::write(dir.join(format!("{name}.toc")), "## Interface: 11200\n").unwrap();
+            std::fs::write(dir.join(format!("{name}.toc")), "## Interface: 20400\n").unwrap();
         }
         let _c = crate::local_state::test_env::EnvGuard::unset("WOW_CAPTURE");
         let _h =
@@ -1872,9 +1872,9 @@ mod tests {
                 dir.join(format!("{name}.toc")),
                 // Beta ships `## DefaultState: disabled`, so the tie-break is visible.
                 if name == "Beta" {
-                    "## Interface: 11200\n## DefaultState: disabled\n"
+                    "## Interface: 20400\n## DefaultState: disabled\n"
                 } else {
-                    "## Interface: 11200\n"
+                    "## Interface: 20400\n"
                 },
             )
             .unwrap();
@@ -1945,7 +1945,7 @@ mod tests {
         // 39 addons over 19 slots = 20 scroll positions.
         let mut p = panel(
             (0..MAX_ROWS * 2 + 1)
-                .map(|i| addon(&format!("A{i}"), &[], 11200))
+                .map(|i| addon(&format!("A{i}"), &[], 20400))
                 .collect(),
         );
         let max = p.max_offset();
@@ -1982,7 +1982,7 @@ mod tests {
         let thumb_n = KNOB / BAR_H;
         let mut p = panel(
             (0..MAX_ROWS * 2 + 1)
-                .map(|i| addon(&format!("A{i}"), &[], 11200))
+                .map(|i| addon(&format!("A{i}"), &[], 20400))
                 .collect(),
         );
         let max = p.max_offset();
@@ -2006,7 +2006,7 @@ mod tests {
     fn the_knob_position_and_the_row_it_means_are_inverses() {
         let mut p = panel(
             (0..MAX_ROWS + 7)
-                .map(|i| addon(&format!("A{i}"), &[], 11200))
+                .map(|i| addon(&format!("A{i}"), &[], 20400))
                 .collect(),
         );
         for row in 0..=p.max_offset() {
@@ -2023,7 +2023,7 @@ mod tests {
     fn a_list_that_fits_has_no_scroll_positions() {
         let mut p = panel(
             (0..MAX_ROWS)
-                .map(|i| addon(&format!("A{i}"), &[], 11200))
+                .map(|i| addon(&format!("A{i}"), &[], 20400))
                 .collect(),
         );
         assert_eq!(p.max_offset(), 0);
@@ -2043,7 +2043,7 @@ mod tests {
     fn the_offset_clamps_to_the_list() {
         let mut short = panel(
             (0..5)
-                .map(|i| addon(&format!("A{i}"), &[], 11200))
+                .map(|i| addon(&format!("A{i}"), &[], 20400))
                 .collect(),
         );
         assert_eq!(short.max_offset(), 0);
@@ -2052,7 +2052,7 @@ mod tests {
 
         let mut long = panel(
             (0..MAX_ROWS + 4)
-                .map(|i| addon(&format!("A{i}"), &[], 11200))
+                .map(|i| addon(&format!("A{i}"), &[], 20400))
                 .collect(),
         );
         assert_eq!(long.max_offset(), 4);

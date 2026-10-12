@@ -1,18 +1,21 @@
 //! Converted TBC server content consumed by the offline runtime, never at runtime from SQL.
 
+use std::collections::HashMap;
 use std::sync::OnceLock;
 
 use serde::Deserialize;
 
-const STARTING_ZONES: &str = include_str!("../content/tbc-starting-zones.toml");
-const CONTENT_SCHEMA_VERSION: u32 = 2;
+const WORLD_SPAWNS: &str = include_str!("../content/tbc-world-spawns.toml");
+const CONTENT_SCHEMA_VERSION: u32 = 3;
+const CREATURE_EVENT_POLICY: &str = "base-world-only";
 
 #[derive(Debug, Deserialize)]
-pub struct StartingZoneContent {
+pub struct CreatureContent {
     pub schema_version: u32,
     pub source: String,
     pub revision: String,
     pub license: String,
+    pub event_policy: String,
     pub template: Vec<CreatureTemplate>,
     pub spawn: Vec<CreatureSpawn>,
     #[serde(default)]
@@ -68,24 +71,67 @@ pub struct CreatureAddon {
     pub emote: u32,
 }
 
-pub fn starting_zone_content() -> &'static StartingZoneContent {
-    static CONTENT: OnceLock<StartingZoneContent> = OnceLock::new();
+/// Lookup index over the parsed pack, built once on first use. Population and streaming query it
+/// per travel step, so the linear scans over 100k spawns would otherwise dominate a session.
+struct ContentIndex {
+    templates: HashMap<u32, &'static CreatureTemplate>,
+    spawns_by_map: HashMap<u32, Vec<&'static CreatureSpawn>>,
+    waypoints: HashMap<u32, Vec<&'static CreatureWaypoint>>,
+    addons: HashMap<u32, &'static CreatureAddon>,
+}
+
+fn content_index() -> &'static ContentIndex {
+    static INDEX: OnceLock<ContentIndex> = OnceLock::new();
+    INDEX.get_or_init(|| {
+        let content = creature_content();
+        let mut templates = HashMap::with_capacity(content.template.len());
+        for template in &content.template {
+            templates.insert(template.entry, template);
+        }
+        let mut spawns_by_map: HashMap<u32, Vec<&CreatureSpawn>> = HashMap::new();
+        for spawn in &content.spawn {
+            spawns_by_map.entry(spawn.map_id).or_default().push(spawn);
+        }
+        let mut waypoints: HashMap<u32, Vec<&CreatureWaypoint>> = HashMap::new();
+        for waypoint in &content.waypoint {
+            waypoints
+                .entry(waypoint.source_guid)
+                .or_default()
+                .push(waypoint);
+        }
+        let mut addons = HashMap::with_capacity(content.addon.len());
+        for addon in &content.addon {
+            addons.insert(addon.source_guid, addon);
+        }
+        ContentIndex {
+            templates,
+            spawns_by_map,
+            waypoints,
+            addons,
+        }
+    })
+}
+
+pub fn creature_content() -> &'static CreatureContent {
+    static CONTENT: OnceLock<CreatureContent> = OnceLock::new();
     CONTENT.get_or_init(|| {
-        let content: StartingZoneContent =
-            toml::from_str(STARTING_ZONES).expect("checked-in starting-zone content must parse");
+        let content: CreatureContent = toml::from_str(WORLD_SPAWNS)
+            .expect("checked-in converted world content must parse");
         assert_eq!(
             content.schema_version, CONTENT_SCHEMA_VERSION,
-            "checked-in starting-zone content schema must match the loader"
+            "checked-in converted world content schema must match the loader"
+        );
+        assert_eq!(
+            content.event_policy, CREATURE_EVENT_POLICY,
+            "the runtime expects the converted base-world event policy"
         );
         content
     })
 }
 
-impl StartingZoneContent {
+impl CreatureContent {
     pub fn template(&self, entry: u32) -> Option<&CreatureTemplate> {
-        self.template
-            .iter()
-            .find(|template| template.entry == entry)
+        content_index().templates.get(&entry).copied()
     }
 
     pub fn spawns_near(
@@ -94,25 +140,31 @@ impl StartingZoneContent {
         x: f32,
         y: f32,
         radius: f32,
-    ) -> impl Iterator<Item = &CreatureSpawn> {
+    ) -> impl Iterator<Item = &'static CreatureSpawn> {
         let radius_squared = radius * radius;
-        self.spawn.iter().filter(move |spawn| {
-            spawn.map_id == map_id
-                && (spawn.x - x).mul_add(spawn.x - x, (spawn.y - y) * (spawn.y - y))
-                    <= radius_squared
-        })
+        content_index()
+            .spawns_by_map
+            .get(&map_id)
+            .into_iter()
+            .flat_map(|spawns| spawns.iter().copied())
+            .filter(move |spawn| {
+                (spawn.x - x).mul_add(spawn.x - x, (spawn.y - y) * (spawn.y - y)) <= radius_squared
+            })
     }
 
-    pub fn waypoints_for(&self, source_guid: u32) -> impl Iterator<Item = &CreatureWaypoint> {
-        self.waypoint
-            .iter()
-            .filter(move |waypoint| waypoint.source_guid == source_guid)
+    pub fn waypoints_for(
+        &self,
+        source_guid: u32,
+    ) -> impl Iterator<Item = &'static CreatureWaypoint> {
+        content_index()
+            .waypoints
+            .get(&source_guid)
+            .into_iter()
+            .flat_map(|waypoints| waypoints.iter().copied())
     }
 
     pub fn addon_for(&self, source_guid: u32) -> Option<&CreatureAddon> {
-        self.addon
-            .iter()
-            .find(|addon| addon.source_guid == source_guid)
+        content_index().addons.get(&source_guid).copied()
     }
 }
 
@@ -123,14 +175,27 @@ mod tests {
 
     #[test]
     fn converted_content_has_provenance_and_resolvable_stable_population() {
-        let content = starting_zone_content();
+        let content = creature_content();
         assert_eq!(content.source, "https://github.com/cmangos/tbc-db");
         assert_eq!(content.license, "GPL-3.0");
         assert_eq!(content.revision.len(), 40);
-        assert!(content.template.len() >= 300);
-        assert!(content.spawn.len() >= 1_000);
-        assert!(content.waypoint.len() >= 1_000);
-        assert!(!content.addon.is_empty());
+        assert_eq!(content.event_policy, CREATURE_EVENT_POLICY);
+        assert!(content.template.len() >= 11_000);
+        assert!(content.spawn.len() >= 94_000);
+        assert!(content.waypoint.len() >= 98_000);
+        assert!(content.addon.len() >= 1_000);
+        assert!(
+            content
+                .template
+                .iter()
+                .all(|template| !template.name.trim().is_empty())
+        );
+
+        let maps: HashSet<_> = content.spawn.iter().map(|spawn| spawn.map_id).collect();
+        for map_id in [0, 1, 530] {
+            assert!(maps.contains(&map_id), "the world pack covers map {map_id}");
+        }
+        assert!(maps.len() >= 60, "the world pack covers {} maps", maps.len());
 
         let template_entries: HashSet<_> = content.template.iter().map(|item| item.entry).collect();
         assert_eq!(template_entries.len(), content.template.len());
@@ -161,7 +226,9 @@ mod tests {
                 template_entries.contains(&spawn.entry),
                 "spawn template is missing"
             );
-            assert!(matches!(spawn.movement_type, 0 | 1 | 2 | 4));
+            // Source movement types are carried verbatim; only 2 patrols, the rest stand still.
+            // Type 3 appears across the world and is treated as idle.
+            assert!(matches!(spawn.movement_type, 0 | 1 | 2 | 3 | 4));
             movement_types.insert(spawn.movement_type);
             assert!([
                 spawn.x,
@@ -172,6 +239,12 @@ mod tests {
             ]
             .into_iter()
             .all(f32::is_finite));
+        }
+        for event_spawn_guid in [94_529, 94_864, 86_849, 150_786] {
+            assert!(
+                !source_guids.contains(&event_spawn_guid),
+                "event-only creature spawn {event_spawn_guid} is absent from the base world"
+            );
         }
         assert!(
             movement_types.contains(&4),
@@ -218,5 +291,47 @@ mod tests {
             .waypoint
             .iter()
             .any(|waypoint| waypoint.source_guid == 80127));
+    }
+
+    /// The lazy index answers exactly what the flat scan would: the Sunstrider anchor's nearby
+    /// spawns in source order, the template for a converted entry, and the patrol rows for a
+    /// waypoint spawn.
+    #[test]
+    fn spawn_index_agrees_with_the_flat_pack() {
+        let content = creature_content();
+        let (x, y, radius) = (10_349.6, -6_357.3, 180.0);
+        let indexed: Vec<u32> = content
+            .spawns_near(530, x, y, radius)
+            .map(|spawn| spawn.source_guid)
+            .collect();
+        let scanned: Vec<u32> = content
+            .spawn
+            .iter()
+            .filter(|spawn| {
+                spawn.map_id == 530
+                    && (spawn.x - x) * (spawn.x - x) + (spawn.y - y) * (spawn.y - y)
+                        <= radius * radius
+            })
+            .map(|spawn| spawn.source_guid)
+            .collect();
+        assert!(!indexed.is_empty());
+        assert_eq!(indexed, scanned);
+
+        let template = content.template(6).expect("Kobold Vermin");
+        assert_eq!(template.name, "Kobold Vermin");
+        assert_eq!(
+            content.template(6).map(|template| template.entry),
+            Some(6),
+            "the index resolves the same entry the scan would"
+        );
+
+        let waypoints: Vec<u32> = content
+            .waypoints_for(80127)
+            .map(|waypoint| waypoint.point)
+            .collect();
+        assert!(waypoints.len() > 1, "80127 is a converted patrol");
+        let mut sorted = waypoints.clone();
+        sorted.sort_unstable();
+        assert_eq!(waypoints, sorted, "patrol points stay in source order");
     }
 }
