@@ -636,12 +636,10 @@ fn real_spell_catalog_reads_tooltip_columns() {
 
     // Frost Armor: 30 minutes, instant, its description naming the chill proc 6136.
     let frost_armor = cat.get(168).unwrap();
-    assert!(
-        frost_armor
-            .aura_description
-            .as_deref()
-            .is_some_and(|s| !s.is_empty())
-    );
+    assert!(frost_armor
+        .aura_description
+        .as_deref()
+        .is_some_and(|s| !s.is_empty()));
     assert_eq!(frost_armor.duration_index, 30);
     assert_eq!(durations.get(30).unwrap().base_ms, 1_800_000, "30 minutes");
     assert_eq!(frost_armor.casting_time_index, 1);
@@ -656,8 +654,7 @@ fn real_spell_catalog_reads_tooltip_columns() {
         "SPELL_AURA_MOD_RESISTANCE"
     );
     assert_eq!(
-        frost_armor.effect_trigger_spell[1],
-        6136,
+        frost_armor.effect_trigger_spell[1], 6136,
         "the chill proc the description text itself names"
     );
 
@@ -1465,9 +1462,8 @@ fn real_channel_bar_name_law() {
     );
 }
 
-/// `SpellFamilyName` (160) and the `SpellFamilyFlags` pair (161-162): the eleven nonzero families
-/// are vmangos's `SpellFamilyNames`, 322 rows set several bits and the top bit is 35, so the high
-/// dword is live, and Cleanse (4987, bits 12 and 33) pins the pair's order.
+/// Build-8606 `SpellFamilyName` (160) and `SpellFamilyFlags` (161-162): the TBC family histogram,
+/// multi-bit rows, and high-dword examples pin the converted schema against the installed client.
 #[test]
 fn real_spell_family_columns_carry_the_modifier_gate() {
     let data = crate::wow_data_or_skip!();
@@ -1489,34 +1485,35 @@ fn real_spell_family_columns_carry_the_modifier_gate() {
     assert_eq!(
         families,
         [
-            (0, 18243),
-            (1, 47),
-            (3, 563),
-            (4, 350),
-            (5, 466),
-            (6, 493),
-            (7, 450),
-            (8, 316),
-            (9, 393),
-            (10, 362),
-            (11, 500),
-            (13, 174),
+            (0, 21_867),
+            (1, 133),
+            (3, 932),
+            (4, 534),
+            (5, 725),
+            (6, 804),
+            (7, 633),
+            (8, 475),
+            (9, 621),
+            (10, 562),
+            (11, 716),
+            (12, 2),
+            (13, 311),
         ]
         .into_iter()
         .collect::<std::collections::BTreeMap<u32, usize>>(),
-        "SpellFamilyName histogram — the vmangos SpellFamilyNames set, and only it"
+        "build-8606 SpellFamilyName histogram"
     );
     assert_eq!(
         popcounts.values().skip(1).sum::<usize>() - popcounts[&1],
-        322,
+        399,
         "rows setting MORE than one family bit — the reader's sum is live"
     );
-    assert_eq!(max_bit, 35, "the highest family bit index in the file");
+    assert_eq!(max_bit, 54, "the highest family bit index in build 8606");
 
-    // Frostbolt spans one dword, Cleanse both, Cure Poison only the high one.
+    // Frostbolt and Cleanse use the low dword; Cure Poison carries a high-dword family bit.
     for (id, family, bits) in [
-        (116u32, 3u32, &[5u32, 19, 20, 30][..]),
-        (4987, 10, &[12, 33]),
+        (116u32, 3u32, &[5u32, 19, 20][..]),
+        (4987, 10, &[12]),
         (526, 11, &[35]),
     ] {
         let d = cat.get(id).unwrap_or_else(|| panic!("spell {id}"));

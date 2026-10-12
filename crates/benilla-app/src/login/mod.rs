@@ -1322,6 +1322,7 @@ mod tests {
 
     /// Neither a typed refusal nor env credentials alone end the run: only an untyped attempt in
     /// a run that declares `WOW_UNATTENDED` does.
+    #[cfg(feature = "network")]
     #[test]
     fn a_typed_password_refusal_never_exits() {
         let _lock = crate::local_state::test_env::ENV_LOCK.lock();

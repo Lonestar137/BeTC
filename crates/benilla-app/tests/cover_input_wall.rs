@@ -85,6 +85,8 @@ const VERDICTS: &[(&str, Verdict)] = &[
     ("CustomCursorImage", Plumbing),
     ("InputPlugin", Plumbing),
     ("WinitPlugin", Plumbing),
+    ("UpdateMode", Plumbing),
+    ("WinitSettings", Plumbing),
     ("InputSystems", Plumbing),
     ("Key", Plumbing),
     ("KeyCode", Plumbing),

@@ -58,7 +58,18 @@ fn the_vm_is_named_by_no_more_files_than_the_ceiling_says() {
                 return None;
             }
             let text = std::fs::read_to_string(&p).ok()?;
-            names_ident(&text, "UiScript").then(|| (family(&rel), rel))
+            let vm_in_game_code = names_ident(production_source(&text), "UiScript");
+            let vm_in_file = names_ident(&text, "UiScript");
+            vm_in_file.then(|| {
+                (
+                    if vm_in_game_code {
+                        family(&rel)
+                    } else {
+                        Family::Test
+                    },
+                    rel,
+                )
+            })
         })
         .collect();
     files.sort();
@@ -111,6 +122,12 @@ fn names_ident(text: &str, ident: &str) -> bool {
     false
 }
 
+/// A VM reference under an inline `#[cfg(test)] mod tests` does not couple gameplay to FrameXML.
+fn production_source(text: &str) -> &str {
+    text.find("\n#[cfg(test)]\nmod tests")
+        .map_or(text, |at| &text[..at])
+}
+
 fn rs_files(dir: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
     let mut stack = vec![dir.to_path_buf()];
@@ -135,4 +152,11 @@ fn the_identifier_match_is_whole_word() {
     assert!(!names_ident("UiScriptPlugin only", "UiScript"));
     assert!(!names_ident("MyUiScript", "UiScript"));
     assert!(names_ident("MyUiScript and UiScript", "UiScript"));
+}
+
+#[test]
+fn inline_test_vm_references_do_not_count_as_gameplay_coupling() {
+    let source = "fn game() {}\n#[cfg(test)]\nmod tests { use UiScript; }";
+    assert!(names_ident(source, "UiScript"));
+    assert!(!names_ident(production_source(source), "UiScript"));
 }

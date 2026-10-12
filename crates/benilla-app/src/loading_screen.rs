@@ -13,10 +13,11 @@
 //! when the destination is scene-presentable ([`WorldLoadProgress`]), never on the body reaching
 //! the ground.
 
-use bevy::prelude::*;
 use std::collections::HashMap;
 
-use benilla_formats::{LoadingScreenCatalog, load_loading_screens};
+use bevy::prelude::*;
+
+use benilla_formats::{load_loading_screens, LoadingScreenCatalog};
 
 use benilla_assets::LockRecover;
 use benilla_assets::MapCatalogRes;
@@ -27,7 +28,7 @@ use benilla_world::world_map::CurrentMap;
 
 /// The cover's input half: while it is up the client takes no input (a source cut in `PreUpdate`).
 mod input;
-#[cfg(feature = "dev")]
+#[allow(unused_imports)]
 pub(crate) use input::CoverInput;
 
 // The bar, from the `LoadingScreen.cpp` descriptor table at `0x7ffd34` (read by `0x407150`):

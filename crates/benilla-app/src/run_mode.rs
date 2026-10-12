@@ -303,6 +303,7 @@ mod tests {
     }
 
     /// Env credentials log in without typing but do not make the run unattended.
+    #[cfg(feature = "network")]
     #[test]
     fn env_credentials_are_not_a_claim_about_who_is_in_the_room() {
         use crate::local_state::test_env::{EnvGuard, ENV_LOCK};

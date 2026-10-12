@@ -1,4 +1,4 @@
-//! The one point in the frame where the script calls that touch the selection, the player's cast
+//! The UI-to-game point in the frame where script calls that touch the selection, the player's cast
 //! or the targeting cursor take effect, in the order the script made them. In the reference each
 //! such call is done when it returns (the macro runner `0x4f14e0` fires every line in one pass;
 //! `TargetByName` `0x489d60` and `TargetUnit` `0x4899d0` commit through `SetSelection 0x493540`;
@@ -430,7 +430,11 @@ mod tests {
             (FOE, r#"CastSpellByName("Fortitude", "player")"#, Some(ME)),
             (FOE, r#"CastSpell(1, "spell", "player")"#, Some(ME)),
             (FRIEND, r#"CastSpellByName("Fortitude")"#, Some(OLD)),
-            (FRIEND, r#"CastSpellByName("Fortitude", "player")"#, Some(ME)),
+            (
+                FRIEND,
+                r#"CastSpellByName("Fortitude", "player")"#,
+                Some(ME),
+            ),
         ] {
             let mut f = frame(true);
             // `CanAssist` passes a friendly player-controlled unit (`UNIT_FLAG_PLAYER_CONTROLLED`).

@@ -43,8 +43,8 @@ pub struct SpellDisplay {
     /// `SpellFamilyName` (column 160): `GetSpellModifiers` (`0x6e6b30`) applies nothing unless it
     /// is nonzero and equals the local player's class family (`[0xcecaac]`, `0x6e6b46`).
     pub spell_family: u32,
-    /// `SpellFamilyFlags` (columns 161-162, low dword first): the modifier rows that apply, one
-    /// summed cell per set bit over all 64; Cleanse 4987 sets bits 12 and 33.
+    /// `SpellFamilyFlags` (columns 161-162, low dword first): modifier rows summed per set bit;
+    /// build 8606 Cleanse 4987 sets bit 12 and Cure Poison 526 sets high-word bit 35.
     pub spell_family_flags: u64,
     /// `PreventionType` (column 165): 1 silence, 2 pacify, 0 neither; the crowd control that
     /// refuses the spell locally (`0x6094f0`, from `TryCast` `0x6e4b60`). A stun refuses all.

@@ -228,7 +228,7 @@ mod tests {
             );
             // Source movement types are carried verbatim; only 2 patrols, the rest stand still.
             // Type 3 appears across the world and is treated as idle.
-            assert!(matches!(spawn.movement_type, 0 | 1 | 2 | 3 | 4));
+            assert!(matches!(spawn.movement_type, 0..=4));
             movement_types.insert(spawn.movement_type);
             assert!([
                 spawn.x,

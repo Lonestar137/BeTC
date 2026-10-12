@@ -454,14 +454,14 @@ mod tests {
         assert!(mods.flat.iter().chain(mods.pct.iter()).all(|&v| v == 0));
     }
 
-    /// Real `Spell.dbc` family masks; Cleanse 4987 sets bits 12 and 33, across both dwords.
+    /// Build-8606 `Spell.dbc` family masks: Cleanse sets bit 12, Cure Poison sets high-word bit 35.
     #[test]
     fn real_spells_sum_their_own_family_bits() {
         let data = benilla_formats::wow_data_or_skip!();
         let mut chain = benilla_formats::open_chain(&data).expect("open chain");
         let cat = benilla_formats::load_spell_catalog(&mut chain).expect("load Spell.dbc");
 
-        // A paladin: Cleanse 4987 is family 10, bits 12 and 33.
+        // A paladin: build 8606 Cleanse 4987 is family 10, bit 12 only.
         let mut mods = SpellModifiers::default();
         mods.set_class_family(10);
         mods.set(true, 12, OP_COST, -5);
@@ -470,27 +470,33 @@ mod tests {
         let cleanse = cat.get(4987).expect("Cleanse");
         assert_eq!(
             mods.apply(cleanse, OP_COST, 100),
-            (100 - 12) * 75 / 100,
-            "both dwords contribute"
+            95,
+            "Cleanse only has the low-dword bit in build 8606"
         );
-        // Cure Poison 526 is a shaman spell (family 11) setting only bit 35: the family gate
-        // refuses it.
+        // Cure Poison 526 is a shaman spell (family 11) with high-dword bit 35. It is refused
+        // while the paladin family is active, then consumes that modifier for the shaman.
         mods.set(true, 35, OP_COST, -50);
         assert_eq!(
             mods.apply(cat.get(526).expect("Cure Poison"), OP_COST, 100),
             100
         );
+        mods.set_class_family(11);
+        assert_eq!(
+            mods.apply(cat.get(526).expect("Cure Poison"), OP_COST, 100),
+            50,
+            "the TBC high dword contributes to the matching family"
+        );
 
-        // A mage: Frostbolt 116, bits 5, 19, 20 and 30.
+        // A mage: build 8606 Frostbolt 116, bits 5, 19 and 20.
         let mut mods = SpellModifiers::default();
         mods.set_class_family(3);
-        for bit in [5u8, 19, 20, 30] {
+        for bit in [5u8, 19, 20] {
             mods.set(true, bit, OP_COST, -1);
         }
         assert_eq!(
             mods.apply(cat.get(116).expect("Frostbolt"), OP_COST, 100),
-            96,
-            "four set bits, four cells"
+            97,
+            "three set bits, three cells"
         );
     }
 

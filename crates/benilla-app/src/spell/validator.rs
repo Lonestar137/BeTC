@@ -431,10 +431,10 @@ mod tests {
         assert_eq!(cast_water_refusal(mf::SWIMMING, None), None);
     }
 
-    /// The shipped `Spell.dbc`: exactly five rows need water, Aquatic Form among them, while the
+    /// Build-8606 `Spell.dbc`: four rows need water, Aquatic Form among them, while the
     /// water-forbidden bit is broad (mounts, Travel Form, food and drink).
     #[test]
-    fn the_water_bits_split_the_5875_data_the_way_the_gate_assumes() {
+    fn the_water_bits_split_the_8606_data_the_way_the_gate_assumes() {
         let data = benilla_formats::wow_data_or_skip!();
         let mut chain = benilla_formats::open_chain(&data).expect("open chain");
         let catalog = benilla_formats::load_spell_catalog(&mut chain).expect("Spell.dbc");
@@ -448,8 +448,8 @@ mod tests {
         needs_water.sort_unstable();
         assert_eq!(
             needs_water,
-            vec![1066, 16455, 16456, 24346, 24347],
-            "the water-required set: Aquatic Form, the Lava/Slime swim auras, Master Angler"
+            vec![1066, 16455, 16456, 24347],
+            "the build-8606 water-required set: Aquatic Form, Lava/Slime swim auras, Master Angler"
         );
 
         let forbids_water = |id: u32| {

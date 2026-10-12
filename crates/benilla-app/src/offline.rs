@@ -16,6 +16,32 @@ use crate::net::{CharActionResultMessage, CharListMessage, CharRequest, OfflineC
 
 mod persistence;
 use persistence::OfflinePersistence;
+mod progression;
+use progression::{
+    buy_offline_trainer_spell, free_talent_points, learn_offline_talent, send_offline_trainer_list,
+    starter_action_buttons,
+};
+mod quests;
+use quests::{
+    accept_offline_quest, quest_giver_guid, quest_log_slot_fields_for, reward_offline_quest,
+    send_offline_gossip_menu, send_offline_npc_text, send_offline_quest_details,
+    send_offline_quest_greeting, send_offline_quest_progress, send_offline_quest_reward,
+    send_offline_quest_template, send_offline_questgiver_status,
+};
+#[cfg(test)]
+use quests::{quest_npc_entry, quest_npc_in_range, quest_status_icon};
+mod smoke;
+use smoke::{
+    drive_offline_smoke_cast, drive_offline_smoke_walk, enter_offline_smoke_character,
+    exit_after_roster_boot, exit_after_world_smoke,
+};
+mod vendor;
+use vendor::{
+    buy_offline_vendor_item, buyback_offline_item, imported_template_for_guid, sell_offline_item,
+    send_offline_vendor_inventory, OfflineVendorBuyback,
+};
+#[cfg(test)]
+use vendor::{BUYBACK_SLOT_FIRST, VENDOR_STOCK_UNLIMITED};
 
 const OFFLINE_CONTENT_RADIUS_YARDS: f32 = benilla_game_core::CONTENT_RADIUS_YARDS;
 const OFFLINE_CREATURE_WALK_SPEED_YARDS_PER_SEC: f32 = 2.5;
@@ -31,82 +57,6 @@ struct OfflinePatrols(BTreeMap<u64, ActivePatrol>);
 /// re-query emits only what is new. Project decision: spawns stream in, nothing streams out.
 #[derive(Resource, Default)]
 struct OfflineStreamedSpawns(std::collections::HashSet<u64>);
-
-/// The session's vendor buyback ledger: the last 12 items sold, oldest first, session-only (a
-/// relog clears it, as the reference's window does). Switching vendors clears it.
-#[derive(Resource, Default)]
-struct OfflineVendorBuyback {
-    vendor: Option<u64>,
-    sold: Vec<OfflineBuybackItem>,
-    next_timestamp: u32,
-}
-
-struct OfflineBuybackItem {
-    /// The presentation GUID the item had while carried; the buyback object keeps it.
-    guid: u64,
-    entry: u32,
-    count: u32,
-    price: u32,
-    timestamp: u32,
-}
-
-impl OfflineVendorBuyback {
-    /// Adopt `vendor`; a different vendor's visit starts a fresh ledger.
-    fn open_vendor(&mut self, vendor: u64) {
-        if self.vendor != Some(vendor) {
-            self.vendor = Some(vendor);
-            self.sold.clear();
-        }
-    }
-
-    fn push(&mut self, mut item: OfflineBuybackItem) {
-        if self.sold.len() == OfflineVendorBuyback::CAPACITY {
-            self.sold.remove(0);
-        }
-        self.next_timestamp = self.next_timestamp.saturating_add(1);
-        item.timestamp = self.next_timestamp;
-        self.sold.push(item);
-    }
-
-    fn take_slot(&mut self, index: usize) -> Option<OfflineBuybackItem> {
-        (index < self.sold.len()).then(|| self.sold.remove(index))
-    }
-
-    /// The 12 slots, prices and timestamps as a descriptor delta: every slot is written, so a
-    /// vacated one clears live.
-    fn field_pairs(&self) -> Vec<(u16, u32)> {
-        let mut pairs = Vec::with_capacity(48);
-        for index in 0..OfflineVendorBuyback::CAPACITY {
-            let item = self.sold.get(index);
-            let guid = item.map_or(0, |item| item.guid);
-            let slot = FIELD_PLAYER_VENDORBUYBACK_SLOT_1 + 2 * index as u16;
-            pairs.push((slot, guid as u32));
-            pairs.push((slot + 1, (guid >> 32) as u32));
-            pairs.push((
-                FIELD_PLAYER_BUYBACK_PRICE_1 + index as u16,
-                item.map_or(0, |item| item.price),
-            ));
-            pairs.push((
-                FIELD_PLAYER_BUYBACK_TIMESTAMP_1 + index as u16,
-                item.map_or(0, |item| item.timestamp),
-            ));
-        }
-        pairs
-    }
-
-    const CAPACITY: usize = 12;
-}
-
-/// `PLAYER_FIELD_VENDORBUYBACK_SLOT_1`: 12 guid pairs, indexed slot−69.
-const FIELD_PLAYER_VENDORBUYBACK_SLOT_1: u16 = 624;
-/// `PLAYER_BUYBACK_PRICE_1`: 12 u32 copper.
-const FIELD_PLAYER_BUYBACK_PRICE_1: u16 = 1226;
-/// `PLAYER_BUYBACK_TIMESTAMP_1`: 12 u32 sort keys.
-const FIELD_PLAYER_BUYBACK_TIMESTAMP_1: u16 = 1238;
-/// `BUYBACK_SLOT_START`: the first absolute buyback slot on the wire (69-80).
-const BUYBACK_SLOT_FIRST: u32 = 69;
-/// A vendor row's unlimited `current_count` (vmangos `ItemHandler.cpp:795`).
-const VENDOR_STOCK_UNLIMITED: u32 = 0xFFFF_FFFF;
 
 /// Re-run the population query once the player has travelled this far, rather than every frame.
 const OFFLINE_STREAM_STEP_YARDS: f32 = 20.0;
@@ -405,8 +355,13 @@ fn drive_local_requests(
                 if core.0.select_character(&id).is_err() {
                     continue;
                 }
-                if let Some(race) = core.0.snapshot(&id).map(|snapshot| snapshot.appearance.race) {
-                    core.0.set_unit_reactions(unit_reactions(factions.as_deref(), race));
+                if let Some(race) = core
+                    .0
+                    .snapshot(&id)
+                    .map(|snapshot| snapshot.appearance.race)
+                {
+                    core.0
+                        .set_unit_reactions(unit_reactions(factions.as_deref(), race));
                 }
                 match core.0.enter_world() {
                     Ok(snapshot) => {
@@ -664,10 +619,13 @@ fn emit_world_entry_with_talents(
         // PLAYER_FIELD_WATCHED_FACTION_INDEX, signed: absent fields zero-fill, and 0 is a real
         // reputation slot (Bloodsail Buccaneers), so "watch nothing" must be written as -1 or a
         // fresh character's watch bar shows that faction.
-        (1261, benilla_protocol::messages::WATCHED_FACTION_NONE as u32),
-        (46, 0x8),                                  // UNIT_FLAG_PLAYER_CONTROLLED
-        (36, race_class_gender),                    // UNIT_FIELD_BYTES_0
-        (193, player_bytes),                        // PLAYER_BYTES
+        (
+            1261,
+            benilla_protocol::messages::WATCHED_FACTION_NONE as u32,
+        ),
+        (46, 0x8),                                            // UNIT_FLAG_PLAYER_CONTROLLED
+        (36, race_class_gender),                              // UNIT_FIELD_BYTES_0
+        (193, player_bytes),                                  // PLAYER_BYTES
         (194, u32::from(appearance.facial_hair) | (2 << 24)), // PLAYER_BYTES_2: normal exhaustion state in byte 3
     ];
     pairs.extend(character_aura_field_pairs(&snapshot.auras));
@@ -875,8 +833,8 @@ fn emit_imported_spawn(
     {
         fields.push((36, u32::from(gender) << 16));
     }
-    let fields =
-        ObjectFields::from_pairs(&fields).into_created(benilla_protocol::messages::ObjectType::Unit);
+    let fields = ObjectFields::from_pairs(&fields)
+        .into_created(benilla_protocol::messages::ObjectType::Unit);
     events.push(SessionEvent::ObjectCreate {
         guid,
         kind: EntityKind::Unit,
@@ -985,31 +943,6 @@ fn hostile_spell_state_events(
     events
 }
 
-fn free_talent_points(
-    snapshot: &benilla_game_core::CharacterSnapshot,
-    talents: Option<&crate::ui_talent::Talents>,
-) -> u32 {
-    let earned = u32::from(snapshot.level.saturating_sub(9));
-    if earned == 0 {
-        return 0;
-    }
-    let Some(talents) = talents else { return 0 };
-    let talent_spells: std::collections::BTreeSet<u32> = talents
-        .catalog
-        .tabs_for_class(snapshot.appearance.race, snapshot.appearance.class)
-        .into_iter()
-        .flat_map(|tab| talents.catalog.talents_in_tab(tab.id))
-        .flat_map(|talent| talent.ranks)
-        .filter(|spell_id| *spell_id != 0)
-        .collect();
-    let spent = snapshot
-        .known_spell_ids
-        .iter()
-        .filter(|spell_id| talent_spells.contains(spell_id))
-        .count() as u32;
-    earned.saturating_sub(spent)
-}
-
 fn starting_position(race: u8) -> Option<WorldPosition> {
     // Project-authored build-8606 starting anchors; gameplay rules and provenance are recorded in
     // `crates/benilla-game-core/RULES.md`.
@@ -1049,7 +982,8 @@ fn summon_guid(entry: u32) -> u64 {
 /// (`Player::PetSpellInitialize`), defensive react and follow command as the default state.
 fn summon_pet_bar(pet_guid: u64) -> benilla_protocol::messages::PetSpells {
     use benilla_protocol::messages as m;
-    let command = |action: u32| m::PetActionEntry::from((u32::from(m::PET_ACT_COMMAND) << 24) | action);
+    let command =
+        |action: u32| m::PetActionEntry::from((u32::from(m::PET_ACT_COMMAND) << 24) | action);
     let reaction =
         |react: u32| m::PetActionEntry::from((u32::from(m::PET_ACT_REACTION) << 24) | react);
     let mut bar = [m::PetActionEntry::default(); m::PET_ACTION_SLOTS];
@@ -1109,7 +1043,8 @@ fn control_effect(
             slow_percent,
             duration_ms,
         };
-        if duration_ms > 0 && control.is_none_or(|current| rank(candidate.kind) > rank(current.kind))
+        if duration_ms > 0
+            && control.is_none_or(|current| rank(candidate.kind) > rank(current.kind))
         {
             control = Some(candidate);
         }
@@ -2031,21 +1966,11 @@ fn drive_offline_gameplay(
                 continue;
             }
             crate::net::ClientCommand::GossipHello { guid } => {
-                send_offline_gossip_menu(
-                    &core.0,
-                    &channels,
-                    buyback.as_deref_mut(),
-                    *guid,
-                );
+                send_offline_gossip_menu(&core.0, &channels, buyback.as_deref_mut(), *guid);
                 continue;
             }
             crate::net::ClientCommand::ListInventory { guid } => {
-                send_offline_vendor_inventory(
-                    &core.0,
-                    &channels,
-                    buyback.as_deref_mut(),
-                    *guid,
-                );
+                send_offline_vendor_inventory(&core.0, &channels, buyback.as_deref_mut(), *guid);
                 continue;
             }
             crate::net::ClientCommand::BuyItem {
@@ -2298,9 +2223,10 @@ fn drive_offline_gameplay(
         // attack: the client animates the draw, the simulation swings the ranged slot's weapon.
         if let crate::net::ClientCommand::CastSpell { spell_id, target } = &command {
             let white_shot = spells.as_deref().is_some_and(|spells| {
-                spells.catalog.get(*spell_id).is_some_and(|spell| {
-                    spell.melee_white_damage() || spell.auto_repeat()
-                })
+                spells
+                    .catalog
+                    .get(*spell_id)
+                    .is_some_and(|spell| spell.melee_white_damage() || spell.auto_repeat())
             });
             if white_shot {
                 start_offline_auto_shot(&mut core.0, &channels, *spell_id, *target);
@@ -2386,24 +2312,27 @@ fn drive_offline_gameplay(
                                     }
                                     _ => return None,
                                 };
-                                let duration_ms =
-                                    u32::try_from(spells.durations.get(spell.duration_index)?.base_ms)
-                                        .ok()?;
+                                let duration_ms = u32::try_from(
+                                    spells.durations.get(spell.duration_index)?.base_ms,
+                                )
+                                .ok()?;
                                 let ticks = if tick_ms > 0 && duration_ms >= tick_ms {
                                     duration_ms / tick_ms
                                 } else {
                                     0
                                 };
-                                (ticks > 0).then_some(benilla_game_core::DirectSpellEffect::Channel {
-                                    tick_ms,
-                                    ticks,
-                                    min: u32::try_from(min).ok()?,
-                                    max: u32::try_from(max).ok()?,
-                                    school: 1_u32.checked_shl(spell.school)?,
-                                    drain: spell.effect_apply_aura[slot]
-                                        == benilla_formats::SPELL_AURA_PERIODIC_LEECH,
-                                    control,
-                                })
+                                (ticks > 0).then_some(
+                                    benilla_game_core::DirectSpellEffect::Channel {
+                                        tick_ms,
+                                        ticks,
+                                        min: u32::try_from(min).ok()?,
+                                        max: u32::try_from(max).ok()?,
+                                        school: 1_u32.checked_shl(spell.school)?,
+                                        drain: spell.effect_apply_aura[slot]
+                                            == benilla_formats::SPELL_AURA_PERIODIC_LEECH,
+                                        control,
+                                    },
+                                )
                             })
                         })
                         .flatten();
@@ -2441,63 +2370,65 @@ fn drive_offline_gameplay(
                         benilla_game_core::DirectSpellEffect::Control(control)
                     } else {
                         match plan.direct {
-                        Some(slot) if spell.effects[slot] == benilla_formats::SPELL_EFFECT_HEAL => {
-                            let (min, max) = spell.base_effect_range(slot)?;
-                            benilla_game_core::DirectSpellEffect::Heal {
-                                min: u32::try_from(min).ok()?,
-                                max: u32::try_from(max).ok()?,
+                            Some(slot)
+                                if spell.effects[slot] == benilla_formats::SPELL_EFFECT_HEAL =>
+                            {
+                                let (min, max) = spell.base_effect_range(slot)?;
+                                benilla_game_core::DirectSpellEffect::Heal {
+                                    min: u32::try_from(min).ok()?,
+                                    max: u32::try_from(max).ok()?,
+                                }
                             }
-                        }
-                        Some(slot) => {
-                            let (min, max) = spell.base_effect_range(slot)?;
-                            let min = u32::try_from(min).ok()?;
-                            let max = u32::try_from(max).ok()?;
-                            let school = 1_u32.checked_shl(spell.school)?;
-                            if plan.has_weapon {
-                                let percent_effect = plan
-                                    .percent
-                                    .filter(|slot| {
-                                        spell.effects[*slot]
+                            Some(slot) => {
+                                let (min, max) = spell.base_effect_range(slot)?;
+                                let min = u32::try_from(min).ok()?;
+                                let max = u32::try_from(max).ok()?;
+                                let school = 1_u32.checked_shl(spell.school)?;
+                                if plan.has_weapon {
+                                    let percent_effect = plan
+                                        .percent
+                                        .filter(|slot| {
+                                            spell.effects[*slot]
                                             == benilla_formats::SPELL_EFFECT_WEAPON_PERCENT_DAMAGE
-                                    })
-                                    .unwrap_or(slot);
-                                let percent_only = spell.effects[slot]
-                                    == benilla_formats::SPELL_EFFECT_WEAPON_PERCENT_DAMAGE;
-                                let percent =
-                                    u32::try_from(spell.effect_base_points[percent_effect] + 1)
-                                        .ok()?;
-                                let bonus = if percent_only {
-                                    benilla_game_core::WeaponBonus::of_percent(percent)
+                                        })
+                                        .unwrap_or(slot);
+                                    let percent_only = spell.effects[slot]
+                                        == benilla_formats::SPELL_EFFECT_WEAPON_PERCENT_DAMAGE;
+                                    let percent =
+                                        u32::try_from(spell.effect_base_points[percent_effect] + 1)
+                                            .ok()?;
+                                    let bonus = if percent_only {
+                                        benilla_game_core::WeaponBonus::of_percent(percent)
+                                    } else {
+                                        benilla_game_core::WeaponBonus { percent, min, max }
+                                    };
+                                    benilla_game_core::DirectSpellEffect::WeaponDamage {
+                                        bonus,
+                                        school,
+                                        periodic,
+                                    }
                                 } else {
-                                    benilla_game_core::WeaponBonus { percent, min, max }
-                                };
-                                benilla_game_core::DirectSpellEffect::WeaponDamage {
-                                    bonus,
-                                    school,
-                                    periodic,
-                                }
-                            } else {
-                                benilla_game_core::DirectSpellEffect::Damage {
-                                    min,
-                                    max,
-                                    school,
-                                    periodic,
-                                    control,
+                                    benilla_game_core::DirectSpellEffect::Damage {
+                                        min,
+                                        max,
+                                        school,
+                                        periodic,
+                                        control,
+                                    }
                                 }
                             }
+                            None => benilla_game_core::DirectSpellEffect::Aura {
+                                school: 1_u32.checked_shl(spell.school).unwrap_or(1),
+                                periodic: None,
+                                // The row's own lifetime; 0 (or the permanent sentinel) means the
+                                // aura lasts until it is cancelled.
+                                duration_ms: spells
+                                    .durations
+                                    .get(spell.duration_index)
+                                    .and_then(|duration| u32::try_from(duration.base_ms).ok())
+                                    .unwrap_or(0),
+                            },
                         }
-                        None => benilla_game_core::DirectSpellEffect::Aura {
-                            school: 1_u32.checked_shl(spell.school).unwrap_or(1),
-                            periodic: None,
-                            // The row's own lifetime; 0 (or the permanent sentinel) means the
-                            // aura lasts until it is cancelled.
-                            duration_ms: spells
-                                .durations
-                                .get(spell.duration_index)
-                                .and_then(|duration| u32::try_from(duration.base_ms).ok())
-                                .unwrap_or(0),
-                        },
-                    }
                     };
                     // Rogue mechanics: a finishing move spends the target's points, adding
                     // `EffectPointsPerComboPoint` each; a builder effect awards one per hit.
@@ -2761,1281 +2692,7 @@ fn imported_spawn_for_guid(
     benilla_game_core::content::creature_content()
         .spawn
         .iter()
-        .find(|spawn| {
-            spawn.entry == entry
-                && spawn.source_guid & 0x00ff_ffff == source_guid
-        })
-}
-
-fn quest_npc_entry(core: &GameCore, guid: u64) -> Option<u32> {
-    let spawn = imported_spawn_for_guid(guid)?;
-    let template = benilla_game_core::content::creature_content().template(spawn.entry)?;
-    let interaction_flags = crate::target::cursor_mode::npc_flags::GOSSIP
-        | crate::target::cursor_mode::npc_flags::QUESTGIVER;
-    if template.npc_flags & interaction_flags == 0 {
-        return None;
-    }
-    let player = core.snapshot(core.active()?)?.position;
-    (player.map_id == spawn.map_id).then_some(spawn.entry)
-}
-
-/// The target dispatcher already gates an interaction click against the live ECS pose. State-changing
-/// quest commands recheck reach against game-core's authoritative saved pose.
-fn quest_npc_in_range(core: &GameCore, guid: u64) -> Option<u32> {
-    let entry = quest_npc_entry(core, guid)?;
-    let spawn = imported_spawn_for_guid(guid)?;
-    let player = core.snapshot(core.active()?)?.position;
-    let dx = player.x - spawn.x;
-    let dy = player.y - spawn.y;
-    let dz = player.z - spawn.z;
-    (dx * dx + dy * dy + dz * dz
-        <= OFFLINE_INTERACTION_RANGE_YARDS * OFFLINE_INTERACTION_RANGE_YARDS)
-        .then_some(entry)
-}
-
-fn quest_giver_guid(core: &GameCore, npc_entry: u32) -> Option<u64> {
-    let player = core.snapshot(core.active()?)?.position;
-    benilla_game_core::content::creature_content()
-        .spawns_near(
-            player.map_id,
-            player.x,
-            player.y,
-            OFFLINE_CONTENT_RADIUS_YARDS,
-        )
-        .find(|spawn| spawn.entry == npc_entry)
-        .map(|spawn| imported_guid(spawn.entry, spawn.source_guid))
-}
-
-fn quest_status_icon(status: benilla_game_core::quest::QuestOfferState) -> u32 {
-    match status {
-        benilla_game_core::quest::QuestOfferState::Available => {
-            benilla_protocol::messages::dialog_status::AVAILABLE
-        }
-        benilla_game_core::quest::QuestOfferState::Incomplete => {
-            benilla_protocol::messages::dialog_status::INCOMPLETE
-        }
-        benilla_game_core::quest::QuestOfferState::Rewardable => {
-            benilla_protocol::messages::dialog_status::REWARD2
-        }
-    }
-}
-
-fn quest_gossip_rows(core: &GameCore, npc_entry: u32) -> Vec<(u32, u32, u32, String)> {
-    core.quest_gossip_rows(npc_entry)
-        .unwrap_or_default()
-        .into_iter()
-        .map(|row| {
-            (
-                row.quest_id,
-                quest_status_icon(row.icon),
-                row.level,
-                row.title,
-            )
-        })
-        .collect()
-}
-
-fn send_offline_gossip_menu(
-    core: &GameCore,
-    channels: &OfflineChannels,
-    buyback: Option<&mut OfflineVendorBuyback>,
-    guid: u64,
-) {
-    let Some(npc_entry) = quest_npc_entry(core, guid) else {
-        return;
-    };
-    let Some(definition) = benilla_game_core::quest::quest_pack()
-        .quest
-        .iter()
-        .find(|quest| quest.giver_creature_entries.contains(&npc_entry))
-    else {
-        // The static slice has no converted gossip-menu option rows. Preserve useful services
-        // behind the GOSSIP bit: trainers open their converted trainer list, and vendors fall
-        // through to stock rather than opening an empty frame.
-        if let Some(template) = imported_template_for_guid(guid) {
-            if template.npc_flags & crate::target::cursor_mode::npc_flags::TRAINER_MASK != 0 {
-                send_offline_trainer_list(core, channels, guid, None, None);
-            } else if template.npc_flags & crate::target::cursor_mode::npc_flags::VENDOR_MASK != 0 {
-                send_offline_vendor_inventory(core, channels, buyback, guid);
-            }
-        }
-        return;
-    };
-    send_gameplay_events(
-        channels,
-        [SessionEvent::GossipMenu {
-            npc: guid,
-            text_id: definition.gossip_text_id,
-            options: Vec::new(),
-            quests: quest_gossip_rows(core, npc_entry),
-        }],
-    );
-}
-
-/// The spawned NPC's converted template, for its service flags and vendor entry.
-fn imported_template_for_guid(
-    guid: u64,
-) -> Option<&'static benilla_game_core::content::CreatureTemplate> {
-    let spawn = imported_spawn_for_guid(guid)?;
-    benilla_game_core::content::creature_content().template(spawn.entry)
-}
-
-/// Whether the guid's spawn is within the client's 5.5556 yd service range of the active player.
-fn offline_npc_in_range(core: &GameCore, guid: u64) -> bool {
-    let Some(spawn) = imported_spawn_for_guid(guid) else {
-        return false;
-    };
-    let Some(player) = core
-        .active()
-        .and_then(|id| core.snapshot(id))
-        .map(|snapshot| snapshot.position)
-    else {
-        return false;
-    };
-    player.map_id == spawn.map_id
-        && (player.x - spawn.x).powi(2)
-            + (player.y - spawn.y).powi(2)
-            + (player.z - spawn.z).powi(2)
-            <= OFFLINE_INTERACTION_RANGE_YARDS * OFFLINE_INTERACTION_RANGE_YARDS
-}
-
-/// The carried item `guid` names, as a core position (bag or worn slot).
-fn inventory_slot_for_guid(
-    snapshot: &benilla_game_core::CharacterSnapshot,
-    guid: u64,
-) -> Option<benilla_game_core::ItemSlot> {
-    snapshot
-        .inventory
-        .iter()
-        .find(|item| inventory_item_guid(snapshot, item) == guid)
-        .map(|item| benilla_game_core::ItemSlot::Backpack(item.slot))
-        .or_else(|| {
-            snapshot
-                .equipment
-                .iter()
-                .find(|item| inventory_item_guid(snapshot, item) == guid)
-                .map(|item| benilla_game_core::ItemSlot::Equipment(item.slot))
-        })
-}
-
-/// The descriptor delta a vendor trade publishes: the item slots, the purse, and the buyback
-/// ledger when the session has one.
-fn vendor_player_fields(
-    snapshot: &benilla_game_core::CharacterSnapshot,
-    buyback: Option<&OfflineVendorBuyback>,
-) -> Vec<(u16, u32)> {
-    let mut fields = player_item_field_pairs(snapshot);
-    fields.push((1176, snapshot.money_copper)); // PLAYER_FIELD_COINAGE
-    if let Some(state) = buyback {
-        fields.extend(state.field_pairs());
-    }
-    fields
-}
-
-/// `SMSG_LIST_INVENTORY`: the converted stock lines with `item_template` prices and display ids,
-/// plus the templates themselves so names resolve without a query round-trip.
-fn send_offline_vendor_inventory(
-    core: &GameCore,
-    channels: &OfflineChannels,
-    buyback: Option<&mut OfflineVendorBuyback>,
-    guid: u64,
-) {
-    let Some(template) = imported_template_for_guid(guid) else {
-        return;
-    };
-    let rows: Vec<_> = benilla_game_core::vendor::vendor_items(template.entry).collect();
-    if rows.is_empty() || !offline_npc_in_range(core, guid) {
-        return;
-    }
-    if let Some(state) = buyback {
-        state.open_vendor(guid);
-    }
-    let items: Vec<_> = rows
-        .iter()
-        .enumerate()
-        .map(|(index, row)| {
-            let item = benilla_game_core::quest::item_template(row.item);
-            benilla_protocol::messages::VendorItem {
-                slot: u32::try_from(index + 1).unwrap_or(u32::MAX),
-                entry: row.item,
-                display_id: item.map_or(0, |item| item.display_id),
-                current_count: VENDOR_STOCK_UNLIMITED,
-                price: item.map_or(0, |item| item.buy_price),
-                max_durability: item.map_or(0, |item| item.max_durability),
-                buy_count: row.buy_count.max(1),
-            }
-        })
-        .collect();
-    let mut events: Vec<_> = items
-        .iter()
-        .filter_map(|item| {
-            item_info(item.entry).map(|info| SessionEvent::ItemTemplate {
-                entry: item.entry,
-                info: Some(Box::new(info)),
-            })
-        })
-        .collect();
-    events.push(SessionEvent::VendorInventory {
-        vendor: guid,
-        items,
-    });
-    send_gameplay_events(channels, events);
-}
-
-/// A vendor row for `entry`, by its 1-based display slot.
-fn vendor_row_index(template_entry: u32, item: u32) -> Option<usize> {
-    benilla_game_core::vendor::vendor_items(template_entry)
-        .position(|row| row.item == item)
-}
-
-/// `CMSG_BUY_ITEM`/`CMSG_BUY_ITEM_IN_SLOT` offline: spend the purse, grant the item, and answer
-/// with the same events the server would (`SMSG_BUY_ITEM`, the item create, the coinage update).
-#[allow(clippy::too_many_arguments)]
-fn buy_offline_vendor_item(
-    core: &mut GameCore,
-    persistence: &mut OfflinePersistence,
-    channels: &OfflineChannels,
-    buyback: Option<&mut OfflineVendorBuyback>,
-    vendor: u64,
-    entry: u32,
-    count: u8,
-    at: Option<(u64, u8)>,
-) {
-    let fail = |channels: &OfflineChannels, reason: u8| {
-        send_gameplay_events(
-            channels,
-            [SessionEvent::VendorBuyFailed {
-                vendor,
-                item_entry: entry,
-                reason,
-            }],
-        );
-    };
-    let Some(template) = imported_template_for_guid(vendor) else {
-        return;
-    };
-    if !offline_npc_in_range(core, vendor) {
-        fail(channels, buy_result::DISTANCE_TOO_FAR);
-        return;
-    }
-    let Some(index) = vendor_row_index(template.entry, entry) else {
-        fail(channels, buy_result::CANT_FIND_ITEM);
-        return;
-    };
-    let Some(item_template) = benilla_game_core::quest::item_template(entry) else {
-        fail(channels, buy_result::CANT_FIND_ITEM);
-        return;
-    };
-    let buy_count = benilla_game_core::vendor::vendor_items(template.entry)
-        .nth(index)
-        .map_or(1, |row| row.buy_count.max(1));
-    let stacks = u32::from(count.max(1));
-    let units = stacks.saturating_mul(buy_count);
-    let price = item_template.buy_price.saturating_mul(stacks);
-    if core.spend_money(price).is_err() {
-        fail(channels, buy_result::NOT_ENOUGH_MONEY);
-        return;
-    }
-    // `CMSG_BUY_ITEM_IN_SLOT` names the target container's guid: ours for the player's own array
-    // (the bag byte itself is not on the command), so a bag we do not model buys into the first
-    // free slot instead.
-    let player_guid = core.active().map(|id| id.presentation_guid());
-    let at_slot = at.and_then(|(bag_guid, slot)| {
-        (Some(bag_guid) == player_guid)
-            .then(|| wire_item_slot(BAG_PLAYER_INVENTORY, slot))
-            .flatten()
-    });
-    let item = match core.grant_item(entry, units, at_slot) {
-        Ok(item) => item,
-        Err(_) => {
-            let _ = core.credit_money(price);
-            fail(channels, buy_result::CANT_CARRY_MORE);
-            return;
-        }
-    };
-    let Some(id) = core.active().cloned() else {
-        return;
-    };
-    let Some(snapshot) = core.snapshot(&id) else {
-        return;
-    };
-    let player_guid = id.presentation_guid();
-    let mut events = Vec::new();
-    if let Some(info) = item_info(entry) {
-        events.push(SessionEvent::ItemTemplate {
-            entry,
-            info: Some(Box::new(info)),
-        });
-    }
-    events.push(item_create_event(player_guid, snapshot, &item));
-    events.push(SessionEvent::ObjectValues {
-        guid: player_guid,
-        fields: ObjectFields::from_pairs(&vendor_player_fields(snapshot, buyback.as_deref())),
-    });
-    events.push(SessionEvent::ItemPushResult(
-        benilla_protocol::messages::ItemPushResult {
-            player_guid,
-            from_npc: false,
-            created: false,
-            show_in_chat: true,
-            bag_slot: BAG_PLAYER_INVENTORY,
-            item_slot: u32::from(item.slot),
-            item_entry: item.entry,
-            suffix_factor: 0,
-            random_property_id: 0,
-            count: item.count,
-        },
-    ));
-    events.push(SessionEvent::VendorBuyResult {
-        vendor,
-        slot: u32::try_from(index + 1).unwrap_or(u32::MAX),
-        new_count: VENDOR_STOCK_UNLIMITED,
-        purchase_count: units,
-    });
-    send_gameplay_events(channels, events);
-    save_after_command(core, persistence);
-}
-
-/// `CMSG_SELL_ITEM` offline: remove the stack (`count` 0) or part of it, credit
-/// `sell_price × units`, and keep the sold item on the buyback ledger.
-#[allow(clippy::too_many_arguments)]
-fn sell_offline_item(
-    core: &mut GameCore,
-    persistence: &mut OfflinePersistence,
-    channels: &OfflineChannels,
-    mut buyback: Option<&mut OfflineVendorBuyback>,
-    vendor: u64,
-    item_guid: u64,
-    count: u8,
-) {
-    let fail = |channels: &OfflineChannels, reason: u8| {
-        send_gameplay_events(
-            channels,
-            [SessionEvent::VendorSellFailed {
-                vendor,
-                item_guid,
-                reason,
-            }],
-        );
-    };
-    if imported_template_for_guid(vendor).is_none() {
-        return;
-    }
-    if !offline_npc_in_range(core, vendor) {
-        fail(channels, sell_result::CANT_FIND_VENDOR);
-        return;
-    }
-    let Some(id) = core.active().cloned() else {
-        return;
-    };
-    let Some(snapshot) = core.snapshot(&id) else {
-        return;
-    };
-    let Some(at) = inventory_slot_for_guid(snapshot, item_guid) else {
-        fail(channels, sell_result::CANT_FIND_ITEM);
-        return;
-    };
-    let Ok(item) = core.take_item(at) else {
-        fail(channels, sell_result::CANT_FIND_ITEM);
-        return;
-    };
-    let sold_units = if count == 0 {
-        item.count
-    } else {
-        u32::from(count).min(item.count)
-    };
-    if sold_units == 0 {
-        let _ = core.grant_item(item.entry, item.count, Some(at));
-        return;
-    }
-    let unit_price = benilla_game_core::quest::item_template(item.entry)
-        .map_or(0, |template| template.sell_price);
-    let proceeds = unit_price.saturating_mul(sold_units);
-    let remainder = (item.count > sold_units)
-        .then(|| core.grant_item(item.entry, item.count - sold_units, Some(at)).ok())
-        .flatten();
-    let _ = core.credit_money(proceeds);
-    if let Some(state) = buyback.as_deref_mut() {
-        state.open_vendor(vendor);
-        state.push(OfflineBuybackItem {
-            guid: item_guid,
-            entry: item.entry,
-            count: sold_units,
-            price: proceeds,
-            timestamp: 0,
-        });
-    }
-    let Some(snapshot) = core.snapshot(&id) else {
-        return;
-    };
-    let player_guid = id.presentation_guid();
-    let mut events = Vec::new();
-    if let Some(info) = item_info(item.entry) {
-        events.push(SessionEvent::ItemTemplate {
-            entry: item.entry,
-            info: Some(Box::new(info)),
-        });
-    }
-    if let Some(remainder) = &remainder {
-        events.push(item_create_event(player_guid, snapshot, remainder));
-    }
-    events.push(SessionEvent::ObjectValues {
-        guid: player_guid,
-        fields: ObjectFields::from_pairs(&vendor_player_fields(snapshot, buyback.as_deref())),
-    });
-    if buyback.as_deref().is_some() {
-        // The sold item's object stays streamed under its old GUID, carrying the sold count, so
-        // the buyback row resolves.
-        let max_durability = item_info(item.entry).map_or(0, |info| info.max_durability);
-        events.push(SessionEvent::ItemCreate {
-            guid: item_guid,
-            container: false,
-            fields: ObjectFields::from_pairs(&[
-                (2, 0x3),
-                (3, item.entry),
-                (4, 1.0f32.to_bits()),
-                (6, player_guid as u32),
-                (7, (player_guid >> 32) as u32),
-                (8, player_guid as u32),
-                (9, (player_guid >> 32) as u32),
-                (14, sold_units),
-                (46, max_durability),
-                (47, max_durability),
-            ])
-            .into_created(benilla_protocol::messages::ObjectType::Item),
-        });
-    }
-    send_gameplay_events(channels, events);
-    save_after_command(core, persistence);
-}
-
-/// `CMSG_BUYBACK_ITEM` offline: reclaim the slot's item at the price it sold for.
-fn buyback_offline_item(
-    core: &mut GameCore,
-    persistence: &mut OfflinePersistence,
-    channels: &OfflineChannels,
-    buyback: Option<&mut OfflineVendorBuyback>,
-    vendor: u64,
-    slot: u32,
-) {
-    let Some(state) = buyback else {
-        return;
-    };
-    if state.vendor != Some(vendor) {
-        return;
-    }
-    let Some(index) = slot
-        .checked_sub(BUYBACK_SLOT_FIRST)
-        .and_then(|index| usize::try_from(index).ok())
-    else {
-        return;
-    };
-    let Some(record) = state.take_slot(index) else {
-        return;
-    };
-    let OfflineBuybackItem {
-        guid,
-        entry,
-        count,
-        price,
-        ..
-    } = record;
-    if !offline_npc_in_range(core, vendor) {
-        state.push(OfflineBuybackItem {
-            guid,
-            entry,
-            count,
-            price,
-            timestamp: 0,
-        });
-        return;
-    }
-    if core.spend_money(price).is_err() {
-        state.push(OfflineBuybackItem {
-            guid,
-            entry,
-            count,
-            price,
-            timestamp: 0,
-        });
-        send_gameplay_events(
-            channels,
-            [SessionEvent::VendorBuyFailed {
-                vendor,
-                item_entry: entry,
-                reason: buy_result::NOT_ENOUGH_MONEY,
-            }],
-        );
-        return;
-    }
-    match core.grant_item(entry, count, None) {
-        Ok(item) => {
-            let Some(id) = core.active().cloned() else {
-                return;
-            };
-            let Some(snapshot) = core.snapshot(&id) else {
-                return;
-            };
-            let player_guid = id.presentation_guid();
-            let mut events = Vec::new();
-            if let Some(info) = item_info(entry) {
-                events.push(SessionEvent::ItemTemplate {
-                    entry,
-                    info: Some(Box::new(info)),
-                });
-            }
-            events.push(SessionEvent::ObjectDestroyed(guid));
-            events.push(item_create_event(player_guid, snapshot, &item));
-            events.push(SessionEvent::ObjectValues {
-                guid: player_guid,
-                fields: ObjectFields::from_pairs(&vendor_player_fields(snapshot, Some(state))),
-            });
-            events.push(SessionEvent::ItemPushResult(
-                benilla_protocol::messages::ItemPushResult {
-                    player_guid,
-                    from_npc: false,
-                    created: false,
-                    show_in_chat: true,
-                    bag_slot: BAG_PLAYER_INVENTORY,
-                    item_slot: u32::from(item.slot),
-                    item_entry: item.entry,
-                    suffix_factor: 0,
-                    random_property_id: 0,
-                    count: item.count,
-                },
-            ));
-            send_gameplay_events(channels, events);
-            save_after_command(core, persistence);
-        }
-        Err(_) => {
-            let _ = core.credit_money(price);
-            state.push(OfflineBuybackItem {
-                guid,
-                entry,
-                count,
-                price,
-                timestamp: 0,
-            });
-            send_gameplay_events(
-                channels,
-                [SessionEvent::VendorBuyFailed {
-                    vendor,
-                    item_entry: entry,
-                    reason: buy_result::CANT_CARRY_MORE,
-                }],
-            );
-        }
-    }
-}
-
-fn send_offline_npc_text(core: &GameCore, channels: &OfflineChannels, guid: u64, text_id: u32) {
-    let Some(npc_entry) = quest_npc_entry(core, guid) else {
-        return;
-    };
-    let Some(definition) = benilla_game_core::quest::quest_pack()
-        .quest
-        .iter()
-        .find(|quest| {
-            quest.giver_creature_entries.contains(&npc_entry) && quest.gossip_text_id == text_id
-        })
-    else {
-        return;
-    };
-    let mut blocks = vec![
-        benilla_protocol::messages::NpcTextBlock::default();
-        benilla_protocol::messages::NPC_TEXT_BLOCKS
-    ];
-    blocks[0] = benilla_protocol::messages::NpcTextBlock {
-        probability: definition.gossip_text_probability,
-        male: definition.gossip_text_male.clone(),
-        female: definition.gossip_text_female.clone(),
-    };
-    send_gameplay_events(channels, [SessionEvent::NpcGreeting { text_id, blocks }]);
-}
-
-fn send_offline_questgiver_status(core: &GameCore, channels: &OfflineChannels, npc: u64) {
-    let Some(spawn) = imported_spawn_for_guid(npc) else {
-        return;
-    };
-    let status = core
-        .quest_dialog_status(spawn.entry)
-        .ok()
-        .flatten()
-        .map(quest_status_icon)
-        .unwrap_or(benilla_protocol::messages::dialog_status::NONE);
-    info!(
-        "offline questgiver status: entry {} -> {status}",
-        spawn.entry
-    );
-    send_gameplay_events(channels, [SessionEvent::QuestGiverStatus { npc, status }]);
-}
-
-fn send_offline_quest_greeting(core: &GameCore, channels: &OfflineChannels, npc: u64) {
-    let Some(npc_entry) = quest_npc_entry(core, npc) else {
-        return;
-    };
-    let quests = quest_gossip_rows(core, npc_entry)
-        .into_iter()
-        .map(
-            |(quest_id, icon, level, title)| benilla_protocol::messages::QuestListEntry {
-                quest_id,
-                icon,
-                level,
-                title,
-            },
-        )
-        .collect();
-    send_gameplay_events(
-        channels,
-        [SessionEvent::QuestGreeting(
-            benilla_protocol::messages::QuestGiverList {
-                npc,
-                greeting: String::new(),
-                emote_delay: 0,
-                emote: 0,
-                quests,
-            },
-        )],
-    );
-}
-
-fn quest_reward_items(
-    definition: &benilla_game_core::quest::QuestDefinition,
-) -> Vec<benilla_protocol::messages::QuestRewardItem> {
-    definition
-        .reward_choice
-        .iter()
-        .map(|choice| benilla_protocol::messages::QuestRewardItem {
-            item_id: choice.item_entry,
-            count: choice.count,
-            display_id: choice.display_id,
-        })
-        .collect()
-}
-
-fn send_offline_quest_details(
-    core: &GameCore,
-    channels: &OfflineChannels,
-    npc: u64,
-    quest_id: u32,
-) {
-    let Some(npc_entry) = quest_npc_entry(core, npc) else {
-        return;
-    };
-    let Some(definition) = benilla_game_core::quest::quest_definition(quest_id) else {
-        return;
-    };
-    if !definition.giver_creature_entries.contains(&npc_entry)
-        || !core.quest_gossip_rows(npc_entry).is_ok_and(|rows| {
-            rows.iter().any(|row| {
-                row.quest_id == quest_id
-                    && row.icon == benilla_game_core::quest::QuestOfferState::Available
-            })
-        })
-    {
-        return;
-    }
-    send_gameplay_events(
-        channels,
-        [SessionEvent::QuestDetail(
-            benilla_protocol::messages::QuestDetails {
-                npc,
-                quest_id,
-                title: definition.title.clone(),
-                details: definition.details.clone(),
-                objectives: definition.objectives_text.clone(),
-                auto_finish: 0,
-                choices: quest_reward_items(definition),
-                rewards: Vec::new(),
-                money: definition.reward_money_copper as i32,
-                reward_spell: 0,
-            },
-        )],
-    );
-}
-
-fn quest_progress_panel(
-    npc: u64,
-    definition: &benilla_game_core::quest::QuestDefinition,
-    is_complete: bool,
-) -> SessionEvent {
-    SessionEvent::QuestProgress(benilla_protocol::messages::QuestRequestItems {
-        npc,
-        quest_id: definition.id,
-        title: definition.title.clone(),
-        request_text: definition.request_items_text.clone(),
-        emote: 0,
-        close_on_cancel: 0,
-        required_money: 0,
-        required_items: Vec::new(),
-        is_complete,
-    })
-}
-
-fn quest_reward_panel(
-    npc: u64,
-    definition: &benilla_game_core::quest::QuestDefinition,
-) -> SessionEvent {
-    SessionEvent::QuestOffer(benilla_protocol::messages::QuestOfferReward {
-        npc,
-        quest_id: definition.id,
-        title: definition.title.clone(),
-        offer_text: definition.offer_reward_text.clone(),
-        auto_finish: 0,
-        choices: quest_reward_items(definition),
-        rewards: Vec::new(),
-        money: definition.reward_money_copper as i32,
-        quest_flags: definition.quest_flags,
-        reward_spell: 0,
-    })
-}
-
-fn send_offline_quest_progress(
-    core: &GameCore,
-    channels: &OfflineChannels,
-    npc: u64,
-    quest_id: u32,
-) {
-    let Some(npc_entry) = quest_npc_entry(core, npc) else {
-        return;
-    };
-    let Some(definition) = benilla_game_core::quest::quest_definition(quest_id) else {
-        return;
-    };
-    if !definition.turnin_creature_entries.contains(&npc_entry) {
-        return;
-    }
-    let Some(journal) = core.active_quest_journal() else {
-        return;
-    };
-    let Some(progress) = journal.progress(quest_id) else {
-        return;
-    };
-    if progress.reward_choice.is_some() {
-        return;
-    }
-    let event = if journal.is_complete(quest_id) {
-        quest_reward_panel(npc, definition)
-    } else {
-        quest_progress_panel(npc, definition, false)
-    };
-    send_gameplay_events(channels, [event]);
-}
-
-fn send_offline_quest_reward(core: &GameCore, channels: &OfflineChannels, npc: u64, quest_id: u32) {
-    let Some(npc_entry) = quest_npc_entry(core, npc) else {
-        return;
-    };
-    let Some(definition) = benilla_game_core::quest::quest_definition(quest_id) else {
-        return;
-    };
-    if !definition.turnin_creature_entries.contains(&npc_entry)
-        || !core.active_quest_journal().is_some_and(|journal| {
-            journal.is_complete(quest_id)
-                && journal
-                    .progress(quest_id)
-                    .is_some_and(|progress| progress.reward_choice.is_none())
-        })
-    {
-        return;
-    }
-    send_gameplay_events(channels, [quest_reward_panel(npc, definition)]);
-}
-
-fn send_offline_quest_template(channels: &OfflineChannels, quest_id: u32) {
-    let Some(definition) = benilla_game_core::quest::quest_definition(quest_id) else {
-        return;
-    };
-    let mut choices = [(0, 0); 6];
-    for (slot, choice) in choices.iter_mut().zip(&definition.reward_choice) {
-        *slot = (choice.item_entry, choice.count);
-    }
-    let objectives = std::array::from_fn(|index| {
-        definition
-            .objective
-            .get(index)
-            .map(|objective| benilla_protocol::messages::QuestObjective {
-                creature_or_go: objective.creature_entry,
-                required_count: objective.count,
-                item_id: 0,
-                item_count: 0,
-                text: objective.text.clone(),
-            })
-            .unwrap_or(benilla_protocol::messages::QuestObjective {
-                creature_or_go: 0,
-                required_count: 0,
-                item_id: 0,
-                item_count: 0,
-                text: String::new(),
-            })
-    });
-    send_gameplay_events(
-        channels,
-        [SessionEvent::QuestTemplate(Box::new(
-            benilla_protocol::messages::QuestTemplate {
-                quest_id,
-                method: definition.method,
-                level: definition.quest_level.max(0) as u32,
-                zone_or_sort: definition.zone_or_sort,
-                quest_type: definition.quest_type,
-                rep_objective_faction: 0,
-                rep_objective_value: 0,
-                next_quest_in_chain: definition.next_quest_in_chain,
-                money: definition.reward_money_copper as i32,
-                money_max_level: definition.reward_money_max_level,
-                reward_spell: 0,
-                src_item_id: definition.source_item_entry,
-                flags: definition.quest_flags,
-                rewards: [(0, 0); 4],
-                choices,
-                point_map_id: 0,
-                point_x: 0.0,
-                point_y: 0.0,
-                point_opt: 0,
-                title: definition.title.clone(),
-                objectives_text: definition.objectives_text.clone(),
-                details: definition.details.clone(),
-                end_text: definition.end_text.clone(),
-                objectives,
-            },
-        ))],
-    );
-}
-
-fn quest_accept_failure(error: benilla_game_core::quest::QuestError) -> Option<SessionEvent> {
-    match error {
-        benilla_game_core::quest::QuestError::WrongRace => {
-            Some(SessionEvent::QuestGiverInvalid { reason: 6 })
-        }
-        benilla_game_core::quest::QuestError::LevelTooLow => {
-            Some(SessionEvent::QuestGiverInvalid { reason: 1 })
-        }
-        benilla_game_core::quest::QuestError::AlreadyAccepted => {
-            Some(SessionEvent::QuestGiverInvalid { reason: 13 })
-        }
-        benilla_game_core::quest::QuestError::QuestLogFull => Some(SessionEvent::QuestLogFull),
-        _ => Some(SessionEvent::QuestGiverInvalid { reason: 0 }),
-    }
-}
-
-fn quest_log_slot_fields_for(
-    snapshot: &benilla_game_core::CharacterSnapshot,
-    quest_id: u32,
-) -> Vec<(u16, u32)> {
-    let Some(slot) = snapshot.quest_journal.slot(quest_id) else {
-        return Vec::new();
-    };
-    let Some(progress) = snapshot.quest_journal.progress(quest_id) else {
-        return Vec::new();
-    };
-    quest_log_slot_fields(slot, progress, snapshot.quest_journal.is_complete(quest_id)).into()
-}
-
-fn accept_offline_quest(
-    core: &mut GameCore,
-    persistence: &mut OfflinePersistence,
-    channels: &OfflineChannels,
-    npc: u64,
-    quest_id: u32,
-) {
-    let Some(npc_entry) = quest_npc_in_range(core, npc) else {
-        return;
-    };
-    match core.accept_quest(npc_entry, quest_id) {
-        Ok(()) => {
-            let Some(id) = core.active().cloned() else {
-                return;
-            };
-            let Some(snapshot) = core.snapshot(&id) else {
-                return;
-            };
-            let mut events = vec![SessionEvent::GossipComplete];
-            events.push(SessionEvent::ObjectValues {
-                guid: id.presentation_guid(),
-                fields: ObjectFields::from_pairs(&quest_log_field_pairs(snapshot)),
-            });
-            if let Some(giver) = quest_giver_guid(core, npc_entry) {
-                events.push(SessionEvent::QuestGiverStatus {
-                    npc: giver,
-                    status: benilla_protocol::messages::dialog_status::INCOMPLETE,
-                });
-            }
-            send_gameplay_events(channels, events);
-            save_after_command(core, persistence);
-        }
-        Err(error) => {
-            if let Some(event) = quest_accept_failure(error) {
-                send_gameplay_events(channels, [event]);
-            }
-        }
-    }
-}
-
-fn reward_offline_quest(
-    core: &mut GameCore,
-    persistence: &mut OfflinePersistence,
-    channels: &OfflineChannels,
-    npc: u64,
-    quest_id: u32,
-    choice: u32,
-    talents: Option<&crate::ui_talent::Talents>,
-) {
-    let Some(npc_entry) = quest_npc_in_range(core, npc) else {
-        return;
-    };
-    let reward = match core.turn_in_quest(npc_entry, quest_id, choice) {
-        Ok(reward) => reward,
-        Err(_) => {
-            send_gameplay_events(channels, [SessionEvent::QuestGiverInvalid { reason: 0 }]);
-            return;
-        }
-    };
-    let Some(id) = core.active().cloned() else {
-        return;
-    };
-    let Some(snapshot) = core.snapshot(&id) else {
-        return;
-    };
-    let item_guid = inventory_item_guid(snapshot, &reward.item);
-    let mut values = vec![
-        (1176, snapshot.money_copper),
-        (716, snapshot.experience),
-        (
-            717,
-            benilla_game_core::progression::xp_to_next_level(snapshot.level).unwrap_or(0),
-        ),
-        (34, u32::from(snapshot.level)),
-        (22, snapshot.health),
-        (1102, free_talent_points(snapshot, talents)),
-    ];
-    if matches!(snapshot.appearance.class, 2 | 3 | 5 | 7 | 8 | 9 | 11) {
-        values.push((23, snapshot.mana));
-    }
-    values.extend(quest_log_slot_fields_for(snapshot, quest_id));
-    let inventory_slot_field = 532 + 2 * u16::from(reward.item.slot);
-    values.extend([
-        (inventory_slot_field, item_guid as u32),
-        (inventory_slot_field + 1, (item_guid >> 32) as u32),
-    ]);
-    let mut events = vec![
-        SessionEvent::QuestComplete(benilla_protocol::messages::QuestComplete {
-            quest_id,
-            xp: reward.experience,
-            money: reward.money_copper,
-            items: Vec::new(),
-        }),
-        SessionEvent::ObjectValues {
-            guid: id.presentation_guid(),
-            fields: ObjectFields::from_pairs(&values),
-        },
-        item_create_event(id.presentation_guid(), snapshot, &reward.item),
-    ];
-    if let Some(info) = item_info(reward.item.entry) {
-        events.push(SessionEvent::ItemTemplate {
-            entry: reward.item.entry,
-            info: Some(Box::new(info)),
-        });
-    }
-    for (index, reached_level) in
-        (reward.level - reward.levels_gained + 1..=reward.level).enumerate()
-    {
-        events.push(SessionEvent::LevelUp(
-            benilla_protocol::messages::LevelUpInfo {
-                level: u32::from(reached_level),
-                health: if index == 0 {
-                    reward.health_gained as i32
-                } else {
-                    0
-                },
-                powers: [
-                    if index == 0 {
-                        reward.mana_gained as i32
-                    } else {
-                        0
-                    },
-                    0,
-                    0,
-                    0,
-                    0,
-                ],
-                stats: [0; 5],
-            },
-        ));
-    }
-    events.push(SessionEvent::ItemPushResult(
-        benilla_protocol::messages::ItemPushResult {
-            player_guid: id.presentation_guid(),
-            from_npc: true,
-            created: false,
-            show_in_chat: true,
-            bag_slot: benilla_protocol::messages::BAG_PLAYER_INVENTORY,
-            item_slot: u32::from(reward.item.slot),
-            item_entry: reward.item.entry,
-            suffix_factor: 0,
-            random_property_id: 0,
-            count: reward.item.count,
-        },
-    ));
-    if let Some(giver) = quest_giver_guid(core, npc_entry) {
-        events.push(SessionEvent::QuestGiverStatus {
-            npc: giver,
-            status: benilla_protocol::messages::dialog_status::NONE,
-        });
-    }
-    send_gameplay_events(channels, events);
-    save_after_command(core, persistence);
-}
-
-fn starter_action_buttons(race: u8, class: u8) -> Vec<benilla_protocol::messages::ActionButton> {
-    benilla_game_core::progression::starting_actions(race, class)
-        .map(|action| benilla_protocol::messages::ActionButton {
-            slot: action.button,
-            action: action.action,
-            kind: action.action_type,
-        })
-        .collect()
-}
-
-fn send_offline_trainer_list(
-    core: &GameCore,
-    channels: &OfflineChannels,
-    trainer: u64,
-    spells: Option<&crate::ui_action::Spells>,
-    skill_lines: Option<&crate::ui_spellbook::SkillLines>,
-) {
-    let Some(trainer_entry) = benilla_protocol::guid::entry(trainer) else {
-        return;
-    };
-    let services = core
-        .trainer_services_with_ranks(
-            trainer_entry,
-            |spell_id| {
-                spells
-                    .and_then(|spells| spells.catalog.learned_spell(spell_id))
-                    .unwrap_or(spell_id)
-            },
-            |spell_id| skill_lines.and_then(|lines| lines.catalog.rank_successor(spell_id)),
-        )
-        .unwrap_or_default()
-        .into_iter()
-        .map(|service| {
-            let offer = service.offer;
-            let mut req_spells = [0; 3];
-            for (slot, spell_id) in req_spells.iter_mut().zip(&offer.prerequisite_spell_ids) {
-                *slot = *spell_id;
-            }
-            let state = match service.state {
-                benilla_game_core::TrainerServiceState::Learnable => {
-                    benilla_protocol::messages::trainer_spell_state::GREEN
-                }
-                benilla_game_core::TrainerServiceState::Known => {
-                    benilla_protocol::messages::trainer_spell_state::GRAY
-                }
-                benilla_game_core::TrainerServiceState::Unavailable(_) => {
-                    benilla_protocol::messages::trainer_spell_state::RED
-                }
-            };
-            benilla_protocol::messages::TrainerSpell {
-                spell: offer.spell_id,
-                state,
-                cost: offer.cost_copper,
-                can_learn_primary_prof: false,
-                is_primary_prof_first_rank: false,
-                req_level: offer.required_level,
-                req_skill: offer.required_skill_id,
-                req_skill_value: offer.required_skill_value,
-                req_spells,
-            }
-        })
-        .collect();
-    send_gameplay_events(
-        channels,
-        [SessionEvent::TrainerList {
-            trainer,
-            trainer_type: 0,
-            services,
-            greeting: String::new(),
-        }],
-    );
-}
-
-fn buy_offline_trainer_spell(
-    core: &mut GameCore,
-    persistence: &mut OfflinePersistence,
-    channels: &OfflineChannels,
-    trainer: u64,
-    spell_id: u32,
-    spells: Option<&crate::ui_action::Spells>,
-    skill_lines: Option<&crate::ui_spellbook::SkillLines>,
-) {
-    let Some(trainer_entry) = benilla_protocol::guid::entry(trainer) else {
-        send_gameplay_events(
-            channels,
-            [SessionEvent::TrainerBuyFailed {
-                trainer,
-                spell_id,
-                error: benilla_protocol::messages::train_fail::UNAVAILABLE,
-            }],
-        );
-        return;
-    };
-    match core.buy_trainer_spell_with_ranks(
-        trainer_entry,
-        spell_id,
-        |spell_id| {
-            spells
-                .and_then(|spells| spells.catalog.learned_spell(spell_id))
-                .unwrap_or(spell_id)
-        },
-        |spell_id| skill_lines.and_then(|lines| lines.catalog.rank_successor(spell_id)),
-    ) {
-        Ok(purchase) => {
-            let Some(id) = core.active() else { return };
-            let mut events = vec![SessionEvent::TrainerBuySucceeded { trainer, spell_id }];
-            events.extend(
-                purchase
-                    .removed_spell_ids
-                    .into_iter()
-                    .map(|spell_id| SessionEvent::SpellRemoved { spell_id }),
-            );
-            events.push(SessionEvent::SpellLearned {
-                spell_id: purchase.learned_spell_id,
-            });
-            events.push(SessionEvent::ObjectValues {
-                guid: id.presentation_guid(),
-                fields: ObjectFields::from_pairs(&[(1176, purchase.remaining_copper)]),
-            });
-            send_gameplay_events(channels, events);
-            save_after_command(core, persistence);
-        }
-        Err(error) => {
-            let code = match error {
-                benilla_game_core::progression::TrainerError::InsufficientFunds => {
-                    benilla_protocol::messages::train_fail::NOT_ENOUGH_MONEY
-                }
-                benilla_game_core::progression::TrainerError::UnsupportedSkill => {
-                    benilla_protocol::messages::train_fail::NOT_ENOUGH_SKILL
-                }
-                _ => benilla_protocol::messages::train_fail::UNAVAILABLE,
-            };
-            send_gameplay_events(
-                channels,
-                [SessionEvent::TrainerBuyFailed {
-                    trainer,
-                    spell_id,
-                    error: code,
-                }],
-            );
-        }
-    }
-}
-
-fn learn_offline_talent(
-    core: &mut GameCore,
-    persistence: &mut OfflinePersistence,
-    channels: &OfflineChannels,
-    talents: Option<&crate::ui_talent::Talents>,
-    skill_lines: Option<&crate::ui_spellbook::SkillLines>,
-    talent_id: u32,
-    rank: u32,
-) {
-    let Some(talents) = talents else {
-        warn!("offline gameplay: talent catalog is unavailable");
-        return;
-    };
-    let Some(id) = core.active().cloned() else {
-        return;
-    };
-    let Some(snapshot) = core.snapshot(&id) else {
-        return;
-    };
-    let appearance = snapshot.appearance;
-    let Some((tab, talent)) = talents
-        .catalog
-        .tabs_for_class(appearance.race, appearance.class)
-        .into_iter()
-        .find_map(|tab| {
-            talents
-                .catalog
-                .talents_in_tab(tab.id)
-                .iter()
-                .find(|talent| talent.id == talent_id)
-                .map(|talent| (tab, talent))
-        })
-    else {
-        warn!("offline gameplay: talent {talent_id} is not available to this race/class");
-        return;
-    };
-    let rank_spell_ids: Vec<_> = talent
-        .ranks
-        .iter()
-        .copied()
-        .take_while(|spell_id| *spell_id != 0)
-        .collect();
-    let prerequisite_spell_id = if talent.prereq_talent == 0 {
-        0
-    } else {
-        talents
-            .catalog
-            .talent(tab.id, talent.prereq_talent)
-            .and_then(|prerequisite| prerequisite.ranks.get(talent.prereq_rank as usize).copied())
-            .unwrap_or(0)
-    };
-    let tree_spell_ids: Vec<_> = talents
-        .catalog
-        .talents_in_tab(tab.id)
-        .iter()
-        .flat_map(|talent| talent.ranks)
-        .filter(|spell_id| *spell_id != 0)
-        .collect();
-    let class_spell_ids: Vec<_> = talents
-        .catalog
-        .tabs_for_class(appearance.race, appearance.class)
-        .into_iter()
-        .flat_map(|tab| talents.catalog.talents_in_tab(tab.id))
-        .flat_map(|talent| talent.ranks)
-        .filter(|spell_id| *spell_id != 0)
-        .collect();
-    let required_spell_id = if talent.required_spell == 0
-        || snapshot.known_spell_ids.contains(&talent.required_spell)
-        || skill_lines.is_some_and(|lines| {
-            lines.catalog.higher_rank_known(
-                talent.required_spell,
-                &snapshot.known_spell_ids.iter().copied().collect(),
-            )
-        }) {
-        0
-    } else {
-        talent.required_spell
-    };
-    match core.learn_talent(benilla_game_core::TalentGrantRules {
-        race_mask: tab.race_mask,
-        class_mask: tab.class_mask,
-        class_spell_ids: &class_spell_ids,
-        tree_spell_ids: &tree_spell_ids,
-        rank_spell_ids: &rank_spell_ids,
-        rank,
-        tier: talent.row,
-        required_spell_id,
-        prerequisite_spell_id,
-    }) {
-        Ok(purchase) => {
-            let mut events: Vec<_> = purchase
-                .learned_spell_ids
-                .into_iter()
-                .map(|spell_id| SessionEvent::SpellLearned { spell_id })
-                .collect();
-            if let Some(id) = core.active() {
-                events.push(SessionEvent::ObjectValues {
-                    guid: id.presentation_guid(),
-                    fields: ObjectFields::from_pairs(&[(1102, purchase.remaining_points)]),
-                });
-            }
-            send_gameplay_events(channels, events);
-            save_after_command(core, persistence);
-        }
-        Err(error) => warn!("offline gameplay: rejected talent {talent_id} rank {rank}: {error:?}"),
-    }
+        .find(|spawn| spawn.entry == entry && spawn.source_guid & 0x00ff_ffff == source_guid)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -4561,10 +3218,7 @@ fn advance_offline_combat_with_talents(
                 ));
                 send_gameplay_events(channels, events);
             }
-            CombatUpdate::RangedImpact {
-                spell_id,
-                impact,
-            } => {
+            CombatUpdate::RangedImpact { spell_id, impact } => {
                 // A ranged white swing (Auto Shot, Shoot, Throw): the shot's own go and damage
                 // log rides the white shot spell, not the melee attacker state.
                 changed = true;
@@ -4783,7 +3437,8 @@ fn advance_offline_combat_with_talents(
                 send_gameplay_events(
                     channels,
                     [SessionEvent::ObjectDestroyed(imported_guid(
-                        creature_entry, spell_id,
+                        creature_entry,
+                        spell_id,
                     ))],
                 );
             }
@@ -5045,9 +3700,7 @@ fn advance_offline_combat_with_talents(
                 let _ = (spawn_id, applied, remaining_ms);
             }
             CombatUpdate::PlayerAura {
-                slot,
-                remaining_ms,
-                ..
+                slot, remaining_ms, ..
             } => {
                 // The buff's aura block goes up with the cast; a timed buff carries its remaining
                 // lifetime, and a permanent one shows the icon with no timer.
@@ -5293,8 +3946,7 @@ fn stream_offline_spawns(
         return;
     }
     *last = Some(position);
-    core.0
-        .populate_near(position, OFFLINE_CONTENT_RADIUS_YARDS);
+    core.0.populate_near(position, OFFLINE_CONTENT_RADIUS_YARDS);
     let content = benilla_game_core::content::creature_content();
     let mut events = Vec::new();
     for spawn in content.spawns_near(
@@ -5358,216 +4010,6 @@ fn update_local_player(
     if *save_elapsed >= 5.0 {
         *save_elapsed = 0.0;
         save_after_command(&core.0, &mut persistence);
-    }
-}
-
-fn exit_after_roster_boot(
-    state: Res<State<crate::char_select::ClientState>>,
-    mut frames: Local<u8>,
-    mut exit: MessageWriter<AppExit>,
-) {
-    if *state.get() != crate::char_select::ClientState::CharSelect {
-        return;
-    }
-    *frames = frames.saturating_add(1);
-    if *frames == 3 {
-        info!("offline: local roster reached without transport");
-        exit.write(AppExit::Success);
-    }
-}
-
-fn enter_offline_smoke_character(
-    state: Res<State<crate::char_select::ClientState>>,
-    core: Res<OfflineGameCore>,
-    pick: Res<crate::net::CharPick>,
-    mut requested: Local<bool>,
-) {
-    if *requested || *state.get() != crate::char_select::ClientState::CharSelect {
-        return;
-    }
-    let Some(id) = core.0.selected() else {
-        return;
-    };
-    if pick
-        .0
-        .send(CharRequest::Enter(id.presentation_guid()))
-        .is_ok()
-    {
-        *requested = true;
-        info!("offline smoke: entering selected local character");
-    }
-}
-
-fn exit_after_world_smoke(
-    mut commands: Commands,
-    state: Res<State<crate::char_select::ClientState>>,
-    loading: Res<crate::loading_screen::LoadingScreen>,
-    core: Res<OfflineGameCore>,
-    player: Res<crate::player::Player>,
-    camera: Query<&Transform, With<benilla_world::view::WorldCamera>>,
-    self_store: Query<&crate::net::ObjectStore, With<crate::net::SelfPlayer>>,
-    time: Res<Time>,
-    mut entered_at: Local<Option<f32>>,
-    mut shot_requested: Local<bool>,
-    mut smoke_seconds: Local<Option<f32>>,
-    mut exit: MessageWriter<AppExit>,
-) {
-    if *state.get() != crate::char_select::ClientState::InWorld || loading.covering() {
-        *entered_at = None;
-        return;
-    }
-    let started = *entered_at.get_or_insert(time.elapsed_secs());
-    let elapsed = time.elapsed_secs() - started;
-    let hold = *smoke_seconds.get_or_insert_with(|| {
-        std::env::var("BENILLA_OFFLINE_SMOKE_SECONDS")
-            .ok()
-            .and_then(|value| value.parse::<f32>().ok())
-            .filter(|seconds| seconds.is_finite() && *seconds >= 0.0)
-            .unwrap_or(6.0)
-    });
-    if elapsed >= hold && !*shot_requested {
-        let camera_pose = camera
-            .single()
-            .ok()
-            .map(|transform| (transform.translation, transform.forward().as_vec3()));
-        let self_health = self_store
-            .single()
-            .ok()
-            .map(|store| (store.0.unit_health(), store.0.unit_max_health()));
-        info!(
-            "offline smoke: player active={} settling={} pos={:?}, camera={camera_pose:?}, health={self_health:?}",
-            player.active, player.settling, player.pos,
-        );
-        if std::env::var_os("BENILLA_OFFLINE_SMOKE_CAST").is_some() {
-            let first_health = core.0.hostiles().first().map(|mob| mob.health);
-            info!(
-                "offline smoke: combat spawned={} first_hostile_health={first_health:?} mana={}",
-                core.0.hostiles().len(),
-                core.0.active_mana(),
-            );
-        }
-        if let Ok(path) = std::env::var("BENILLA_OFFLINE_SMOKE_SHOT") {
-            use bevy::render::view::screenshot::{save_to_disk, Screenshot};
-            commands
-                .spawn(Screenshot::primary_window())
-                .observe(save_to_disk(path.clone()));
-            info!("offline smoke: capturing world to {path}");
-        }
-        *shot_requested = true;
-    }
-    if elapsed >= hold + 1.0 {
-        info!("offline smoke: world stayed active for {hold:.0} seconds");
-        exit.write(AppExit::Success);
-    }
-}
-
-/// `BENILLA_OFFLINE_SMOKE_CAST=1` sends two real offline Fireball commands at the first spawned
-/// hostile, through the same command channel as the stock action bar.
-fn drive_offline_smoke_cast(
-    state: Res<State<crate::char_select::ClientState>>,
-    loading: Res<crate::loading_screen::LoadingScreen>,
-    time: Res<Time>,
-    core: Res<OfflineGameCore>,
-    spells: Option<Res<crate::ui_action::Spells>>,
-    commands: Res<crate::net::NetCommands>,
-    mut casts_sent: Local<u8>,
-    mut entered_at: Local<Option<f32>>,
-) {
-    if std::env::var_os("BENILLA_OFFLINE_SMOKE_CAST").is_none() {
-        return;
-    }
-    if *state.get() != crate::char_select::ClientState::InWorld || loading.covering() {
-        *entered_at = None;
-        *casts_sent = 0;
-        return;
-    }
-    let Some(spells) = spells else {
-        return;
-    };
-    if spells
-        .catalog
-        .get(benilla_game_core::FIREBALL_SPELL_ID)
-        .is_none()
-    {
-        return;
-    }
-    let elapsed = time.elapsed_secs() - *entered_at.get_or_insert(time.elapsed_secs());
-    if *casts_sent >= 2 || elapsed < f32::from(*casts_sent) * 2.0 {
-        return;
-    }
-    if core.0.active().is_none() {
-        return;
-    }
-    let Some(target) = core.0.hostiles().first().and_then(combat_target_guid) else {
-        return;
-    };
-    if commands
-        .0
-        .send(crate::net::ClientCommand::CastSpell {
-            spell_id: benilla_game_core::FIREBALL_SPELL_ID,
-            target: Some(target),
-        })
-        .is_ok()
-    {
-        *casts_sent += 1;
-        info!("offline smoke: sent Fireball command {}/2", *casts_sent);
-    }
-}
-
-/// `BENILLA_OFFLINE_SMOKE_WALK_SECONDS`: optionally exercise the real forward binding after the
-/// loading cover clears; the default smoke remains stationary.
-fn drive_offline_smoke_walk(
-    state: Res<State<crate::char_select::ClientState>>,
-    loading: Res<crate::loading_screen::LoadingScreen>,
-    time: Res<Time>,
-    mut keys: ResMut<ButtonInput<KeyCode>>,
-    mut keyboard: MessageWriter<bevy::input::keyboard::KeyboardInput>,
-    mut walk_seconds: Local<Option<f32>>,
-    mut started: Local<Option<f32>>,
-    mut finished: Local<bool>,
-) {
-    let seconds = *walk_seconds.get_or_insert_with(|| {
-        std::env::var("BENILLA_OFFLINE_SMOKE_WALK_SECONDS")
-            .ok()
-            .and_then(|value| value.parse::<f32>().ok())
-            .filter(|seconds| seconds.is_finite() && *seconds > 0.0)
-            .unwrap_or(0.0)
-    });
-    if seconds == 0.0 {
-        return;
-    }
-    if *state.get() != crate::char_select::ClientState::InWorld || loading.covering() {
-        *started = None;
-        keys.release(KeyCode::KeyW);
-        return;
-    }
-    let start = *started.get_or_insert_with(|| time.elapsed_secs());
-    if time.elapsed_secs() - start < seconds {
-        keys.press(KeyCode::KeyW);
-        keyboard.write(bevy::input::keyboard::KeyboardInput {
-            key_code: KeyCode::KeyW,
-            logical_key: bevy::input::keyboard::Key::Unidentified(
-                bevy::input::keyboard::NativeKey::Unidentified,
-            ),
-            state: bevy::input::ButtonState::Pressed,
-            text: None,
-            repeat: time.elapsed_secs() > start,
-            window: Entity::PLACEHOLDER,
-        });
-    } else if !*finished {
-        keys.release(KeyCode::KeyW);
-        keyboard.write(bevy::input::keyboard::KeyboardInput {
-            key_code: KeyCode::KeyW,
-            logical_key: bevy::input::keyboard::Key::Unidentified(
-                bevy::input::keyboard::NativeKey::Unidentified,
-            ),
-            state: bevy::input::ButtonState::Released,
-            text: None,
-            repeat: false,
-            window: Entity::PLACEHOLDER,
-        });
-        info!("offline smoke: forward input held for {seconds:.1}s");
-        *finished = true;
     }
 }
 
@@ -6457,7 +4899,11 @@ mod tests {
                 );
                 let unique: std::collections::HashSet<u64> =
                     fresh.iter().map(|(guid, _)| *guid).collect();
-                assert_eq!(unique.len(), fresh.len(), "no duplicate creates in one stream");
+                assert_eq!(
+                    unique.len(),
+                    fresh.len(),
+                    "no duplicate creates in one stream"
+                );
                 assert!(
                     fresh
                         .iter()
@@ -6530,14 +4976,12 @@ mod tests {
             .run_system_once(drive_offline_gameplay)
             .expect("watch command handled");
         let events: Vec<_> = received.try_iter().collect();
-        let watched = events
-            .iter()
-            .find_map(|event| match event {
-                SessionEvent::ObjectValues { guid, fields } if *guid == player_guid => {
-                    fields.player_watched_faction()
-                }
-                _ => None,
-            });
+        let watched = events.iter().find_map(|event| match event {
+            SessionEvent::ObjectValues { guid, fields } if *guid == player_guid => {
+                fields.player_watched_faction()
+            }
+            _ => None,
+        });
         assert_eq!(
             watched,
             Some(20),
@@ -6553,14 +4997,12 @@ mod tests {
             .run_system_once(drive_offline_gameplay)
             .expect("unwatch command handled");
         let events: Vec<_> = received.try_iter().collect();
-        let watched = events
-            .iter()
-            .find_map(|event| match event {
-                SessionEvent::ObjectValues { guid, fields } if *guid == player_guid => {
-                    fields.player_watched_faction()
-                }
-                _ => None,
-            });
+        let watched = events.iter().find_map(|event| match event {
+            SessionEvent::ObjectValues { guid, fields } if *guid == player_guid => {
+                fields.player_watched_faction()
+            }
+            _ => None,
+        });
         assert_eq!(watched, Some(-1), "unticking sends -1, not slot 0");
     }
 
@@ -7008,7 +5450,10 @@ mod tests {
             .iter()
             .find(|item| item.entry == row.item)
             .expect("the bought item is carried");
-        assert_eq!(bought.count, row.buy_count, "BuyCount delivered per purchase");
+        assert_eq!(
+            bought.count, row.buy_count,
+            "BuyCount delivered per purchase"
+        );
 
         let events: Vec<_> = received.try_iter().collect();
         assert!(events.iter().any(|event| matches!(
@@ -7023,9 +5468,9 @@ mod tests {
             SessionEvent::ObjectValues { fields, .. }
                 if fields.player_money() == Some(expected_money)
         )));
-        assert!(events.iter().any(
-            |event| matches!(event, SessionEvent::ItemCreate { .. })
-        ));
+        assert!(events
+            .iter()
+            .any(|event| matches!(event, SessionEvent::ItemCreate { .. })));
         assert!(events.iter().any(|event| matches!(
             event,
             SessionEvent::ItemPushResult(push)
@@ -7089,9 +5534,9 @@ mod tests {
             .expect("the stack came back");
         assert_eq!(reclaimed.count, 5);
         let events: Vec<_> = received.try_iter().collect();
-        assert!(events
-            .iter()
-            .any(|event| matches!(event, SessionEvent::ObjectDestroyed(guid) if *guid == item_guid)));
+        assert!(events.iter().any(
+            |event| matches!(event, SessionEvent::ObjectDestroyed(guid) if *guid == item_guid)
+        ));
         assert!(events.iter().any(|event| matches!(
             event,
             SessionEvent::ObjectValues { fields, .. }
@@ -7733,6 +6178,55 @@ mod tests {
     }
 
     #[test]
+    fn imported_spawn_preserves_nonzero_addon_sheath_state() {
+        let content = benilla_game_core::content::creature_content();
+        let (spawn, addon) = content
+            .spawn
+            .iter()
+            .find_map(|spawn| {
+                let addon = content.addon_for(spawn.source_guid)?;
+                let template = content.template(spawn.entry)?;
+                (addon.sheath_state != 0 && !is_dnd_test_creature(template))
+                    .then_some((spawn, addon))
+            })
+            .expect("converted world content has a nonzero addon sheath state");
+        let guid = imported_guid(spawn.entry, spawn.source_guid);
+        let mut events = Vec::new();
+        let mut names = crate::names::NameCache::default();
+        let mut patrols = OfflinePatrols::default();
+
+        assert_eq!(
+            emit_imported_spawn(
+                &mut events,
+                content,
+                spawn,
+                None,
+                &[],
+                &[],
+                &mut names,
+                &mut patrols,
+            ),
+            Some(guid)
+        );
+        let fields = events
+            .iter()
+            .find_map(|event| match event {
+                SessionEvent::ObjectCreate {
+                    guid: emitted,
+                    fields,
+                    ..
+                } if *emitted == guid => Some(fields),
+                _ => None,
+            })
+            .expect("converted spawn object");
+        assert_eq!(
+            fields.unit_sheath_state(),
+            Some(addon.sheath_state),
+            "the TBC addon sheath byte reaches UNIT_FIELD_BYTES_2"
+        );
+    }
+
+    #[test]
     fn offline_action_bar_cast_damages_and_respawns_an_imported_hostile() {
         let appearance = Appearance {
             race: 1,
@@ -7778,18 +6272,6 @@ mod tests {
             &mut patrols,
         );
         let entry_events: Vec<_> = received.try_iter().collect();
-        let addon_unit = entry_events.iter().find_map(|event| match event {
-            SessionEvent::ObjectCreate { guid, fields, .. }
-                if *guid == imported_guid(26_007, 96_146) =>
-            {
-                Some(fields)
-            }
-            _ => None,
-        });
-        assert_eq!(
-            addon_unit.and_then(ObjectFields::unit_sheath_state),
-            Some(1)
-        );
         assert!(entry_events.iter().any(|event| matches!(
             event,
             SessionEvent::SpellBook { spell_ids, .. }
@@ -7920,15 +6402,9 @@ mod tests {
                 )));
             }
         }
-        assert_eq!(
-            core.hostile(hostile.spawn_id).unwrap().health,
-            0
-        );
+        assert_eq!(core.hostile(hostile.spawn_id).unwrap().health, 0);
         advance_offline_combat(&mut core, &channels, benilla_game_core::HOSTILE_RESPAWN_MS);
-        assert_eq!(
-            core.hostile(hostile.spawn_id).unwrap().health,
-            60
-        );
+        assert_eq!(core.hostile(hostile.spawn_id).unwrap().health, 60);
         assert!(matches!(
             received.try_recv().unwrap(),
             SessionEvent::ObjectValues { guid, ref fields }
@@ -8173,10 +6649,7 @@ mod tests {
         .unwrap();
         enter_test_world(&mut core, 10);
         assert!(
-            core.snapshot(&id)
-                .unwrap()
-                .known_spell_ids
-                .contains(&688),
+            core.snapshot(&id).unwrap().known_spell_ids.contains(&688),
             "the authored stock-TBC grant puts Summon Imp in the spellbook"
         );
         let hostile = core.hostiles().first().copied().expect("imported target");

@@ -1352,7 +1352,7 @@ impl GameCore {
             count,
             slot,
         };
-        snapshot.inventory.push(item.clone());
+        snapshot.inventory.push(item);
         snapshot.inventory.sort_by_key(|item| item.slot);
         Ok(item)
     }
@@ -3505,7 +3505,7 @@ impl GameCore {
                         slot,
                         spell_id,
                         flags: AURA_FLAG_CANCELABLE | AURA_FLAG_EFF_INDEX_ONE,
-                        level: u8::try_from(caster_level).unwrap_or(1),
+                        level: caster_level.max(1),
                         stacks: 1,
                         remaining_ms,
                     };

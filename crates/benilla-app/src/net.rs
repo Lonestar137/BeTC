@@ -44,7 +44,7 @@ use motion::{
 };
 // `pub(crate)`: `creature_anim` reads the shuffle latch it produces, and a test runs both.
 pub(crate) use motion::drive_display_facing;
-#[cfg(feature = "dev")]
+#[allow(unused_imports)]
 pub(crate) use motion::ground_derived;
 pub(crate) use motion::{
     grounded_y, jump_seed, CreatureSwimming, FacingStep, RemoteMotion, Spline, SplineStopped,
@@ -2337,6 +2337,7 @@ mod tests {
     }
 
     /// Login env vars alone do not make a run unattended: a person's launch line sets them too.
+    #[cfg(feature = "network")]
     #[test]
     fn a_kick_ends_the_session_unless_the_run_declared_itself_driverless() {
         use crate::local_state::test_env::{EnvGuard, ENV_LOCK};

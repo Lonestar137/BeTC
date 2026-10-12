@@ -711,13 +711,10 @@ fn every_widget_method_answers_the_reference_s_return_kinds() {
 /// token, but it never turns `1` into `true`.
 const ARG_LADDER: &[&str] = &["", "\"player\"", "1", "1, 1", "\"player\", 1"];
 
-/// 1.12 has no boolean query: of the table's trustworthy rows only `IsPetAttackActive` and Lua's
-/// own `rawequal` answer a `boolean`, and every other predicate pushes `1` or `nil`, which
-/// `x == 1`, `tostring(x)` or a saved variable tell apart from `true`.
+/// In TBC 2.4.3, `GetLootSlotInfo` adds a boolean `locked` result to the 1.12 query surface.
 #[test]
 fn no_query_binding_answers_a_lua_boolean() {
-    // The reference's own two; the list may only shrink.
-    const REFERENCE_BOOLEANS: &[&str] = &["IsPetAttackActive", "rawequal"];
+    const TBC_BOOLEANS: &[&str] = &["GetLootSlotInfo", "IsPetAttackActive", "rawequal"];
 
     let all = rows();
     let mut s = benilla_ui::script::UiScript::new().expect("VM");
@@ -740,7 +737,7 @@ fn no_query_binding_answers_a_lua_boolean() {
                 .iter()
                 .any(|p| n.starts_with(p))
         })
-        .filter(|n| !REFERENCE_BOOLEANS.contains(n))
+        .filter(|n| !TBC_BOOLEANS.contains(n))
         .collect();
     names.sort_unstable();
     names.dedup();
@@ -774,8 +771,7 @@ fn no_query_binding_answers_a_lua_boolean() {
     );
     assert!(
         booleans.is_empty(),
-        "{} bindings answer a Lua boolean; 1.12 pushes 1/nil and only {REFERENCE_BOOLEANS:?} are \
-         boolean in the reference:\n  {}",
+        "{} bindings answer an undocumented Lua boolean; TBC 2.4.3 documents {TBC_BOOLEANS:?}:\n  {}",
         booleans.len(),
         booleans.join("\n  ")
     );
