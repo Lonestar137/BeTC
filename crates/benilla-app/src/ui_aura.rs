@@ -577,9 +577,12 @@ fn feed_auras(
     script.set_tracking(tracking);
     if changed {
         script.fire_event("UNIT_AURA", vec![ScriptValue::Str("player".into())]);
-        // The cache rebuild's own event, no arguments (`0x4e437f`): the stock buff bar and
-        // `MiniMapTrackingFrame` register it, the unit frames `UNIT_AURA`.
+        // The cache rebuild's own event, no arguments (`0x4e437f`): the stock buff bar and the
+        // action buttons register it, the unit frames `UNIT_AURA`.
         script.fire_event("PLAYER_AURAS_CHANGED", vec![]);
+        // Build 8606's tracking button reads `GetTrackingTexture()` on its own event
+        // (`Minimap.xml:474`); 1.12's `MiniMapTrackingFrame` rode `PLAYER_AURAS_CHANGED`.
+        script.fire_event("MINIMAP_UPDATE_TRACKING", vec![]);
     }
     // The reference fires these from the live descriptor's aura fields and the record's aura bits
     // (`0x5e57d8`, the pet's `0x5e58f1`), to every token naming the guid (`0x515e50`); a token

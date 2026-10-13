@@ -72,8 +72,10 @@ fn minimap_zoom_buttons_resync_when_switching_inside_and_outside() {
     assert!(enabled(&s, "MinimapZoomOut"));
 }
 
-/// Stock `MiniMapTrackingFrame` (`Minimap.xml:109-174`) follows `GetTrackingTexture()` on
-/// `PLAYER_AURAS_CHANGED`, which the aura feed fires beside `UNIT_AURA`.
+/// Build 8606 renames 1.12's `MiniMapTrackingFrame` to `MiniMapTracking` (`Minimap.xml:421`) and
+/// leaves the button up always: what follows `GetTrackingTexture()` on `MINIMAP_UPDATE_TRACKING` is
+/// its ICON (`Minimap.lua:259`), blank when nothing is tracked. The aura feed fires the event
+/// beside `UNIT_AURA`.
 #[test]
 fn tracking_frame_follows_get_tracking_texture_across_player_auras_changed() {
     let _data = benilla_formats::wow_data_or_skip!();
@@ -96,11 +98,11 @@ fn tracking_frame_follows_get_tracking_texture_across_player_auras_changed() {
     load_xml(&s, "Interface\\FrameXML\\BattlefieldFrame.xml");
     load_xml(&s, "Interface\\FrameXML\\Minimap.xml");
 
-    let vis = |s: &UiScript| {
-        s.eval::<bool>("return MiniMapTrackingFrame:IsVisible()")
+    let icon = |s: &UiScript| {
+        s.eval::<Option<String>>("return MiniMapTrackingIcon:GetTexture()")
             .unwrap()
     };
-    assert!(!vis(&s), "no tracking at load — the frame starts hidden");
+    assert_eq!(icon(&s), None, "no tracking at load — the icon is blank");
 
     // A tracking aura: Find Minerals, spell 2580.
     s.set_tracking(Some(TrackingState {
@@ -109,12 +111,16 @@ fn tracking_frame_follows_get_tracking_texture_across_player_auras_changed() {
         icon: Some("Interface\\Icons\\Trade_Mining".into()),
         cancelable: true,
     }));
-    s.fire_event("PLAYER_AURAS_CHANGED", vec![]);
-    assert!(vis(&s), "a live tracking texture shows the icon");
+    s.fire_event("MINIMAP_UPDATE_TRACKING", vec![]);
+    assert_eq!(
+        icon(&s).as_deref(),
+        Some("Interface\\Icons\\Trade_Mining"),
+        "a live tracking texture shows the icon"
+    );
 
     s.set_tracking(None);
-    s.fire_event("PLAYER_AURAS_CHANGED", vec![]);
-    assert!(!vis(&s), "no tracking texture hides the frame again");
+    s.fire_event("MINIMAP_UPDATE_TRACKING", vec![]);
+    assert_eq!(icon(&s), None, "no tracking texture blanks the icon again");
 }
 
 /// The cluster and the stock `GameTime.xml`, the clock at `hour:minute` as the app pushes it.

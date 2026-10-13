@@ -514,7 +514,7 @@ pub(super) const UIPARENT_STAND_INS: &str = r#"
             -- Build 8606's manage pass and the windows it reaches index these unguarded, and a
             -- one-window kit may stop short of the file that declares each.
             "MultiBarBottomRight", "InterfaceOptionsFrame", "PlayerArrowEffectFrame",
-            "AudioOptionsFrame", "WorldFrame", "HelpFrame", "Minimap", "MiniMapTrackingFrame",
+            "AudioOptionsFrame", "WorldFrame", "HelpFrame", "Minimap", "MiniMapTracking",
             "Blizzard_CombatLog_Filters", "MacroFrameSelectedMacroButtonIcon" })
         -- …and every FRAME the managed table itself names (`frame:IsObjectType` on a nil is what
         -- a kit missing one raises) — read off the table, so a row added there needs nothing here.
