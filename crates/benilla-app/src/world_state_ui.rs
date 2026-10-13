@@ -132,6 +132,7 @@ fn admits(row: &WorldStateUiRow, map: u32, area: u32, defense_channel: bool) -> 
 /// ids answer their states' values.
 fn resolve(row: &WorldStateUiRow, states: &WorldStates) -> WorldStateUiView {
     WorldStateUiView {
+        ui_type: row.ui_type as i32,
         // No `StateVariable` answers 1 (`0x4c5ad8`).
         ui_state: match row.state_variable {
             0 => 1,

@@ -6,9 +6,13 @@ use mlua::{Lua, MultiValue, Value};
 
 use super::Model;
 
-/// One row of the readout: the ten values `GetWorldStateUIInfo` returns, in order.
+/// One row of the readout: the eleven values `GetWorldStateUIInfo` returns, in order.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct WorldStateUiView {
+    /// `uiType`, build 8606's FIRST value (`0x4c5a70`): the `WorldStateUI.dbc` `Type` column, `0`
+    /// always up and `1` only while the player sits in the zone's defense channel. 1.12 answered
+    /// ten values and left the type to the host's own row filter.
+    pub ui_type: i32,
     /// `uiState`: the row's `StateVariable` world state, or 1 (on) when it has none (`0x4c5ad8`).
     pub ui_state: i32,
     /// The label, macro-expanded, the only expanded string of the ten.
@@ -86,6 +90,7 @@ pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
             };
             let s = |v: &str| -> mlua::Result<Value> { Ok(Value::String(lua.create_string(v)?)) };
             Ok(MultiValue::from_vec(vec![
+                Value::Integer(i64::from(r.ui_type)),
                 Value::Integer(i64::from(r.ui_state)),
                 s(&r.text)?,
                 s(&r.icon)?,
