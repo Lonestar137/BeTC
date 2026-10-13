@@ -280,7 +280,7 @@ pub fn power_token(ty: u8) -> &'static str {
 impl super::UiScript {
     /// Push, or clear with `None`, a token's snapshot; the app's feed calls it each frame before
     /// event dispatch, so a frame's `OnEvent` sees current values.
-    pub fn set_unit(&mut self, token: &str, state: Option<UnitState>) {
+    pub fn set_unit(&self, token: &str, state: Option<UnitState>) {
         {
             let mut model = self.model_mut();
             match state {

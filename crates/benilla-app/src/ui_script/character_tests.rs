@@ -901,7 +901,7 @@ fn a_keybind_page_switch_moves_the_tab_row_with_it() {
         (2, "PetPaperDollFrame"),
         (3, "ReputationFrame"),
         (4, "SkillFrame"),
-        (5, "HonorFrame"),
+        (5, "PVPFrame"),
     ];
     for (id, page) in row {
         assert_eq!(

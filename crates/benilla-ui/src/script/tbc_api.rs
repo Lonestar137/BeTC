@@ -20,6 +20,7 @@ pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
         "GetArenaTeam",
         "GetTotemInfo",
         "GetCurrentTitle",
+        "GetTitleName",
         "GetLFGTypes",
         "GetLFGTypeEntries",
         "IsReferAFriendLinked",
@@ -34,6 +35,10 @@ pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
         "GetChannelDisplayInfo",
         "GetTrackingInfo",
         "IsSelectedSpell",
+        "GetVoiceStatus",
+        "UnitIsInMyGuild",
+        "GetMuteStatus",
+        "CanSendLFGQuery",
     ] {
         g.set(
             name,
@@ -59,6 +64,10 @@ pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
         "GetNumVoiceSessionMembersBySessionID",
         "GetArenaCurrency",
         "GetSpellCritChanceFromIntellect",
+        "GetUnitHealthRegenRateFromSpirit",
+        "GetUnitManaRegenRateFromSpirit",
+        "GetCombatRating",
+        "GetNumGuildBankTabs",
     ] {
         g.set(name, lua.create_function(|_, _: MultiValue| Ok(0i64))?)?;
     }
@@ -71,6 +80,8 @@ pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
         "ClearLFMAutofill",
         "ClearLFGAutojoin",
         "CancelSummon",
+        "InviteUnit",
+        "UpdateAddOnMemoryUsage",
     ] {
         g.set(name, lua.create_function(|_, _: MultiValue| Ok(()))?)?;
     }
@@ -79,6 +90,13 @@ pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
     g.set(
         "GetCurrentDungeonDifficulty",
         lua.create_function(|_, _: MultiValue| Ok(1i64))?,
+    )?;
+
+    // `GetDeathReleasePosition()`: the corpse's world position for the world map's death-release
+    // marker; the offline game has no corpse run, so `0, 0`, and the marker hides.
+    g.set(
+        "GetDeathReleasePosition",
+        lua.create_function(|_, ()| Ok((0i64, 0i64)))?,
     )?;
 
     // `Sound_GameSystem_GetOutputDriverNameByIndex(i)` (`0x77e7e0`): no driver list, no name.
@@ -91,6 +109,13 @@ pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
     // folds into the stamina tooltip; 1 is the unmodified body.
     g.set(
         "GetUnitMaxHealthModifier",
+        lua.create_function(|_, _: MultiValue| Ok(1.0f64))?,
+    )?;
+
+    // `GetUnitHealthModifier(unit)`: build 8606's companion to the above, read at
+    // `PaperDollFrame.lua:236` and `PetPaperDollFrame.lua`; 1 is the unmodified body.
+    g.set(
+        "GetUnitHealthModifier",
         lua.create_function(|_, _: MultiValue| Ok(1.0f64))?,
     )?;
 

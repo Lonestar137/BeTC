@@ -2644,7 +2644,7 @@ fn drive_offline_gameplay(
             on_next_swing,
         )) = cast_data
         {
-            let started = start_offline_cast(
+            if start_offline_cast(
                 &mut core.0,
                 &channels,
                 command,
@@ -2656,12 +2656,17 @@ fn drive_offline_gameplay(
                 effect,
                 combo,
                 on_next_swing,
-            );
-            if started {
+            )
+            .is_ok()
+            {
                 save_after_command(&core.0, &mut persistence);
             }
         } else if let crate::net::ClientCommand::CastSpell { spell_id, .. } = &command {
             warn!("offline gameplay: spell {spell_id} has no available direct damage/heal handler");
+            // A press the offline simulation cannot resolve answers with the wire's refusal
+            // (`SMSG_CAST_RESULT`), never silence: silence leaves the client's in-flight guard
+            // armed and the next press meets "Another action is in progress".
+            let _ = refused_cast(&channels, *spell_id, CAST_FAIL_ERROR);
         }
     }
     if core.0.active().is_none() {
@@ -2845,12 +2850,12 @@ fn start_offline_cast(
     effect: benilla_game_core::DirectSpellEffect,
     combo: benilla_game_core::ComboEffect,
     on_next_swing: bool,
-) -> bool {
+) -> Result<(), u8> {
     let crate::net::ClientCommand::CastSpell { spell_id, target } = command else {
-        return false;
+        return Err(CAST_FAIL_ERROR);
     };
     let Some(id) = core.active().cloned() else {
-        return false;
+        return refused_cast(channels, spell_id, CAST_FAIL_ERROR);
     };
     let player_guid = id.presentation_guid();
     let (presentation_target, cast_target) = match effect {
@@ -2864,14 +2869,16 @@ fn start_offline_cast(
         | benilla_game_core::DirectSpellEffect::WeaponDamage { .. }
         | benilla_game_core::DirectSpellEffect::Channel { .. }
         | benilla_game_core::DirectSpellEffect::Control(_) => {
-            let Some(target) = target else { return false };
+            let Some(target) = target else {
+                return refused_cast(channels, spell_id, CAST_FAIL_BAD_TARGETS);
+            };
             let Some(spawn_id) = core
                 .hostiles()
                 .iter()
                 .find(|hostile| combat_target_guid(hostile) == Some(target))
                 .map(|hostile| hostile.spawn_id)
             else {
-                return false;
+                return refused_cast(channels, spell_id, CAST_FAIL_BAD_TARGETS);
             };
             (
                 Some(target),
@@ -2886,7 +2893,7 @@ fn start_offline_cast(
                     .iter()
                     .find(|ally| imported_guid(ally.creature_entry, ally.spawn_id) == t)
                 else {
-                    return false;
+                    return refused_cast(channels, spell_id, CAST_FAIL_BAD_TARGETS);
                 };
                 (Some(t), benilla_game_core::SpellTarget::Ally(ally.spawn_id))
             }
@@ -2916,7 +2923,7 @@ fn start_offline_cast(
                             .find(|hostile| combat_target_guid(hostile) == Some(t))
                             .map(|hostile| hostile.spawn_id)
                         else {
-                            return false;
+                            return refused_cast(channels, spell_id, CAST_FAIL_BAD_TARGETS);
                         };
                         (Some(t), benilla_game_core::SpellTarget::Hostile(spawn_id))
                     }
@@ -2947,7 +2954,7 @@ fn start_offline_cast(
                 cost.amount,
                 core.active_power(cost.kind)
             );
-            true
+            Ok(())
         }
         Ok(benilla_game_core::CastOutcome::Cast) => {
             info!(
@@ -2964,13 +2971,56 @@ fn start_offline_cast(
             }];
             events.extend(player_power_events(player_guid, core));
             send_gameplay_events(channels, events);
-            true
+            Ok(())
         }
         Err(error) => {
             debug!("offline gameplay: rejected spell {spell_id}: {error}");
-            false
+            refused_cast(channels, spell_id, cast_failure_reason(&error))
         }
     }
+}
+
+/// The wire's `SpellCastResult` codes ([`crate::ui_action::cast_fail`]'s `CAST_FAIL_KEYS` order)
+/// the offline refusals answer with: the red error line names the reason and `HandleCastResult`
+/// opens the in-flight guard the press had armed.
+const CAST_FAIL_BAD_TARGETS: u8 = 0x0a;
+const CAST_FAIL_CASTER_DEAD: u8 = 0x13;
+const CAST_FAIL_ERROR: u8 = 0x1c;
+const CAST_FAIL_NOT_READY: u8 = 0x3c;
+const CAST_FAIL_NO_COMBO_POINTS: u8 = 0x46;
+const CAST_FAIL_NO_POWER: u8 = 0x4d;
+const CAST_FAIL_OUT_OF_RANGE: u8 = 0x59;
+const CAST_FAIL_SPELL_IN_PROGRESS: u8 = 0x61;
+
+/// The [`CoreError`](benilla_game_core::CoreError) a refusal owes the wire's reason byte.
+fn cast_failure_reason(error: &benilla_game_core::CoreError) -> u8 {
+    use benilla_game_core::CoreError as E;
+    match error {
+        E::CharacterDead => CAST_FAIL_CASTER_DEAD,
+        E::OutOfRange => CAST_FAIL_OUT_OF_RANGE,
+        E::InsufficientPower => CAST_FAIL_NO_POWER,
+        E::NoComboPoints => CAST_FAIL_NO_COMBO_POINTS,
+        E::CastInProgress => CAST_FAIL_SPELL_IN_PROGRESS,
+        E::AbilityOnCooldown => CAST_FAIL_NOT_READY,
+        E::InvalidTarget => CAST_FAIL_BAD_TARGETS,
+        _ => CAST_FAIL_ERROR,
+    }
+}
+
+/// A refused cast's answer (`SMSG_CAST_RESULT`): the client shows the reason and clears the
+/// in-flight guard (`HandleCastResult`), where a silent drop leaves every later press meeting
+/// "Another action is in progress" (`6e4d97`) for the whole provisional window.
+fn refused_cast(channels: &OfflineChannels, spell_id: u32, reason: u8) -> Result<(), u8> {
+    send_gameplay_events(
+        channels,
+        [SessionEvent::CastResult {
+            spell_id,
+            success: false,
+            reason: Some(reason),
+            arg: None,
+        }],
+    );
+    Err(reason)
 }
 
 /// The player's four power pools as descriptor writes: mana 23, rage 24 (tenths in the
@@ -3098,6 +3148,42 @@ fn advance_offline_combat_with_talents(
     let updates = core.advance_combat(elapsed_ms);
     for update in updates {
         match update {
+            CombatUpdate::CastResolved { spell_id, target } => {
+                // The cast's own `SMSG_SPELL_GO`: its cast bar finishes and the in-flight guard
+                // opens (`HandleSpellGo`). Without it a landed buff leaves the bar mid-cast and
+                // every later press answers "Another action is in progress" (`6e4d97`) until the
+                // provisional deadline lapses. The GO's hit list is the cast's target, the caster
+                // itself when the effect landed on self.
+                changed = true;
+                let Some(id) = core.active() else { continue };
+                let guid = target
+                    .and_then(|spawn_id| {
+                        core.hostile(spawn_id)
+                            .and_then(|hostile| combat_target_guid(&hostile))
+                            .or_else(|| {
+                                core.allies()
+                                    .iter()
+                                    .find(|ally| ally.spawn_id == spawn_id)
+                                    .map(|ally| imported_guid(ally.creature_entry, ally.spawn_id))
+                            })
+                    })
+                    .unwrap_or_else(|| id.presentation_guid());
+                send_gameplay_events(
+                    channels,
+                    [SessionEvent::SpellGo {
+                        caster: id.presentation_guid(),
+                        spell_id,
+                        cast_flags: 0x100,
+                        hits: vec![guid],
+                        misses: Vec::new(),
+                        target: Some(guid),
+                        go_target: None,
+                        dest: None,
+                        ammo_display_id: None,
+                        item_caster: None,
+                    }],
+                );
+            }
             CombatUpdate::Impact(impact) => {
                 changed = true;
                 let Some(id) = core.active() else {
@@ -3109,20 +3195,10 @@ fn advance_offline_combat_with_talents(
                 let Some(guid) = combat_target_guid(&hostile) else {
                     continue;
                 };
-                let mut events = vec![
-                    SessionEvent::SpellGo {
-                        caster: id.presentation_guid(),
-                        spell_id: benilla_game_core::FIREBALL_SPELL_ID,
-                        cast_flags: 0x100,
-                        hits: vec![guid],
-                        misses: Vec::new(),
-                        target: Some(guid),
-                        go_target: None,
-                        dest: None,
-                        ammo_display_id: None,
-                        item_caster: None,
-                    },
-                    SessionEvent::SpellDamageLog(benilla_protocol::messages::SpellDamageLog {
+                // The damage log and the creature's state ride the cast's GO (`CastResolved`
+                // above), which is the one resolution the client's guard waits for.
+                let mut events = vec![SessionEvent::SpellDamageLog(
+                    benilla_protocol::messages::SpellDamageLog {
                         target: guid,
                         attacker: id.presentation_guid(),
                         spell_id: benilla_game_core::FIREBALL_SPELL_ID,
@@ -3133,8 +3209,8 @@ fn advance_offline_combat_with_talents(
                         periodic: false,
                         blocked: 0,
                         hit_info: 0,
-                    }),
-                ];
+                    },
+                )];
                 events.extend(hostile_spell_state_events(
                     guid,
                     &hostile,
@@ -3234,20 +3310,10 @@ fn advance_offline_combat_with_talents(
                 let Some(guid) = combat_target_guid(&hostile) else {
                     continue;
                 };
-                let mut events = vec![
-                    SessionEvent::SpellGo {
-                        caster: id.presentation_guid(),
-                        spell_id,
-                        cast_flags: 0x100,
-                        hits: vec![guid],
-                        misses: Vec::new(),
-                        target: Some(guid),
-                        go_target: None,
-                        dest: None,
-                        ammo_display_id: None,
-                        item_caster: None,
-                    },
-                    SessionEvent::SpellDamageLog(benilla_protocol::messages::SpellDamageLog {
+                // The GO rides the cast's `CastResolved`; this is its damage log and the hit
+                // creature's state.
+                let mut events = vec![SessionEvent::SpellDamageLog(
+                    benilla_protocol::messages::SpellDamageLog {
                         target: guid,
                         attacker: id.presentation_guid(),
                         spell_id,
@@ -3258,8 +3324,8 @@ fn advance_offline_combat_with_talents(
                         periodic: false,
                         blocked: 0,
                         hit_info: 0,
-                    }),
-                ];
+                    },
+                )];
                 events.extend(hostile_spell_state_events(
                     guid,
                     &hostile,
@@ -3277,21 +3343,10 @@ fn advance_offline_combat_with_talents(
                     continue;
                 };
                 let guid = id.presentation_guid();
+                // The GO rides the cast's `CastResolved`; this is its heal log and the new health.
                 send_gameplay_events(
                     channels,
                     [
-                        SessionEvent::SpellGo {
-                            caster: guid,
-                            spell_id,
-                            cast_flags: 0x100,
-                            hits: vec![guid],
-                            misses: Vec::new(),
-                            target: Some(guid),
-                            go_target: None,
-                            dest: None,
-                            ammo_display_id: None,
-                            item_caster: None,
-                        },
                         SessionEvent::SpellHealLog(benilla_protocol::messages::SpellHealLog {
                             target: guid,
                             healer: guid,
@@ -4501,7 +4556,8 @@ mod tests {
             benilla_game_core::DirectSpellEffect::Heal { min: 20, max: 20 },
             benilla_game_core::ComboEffect::None,
             false,
-        ));
+        )
+        .is_ok());
         assert!(matches!(
             received.try_recv().unwrap(),
             SessionEvent::SpellStart { target: Some(guid), .. } if guid == player_guid
@@ -4540,7 +4596,8 @@ mod tests {
             },
             benilla_game_core::ComboEffect::None,
             false,
-        ));
+        )
+        .is_ok());
         assert!(matches!(
             received.try_recv().unwrap(),
             SessionEvent::SpellStart { target: Some(guid), .. } if guid == ally_guid
@@ -6207,7 +6264,7 @@ mod tests {
 
         core.update_active(hostile.position, 0).unwrap();
         start_offline_auto_attack(&mut core, &channels, friendly_guid);
-        start_offline_cast(
+        assert!(start_offline_cast(
             &mut core,
             &channels,
             crate::net::ClientCommand::CastSpell {
@@ -6228,10 +6285,13 @@ mod tests {
             },
             benilla_game_core::ComboEffect::None,
             false,
-        );
+        )
+        .is_err());
+        let refused: Vec<_> = received.try_iter().collect();
         assert!(
-            received.try_iter().next().is_none(),
-            "friendly units sharing the unit presentation are not combat targets"
+            matches!(refused.as_slice(), [SessionEvent::CastResult { success: false, .. }]),
+            "friendly units sharing the unit presentation are not combat targets — the press \
+             answers with the wire's refusal, never a cast: {refused:?}"
         );
 
         let neutral_spawn = nearby
@@ -6313,7 +6373,8 @@ mod tests {
                 },
                 benilla_game_core::ComboEffect::None,
                 false,
-            );
+            )
+            .expect("the Fireball cast starts");
             assert!(matches!(
                 received.try_recv().unwrap(),
                 SessionEvent::SpellStart { target: Some(guid), .. } if guid == hostile_guid
@@ -6690,7 +6751,8 @@ mod tests {
                 },
                 benilla_game_core::ComboEffect::None,
                 false,
-            );
+            )
+            .expect("the Fireball cast starts");
             assert!(matches!(
                 received.try_recv().unwrap(),
                 SessionEvent::SpellStart { spell_id: 133, .. }
@@ -7610,6 +7672,254 @@ mod tests {
                 .iter()
                 .all(|aura| aura.spell_id != 28_730),
             "the simulation holds no self aura for it"
+        );
+    }
+
+    /// Acceptance: a finished buff cast lands AND finishes — Frost Armor's (168) `SMSG_SPELL_GO`
+    /// ships with the aura block. The GO's spell id is the one the client's cast bar and in-flight
+    /// guard wait for (`HandleSpellGo`): without it the bar hangs mid-cast and every later press
+    /// meets "Another action is in progress" (`6e4d97`) instead of casting.
+    #[test]
+    fn offline_a_finished_buff_ships_the_spell_go_that_finishes_the_cast() {
+        let Some(spells) = crate::ui_action::real_spells() else {
+            return;
+        };
+        let id = CharacterId::parse("0000000000000000000000000000000c").unwrap();
+        let appearance = Appearance {
+            race: 10,
+            class: 8,
+            gender: 0,
+            skin: 0,
+            face: 0,
+            hair_style: 0,
+            hair_color: 0,
+            facial_hair: 0,
+        };
+        let mut core = GameCore::default();
+        core.create_character(
+            id.clone(),
+            "Melaris",
+            appearance,
+            starting_position(10).unwrap(),
+        )
+        .unwrap();
+        enter_test_world(&mut core, 10);
+
+        let (_pick_tx, picks) = crossbeam_channel::unbounded();
+        let (events, received) = crossbeam_channel::unbounded();
+        let (commands, command_receiver) = crossbeam_channel::unbounded();
+        let mut app = App::new();
+        app.insert_resource(OfflineChannels {
+            picks,
+            events,
+            commands: command_receiver,
+        })
+        .insert_resource(OfflineGameCore(core))
+        .insert_resource(OfflinePersistence::new(false))
+        .insert_resource(Time::<()>::default())
+        .insert_resource(spells);
+
+        commands
+            .send(crate::net::ClientCommand::CastSpell {
+                spell_id: 168,
+                target: Some(id.presentation_guid()),
+            })
+            .unwrap();
+        app.world_mut()
+            .run_system_once(drive_offline_gameplay)
+            .expect("the Frost Armor command is handled");
+        let channels = app.world().resource::<OfflineChannels>().clone();
+        {
+            let core = &mut app.world_mut().resource_mut::<OfflineGameCore>().0;
+            advance_offline_combat(core, &channels, 5_000);
+        }
+        let landed: Vec<_> = received.try_iter().collect();
+        let gos: Vec<_> = landed
+            .iter()
+            .filter(|event| {
+                matches!(event, SessionEvent::SpellGo { spell_id: 168, .. })
+            })
+            .collect();
+        assert_eq!(
+            gos.len(),
+            1,
+            "the finished cast owes exactly one GO, keyed to its spell id: {landed:?}"
+        );
+        assert!(
+            gos.iter().any(|event| matches!(
+                event,
+                SessionEvent::SpellGo {
+                    target: Some(guid),
+                    hits,
+                    ..
+                } if *guid == id.presentation_guid()
+                    && hits.as_slice() == [id.presentation_guid()]
+            )),
+            "the self buff's GO lands on the caster: {landed:?}"
+        );
+        assert!(
+            landed.iter().any(|event| matches!(
+                event,
+                SessionEvent::ObjectValues { guid, fields }
+                    if *guid == id.presentation_guid()
+                        && (0..32).any(|slot| fields
+                            .unit_aura(slot)
+                            .is_some_and(|aura| aura.spell_id == 168))
+            )),
+            "the buff applies with the cast: {landed:?}"
+        );
+    }
+
+    /// Acceptance: Arcane Torrent (28730) resolves its cast with nothing in range — the GO ships
+    /// even when the silence finds no enemy, because the guard's opener is owed by the cast, not
+    /// by its hits. Out of combat the press must never leave "Another action is in progress"
+    /// (`6e4d97`) behind.
+    #[test]
+    fn offline_arcane_torrent_resolves_the_cast_even_with_nothing_in_range() {
+        let Some(spells) = crate::ui_action::real_spells() else {
+            return;
+        };
+        let id = CharacterId::parse("0000000000000000000000000000000d").unwrap();
+        let appearance = Appearance {
+            race: 10,
+            class: 8,
+            gender: 0,
+            skin: 0,
+            face: 0,
+            hair_style: 0,
+            hair_color: 0,
+            facial_hair: 0,
+        };
+        let mut core = GameCore::default();
+        core.create_character(
+            id.clone(),
+            "Solanis",
+            appearance,
+            starting_position(10).unwrap(),
+        )
+        .unwrap();
+        enter_test_world(&mut core, 10);
+        // Far from every imported spawn: the silence's 8 yards must find nobody.
+        let mut far = starting_position(10).unwrap();
+        far.x += 500.0;
+        core.update_active(far, 0).unwrap();
+
+        let (_pick_tx, picks) = crossbeam_channel::unbounded();
+        let (events, received) = crossbeam_channel::unbounded();
+        let (commands, command_receiver) = crossbeam_channel::unbounded();
+        let mut app = App::new();
+        app.insert_resource(OfflineChannels {
+            picks,
+            events,
+            commands: command_receiver,
+        })
+        .insert_resource(OfflineGameCore(core))
+        .insert_resource(OfflinePersistence::new(false))
+        .insert_resource(Time::<()>::default())
+        .insert_resource(spells);
+
+        commands
+            .send(crate::net::ClientCommand::CastSpell {
+                spell_id: 28_730,
+                target: Some(id.presentation_guid()),
+            })
+            .unwrap();
+        app.world_mut()
+            .run_system_once(drive_offline_gameplay)
+            .expect("the Arcane Torrent command is handled");
+        let channels = app.world().resource::<OfflineChannels>().clone();
+        {
+            let core = &mut app.world_mut().resource_mut::<OfflineGameCore>().0;
+            advance_offline_combat(core, &channels, 5_000);
+        }
+        let resolved: Vec<_> = received.try_iter().collect();
+        assert_eq!(
+            resolved
+                .iter()
+                .filter(|event| matches!(event, SessionEvent::SpellGo { spell_id: 28_730, .. }))
+                .count(),
+            1,
+            "a cast with no hits still owes its GO: {resolved:?}"
+        );
+        assert!(
+            resolved.iter().all(|event| !matches!(
+                event,
+                SessionEvent::ObjectValues { guid, fields }
+                    if *guid != id.presentation_guid()
+                        && (32..48).any(|slot| fields
+                            .unit_aura(slot)
+                            .is_some_and(|aura| aura.spell_id == 28_730))
+            )),
+            "nothing in range, so no enemy is silenced: {resolved:?}"
+        );
+    }
+
+    /// Acceptance: a press the offline simulation cannot resolve answers with the wire's refusal
+    /// (`SMSG_CAST_RESULT`), never silence. The silence was the lockout: the client armed its
+    /// in-flight guard on the press, and only the resolution reopens it, so a dropped press made
+    /// every later press say "Another action is in progress" (`6e4d97`) for the provisional
+    /// window. "Opening" (3365) is a starter-set row no direct handler models.
+    #[test]
+    fn offline_an_unresolvable_press_answers_with_the_cast_result_refusal() {
+        let Some(spells) = crate::ui_action::real_spells() else {
+            return;
+        };
+        let id = CharacterId::parse("0000000000000000000000000000000e").unwrap();
+        let appearance = Appearance {
+            race: 10,
+            class: 8,
+            gender: 0,
+            skin: 0,
+            face: 0,
+            hair_style: 0,
+            hair_color: 0,
+            facial_hair: 0,
+        };
+        let mut core = GameCore::default();
+        core.create_character(
+            id.clone(),
+            "Thalyon",
+            appearance,
+            starting_position(10).unwrap(),
+        )
+        .unwrap();
+        enter_test_world(&mut core, 10);
+
+        let (_pick_tx, picks) = crossbeam_channel::unbounded();
+        let (events, received) = crossbeam_channel::unbounded();
+        let (commands, command_receiver) = crossbeam_channel::unbounded();
+        let mut app = App::new();
+        app.insert_resource(OfflineChannels {
+            picks,
+            events,
+            commands: command_receiver,
+        })
+        .insert_resource(OfflineGameCore(core))
+        .insert_resource(OfflinePersistence::new(false))
+        .insert_resource(Time::<()>::default())
+        .insert_resource(spells);
+
+        commands
+            .send(crate::net::ClientCommand::CastSpell {
+                spell_id: 3365,
+                target: None,
+            })
+            .unwrap();
+        app.world_mut()
+            .run_system_once(drive_offline_gameplay)
+            .expect("the press is handled");
+        let refused: Vec<_> = received.try_iter().collect();
+        assert!(
+            matches!(
+                refused.as_slice(),
+                [SessionEvent::CastResult {
+                    spell_id: 3365,
+                    success: false,
+                    reason: Some(0x1c),
+                    ..
+                }]
+            ),
+            "the unmodeled row answers with the generic cast refusal alone: {refused:?}"
         );
     }
 

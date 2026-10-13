@@ -132,10 +132,10 @@ fn buffs_and_debuffs_fill_their_own_rows_with_counts_and_the_dispel_tint() {
     );
     let quads = frame(&mut s, 0.1);
 
-    assert!(shown(&s, "BuffButton0"), "first buff -> BuffButton0");
-    assert!(!shown(&s, "BuffButton1"), "no second buff");
-    assert!(shown(&s, "BuffButton16"), "first debuff -> BuffButton16");
-    assert!(!shown(&s, "BuffButton17"), "no second debuff");
+    assert!(shown(&s, "BuffButton1"), "first buff -> BuffButton1");
+    assert!(!shown(&s, "BuffButton2"), "no second buff");
+    assert!(shown(&s, "DebuffButton1"), "first debuff -> DebuffButton1");
+    assert!(!shown(&s, "DebuffButton2"), "no second debuff");
 
     assert!(
         tex_quad(&quads, "Spell_Nature_Regeneration").is_some(),
@@ -171,8 +171,8 @@ fn buffs_and_debuffs_fill_their_own_rows_with_counts_and_the_dispel_tint() {
     }
 
     // The count shows only above 1 (`BuffFrame.lua:97`).
-    assert_eq!(text(&s, "BuffButton16Count"), "3");
-    assert_eq!(text(&s, "BuffButton0Count"), "");
+    assert_eq!(text(&s, "DebuffButton1Count"), "3");
+    assert_eq!(text(&s, "BuffButton1Count"), "");
     assert!(s.errors().is_empty(), "script errors: {:?}", s.errors());
 }
 
@@ -209,12 +209,12 @@ fn a_timed_aura_counts_down_and_a_permanent_one_shows_no_timer() {
     frame(&mut s, 0.1);
 
     assert!(
-        !shown(&s, "BuffButton0Duration"),
+        !shown(&s, "BuffButton1Duration"),
         "a permanent aura shows no timer (our 'until cancelled')"
     );
-    assert!(shown(&s, "BuffButton1Duration"));
+    assert!(shown(&s, "BuffButton2Duration"));
     assert_eq!(
-        text(&s, "BuffButton1Duration"),
+        text(&s, "BuffButton2Duration"),
         "2 m",
         "120s remaining abbreviates to minutes"
     );
@@ -255,8 +255,8 @@ fn the_warning_flash_pulses_a_low_aura_but_leaves_a_long_one_solid() {
     let (mut short_min, mut long_min) = (2.0_f64, 2.0_f64);
     for _ in 0..20 {
         s.tick(0.1);
-        short_min = short_min.min(alpha(&s, "BuffButton1"));
-        long_min = long_min.min(alpha(&s, "BuffButton0"));
+        short_min = short_min.min(alpha(&s, "BuffButton2"));
+        long_min = long_min.min(alpha(&s, "BuffButton1"));
     }
     assert!(
         short_min < 0.9,
@@ -293,7 +293,7 @@ fn right_clicking_a_cancelable_buff_queues_its_spell_cancel() {
         "nothing queued yet"
     );
     // `CancelPlayerBuff(this.buffIndex)`; the app sends `CMSG_CANCEL_AURA` by spell id.
-    s.eval::<()>("this = BuffButton0; BuffButton_OnClick()")
+    s.eval::<()>("this = BuffButton1; BuffButton_OnClick()")
         .unwrap();
     assert_eq!(s.take_cancel_aura_requests(), vec![1126]);
     assert!(s.errors().is_empty(), "script errors: {:?}", s.errors());
@@ -317,13 +317,13 @@ fn an_emptied_bar_hides_every_button() {
         )],
     );
     frame(&mut s, 0.1);
-    assert!(shown(&s, "BuffButton0"), "shown while the aura is up");
+    assert!(shown(&s, "BuffButton1"), "shown while the aura is up");
 
     // An empty list and a re-fire hide the button and its timer (`BuffFrame.lua:64-67`).
     push(&mut s, vec![]);
     frame(&mut s, 0.1);
-    assert!(!shown(&s, "BuffButton0"), "hidden once the aura is gone");
-    assert!(!shown(&s, "BuffButton0Duration"));
+    assert!(!shown(&s, "BuffButton1"), "hidden once the aura is gone");
+    assert!(!shown(&s, "BuffButton1Duration"));
     assert!(s.errors().is_empty(), "script errors: {:?}", s.errors());
 }
 
@@ -348,18 +348,18 @@ fn a_refreshed_duration_reaches_the_bar_with_no_aura_event() {
     // 20 s out: 19.9 s after the tick, which `%d` truncates to "19 s".
     push(&mut s, vec![mark(20.0)]);
     frame(&mut s, 0.1);
-    assert_eq!(text(&s, "BuffButton0Duration"), "19 s");
+    assert_eq!(text(&s, "BuffButton1Duration"), "19 s");
 
     // The refresh: a new expiry and no event.
     s.set_player_auras(vec![mark(300.0)]);
     frame(&mut s, 0.1);
     assert_eq!(
-        text(&s, "BuffButton0Duration"),
+        text(&s, "BuffButton1Duration"),
         "5 m",
         "the countdown re-reads the aura every frame; it does not wait for an event"
     );
     assert!(
-        (alpha(&s, "BuffButton0") - 1.0).abs() < 1e-6,
+        (alpha(&s, "BuffButton1") - 1.0).abs() < 1e-6,
         "no longer inside the 31s warning window, so full alpha"
     );
 
@@ -370,14 +370,14 @@ fn a_refreshed_duration_reaches_the_bar_with_no_aura_event() {
     s.set_player_auras(vec![pending]);
     frame(&mut s, 0.1);
     assert_eq!(
-        text(&s, "BuffButton0Duration"),
+        text(&s, "BuffButton1Duration"),
         "0 s",
         "the reference draws the floor of a timed aura it has no stamp for, not a blank"
     );
     s.set_player_auras(vec![mark(60.0)]); // the stamp joins, still no event
     frame(&mut s, 0.1);
     assert_eq!(
-        text(&s, "BuffButton0Duration"),
+        text(&s, "BuffButton1Duration"),
         "59 s",
         "a duration that lands after the icon still reaches the bar"
     );
@@ -405,36 +405,36 @@ fn the_duration_switch_hides_the_timers_and_closes_their_gutter() {
     );
     frame(&mut s, 0.1);
     assert!(
-        shown(&s, "BuffButton0Duration"),
+        shown(&s, "BuffButton1Duration"),
         "timers on — the harness planted the switch"
     );
-    assert_eq!(text(&s, "BuffButton0Duration"), "19 s");
+    assert_eq!(text(&s, "BuffButton1Duration"), "19 s");
     s.resolve();
     let shown_gap = s
-        .eval::<f64>("return BuffButton0:GetBottom() - BuffButton8:GetTop()")
+        .eval::<f64>("return BuffButton1:GetBottom() - BuffButton9:GetTop()")
         .unwrap();
     assert!((shown_gap - 15.0).abs() < 1e-3, "gutter: {shown_gap}");
 
     s.run("SHOW_BUFF_DURATIONS = \"0\"; BuffButtons_UpdatePositions()")
         .unwrap();
     frame(&mut s, 0.1);
-    assert!(!shown(&s, "BuffButton0Duration"), "no timer drawn");
-    assert!(shown(&s, "BuffButton0"), "the icon stays");
+    assert!(!shown(&s, "BuffButton1Duration"), "no timer drawn");
+    assert!(shown(&s, "BuffButton1"), "the icon stays");
     s.resolve();
     let hidden_gap = s
-        .eval::<f64>("return BuffButton0:GetBottom() - BuffButton8:GetTop()")
+        .eval::<f64>("return BuffButton1:GetBottom() - BuffButton9:GetTop()")
         .unwrap();
     assert!((hidden_gap - 5.0).abs() < 1e-3, "gutter: {hidden_gap}");
     assert!(
-        alpha(&s, "BuffButton0") < 1.0,
+        alpha(&s, "BuffButton1") < 1.0,
         "the last-31s pulse is not gated on the timers"
     );
 
     s.run("SHOW_BUFF_DURATIONS = \"1\"; BuffButtons_UpdatePositions()")
         .unwrap();
     frame(&mut s, 0.1);
-    assert!(shown(&s, "BuffButton0Duration"));
-    assert_eq!(text(&s, "BuffButton0Duration"), "19 s");
+    assert!(shown(&s, "BuffButton1Duration"));
+    assert_eq!(text(&s, "BuffButton1Duration"), "19 s");
     assert!(s.errors().is_empty(), "script errors: {:?}", s.errors());
 }
 
@@ -520,11 +520,11 @@ fn the_buttons_and_the_corpus_walk_agree_on_the_cache_positions() {
 
     // Each button caches the position, not its ordinal.
     for (button, position) in [
-        ("BuffButton0", 0),  // helpful ordinal 0 -> position 0
-        ("BuffButton1", 2),  // helpful ordinal 1 -> position 2 (the debuff at 1 is skipped)
-        ("BuffButton2", 4),  // helpful ordinal 2 -> position 4
-        ("BuffButton16", 1), // harmful ordinal 0 -> position 1
-        ("BuffButton17", 3), // harmful ordinal 1 -> position 3
+        ("BuffButton1", 0),  // helpful ordinal 0 -> position 0
+        ("BuffButton2", 2),  // helpful ordinal 1 -> position 2 (the debuff at 1 is skipped)
+        ("BuffButton3", 4),  // helpful ordinal 2 -> position 4
+        ("DebuffButton1", 1), // harmful ordinal 0 -> position 1
+        ("DebuffButton2", 3), // harmful ordinal 1 -> position 3
     ] {
         assert!(shown(&s, button), "{button} draws its aura");
         assert_eq!(
@@ -534,18 +534,18 @@ fn the_buttons_and_the_corpus_walk_agree_on_the_cache_positions() {
             "{button} caches the CACHE POSITION, not its per-filter ordinal"
         );
     }
-    assert!(!shown(&s, "BuffButton3"), "only three buffs");
-    assert!(!shown(&s, "BuffButton18"), "only two debuffs");
+    assert!(!shown(&s, "BuffButton4"), "only three buffs");
+    assert!(!shown(&s, "DebuffButton3"), "only two debuffs");
     assert_eq!(
-        s.eval::<i64>("return BuffButton3.buffIndex").unwrap(),
+        s.eval::<i64>("return BuffButton4.buffIndex").unwrap(),
         -1,
         "a miss is -1, the sentinel the corpus terminates on — never nil"
     );
 
-    assert_eq!(text(&s, "BuffButton16Count"), "3");
-    assert_eq!(text(&s, "BuffButton17Count"), "5");
+    assert_eq!(text(&s, "DebuffButton1Count"), "3");
+    assert_eq!(text(&s, "DebuffButton2Count"), "5");
     assert_eq!(
-        text(&s, "BuffButton0Count"),
+        text(&s, "BuffButton1Count"),
         "",
         "a single stack shows nothing"
     );
@@ -577,7 +577,7 @@ fn right_clicking_cancels_the_aura_under_the_cursor_by_its_cache_position() {
     assert!(s.take_cancel_aura_requests().is_empty());
 
     // Ordinal 1 is position 2 (spell 1459); by ordinal it would cancel 589, the debuff at 1.
-    s.eval::<()>("this = BuffButton1; BuffButton_OnClick()")
+    s.eval::<()>("this = BuffButton2; BuffButton_OnClick()")
         .unwrap();
     assert_eq!(
         s.take_cancel_aura_requests(),
@@ -585,7 +585,7 @@ fn right_clicking_cancels_the_aura_under_the_cursor_by_its_cache_position() {
         "the aura under the cursor, not the record at the ordinal"
     );
 
-    for button in ["BuffButton2", "BuffButton16", "BuffButton17", "BuffButton7"] {
+    for button in ["BuffButton3", "DebuffButton1", "DebuffButton2", "BuffButton8"] {
         s.eval::<()>(&format!("this = {button}; BuffButton_OnClick()"))
             .unwrap();
     }
@@ -594,7 +594,7 @@ fn right_clicking_cancels_the_aura_under_the_cursor_by_its_cache_position() {
         "a stance, a debuff and an empty button are all no-ops"
     );
 
-    s.eval::<()>("this = BuffButton0; BuffButton_OnClick()")
+    s.eval::<()>("this = BuffButton1; BuffButton_OnClick()")
         .unwrap();
     assert_eq!(s.take_cancel_aura_requests(), vec![1126]);
     assert!(s.errors().is_empty(), "script errors: {:?}", s.errors());
@@ -629,14 +629,14 @@ fn the_temporary_enchant_row_shows_a_weapon_enchant_and_moves_the_top_row_aside(
     // Nor the inherited body, which would paint the first buff into the slot and arm its cancel.
     assert!(
         s.eval::<bool>(
-            "return TempEnchant1:GetScript(\"OnLoad\") ~= BuffButton0:GetScript(\"OnLoad\")"
+            "return TempEnchant1:GetScript(\"OnLoad\") ~= BuffButton1:GetScript(\"OnLoad\")"
         )
         .unwrap(),
         "the blank displaces the inherited handler rather than sharing it"
     );
     s.resolve();
     let resting = s.eval::<f64>("return BuffFrame:GetRight()").unwrap();
-    let row2 = s.eval::<f64>("return BuffButton16:GetRight()").unwrap();
+    let row2 = s.eval::<f64>("return DebuffButton1:GetRight()").unwrap();
     assert!(
         (resting - (1024.0 - 175.0)).abs() < 1e-3,
         "UIParent TOPRIGHT -175: {resting}"
@@ -675,9 +675,9 @@ fn the_temporary_enchant_row_shows_a_weapon_enchant_and_moves_the_top_row_aside(
         "one 32px enchant column + the 5px gutter: {resting} -> {shifted}"
     );
     assert!(
-        (s.eval::<f64>("return BuffButton16:GetRight()").unwrap() - row2).abs() < 1e-3,
+        (s.eval::<f64>("return DebuffButton1:GetRight()").unwrap() - row2).abs() < 1e-3,
         "the debuff row hangs off TemporaryEnchantFrame and stays put: {row2} -> {}",
-        s.eval::<f64>("return BuffButton16:GetRight()").unwrap()
+        s.eval::<f64>("return DebuffButton1:GetRight()").unwrap()
     );
 
     s.set_weapon_enchants(None, None);
@@ -787,28 +787,28 @@ fn a_settled_buff_button_rewrites_alpha_and_duration_as_the_reference_does() {
     );
     frame(&mut s, 0.1); // the event repaint and the poll's first write ("5 m", alpha 1.0)
     frame(&mut s, 0.1);
-    assert_eq!(text(&s, "BuffButton0Duration"), "5 m");
+    assert_eq!(text(&s, "BuffButton1Duration"), "5 m");
 
-    s.run(r#"BuffButton0:SetAlpha(0.42); BuffButton0Duration:SetText("X")"#)
+    s.run(r#"BuffButton1:SetAlpha(0.42); BuffButton1Duration:SetText("X")"#)
         .unwrap();
     for _ in 0..10 {
         frame(&mut s, 0.016);
     }
     assert!(s.errors().is_empty(), "{:?}", s.errors());
     assert!(
-        (alpha(&s, "BuffButton0") - 1.0).abs() < 1e-6,
+        (alpha(&s, "BuffButton1") - 1.0).abs() < 1e-6,
         "the reference's OnUpdate writes a fresh alpha every tick — got {}",
-        alpha(&s, "BuffButton0")
+        alpha(&s, "BuffButton1")
     );
     assert_eq!(
-        text(&s, "BuffButton0Duration"),
+        text(&s, "BuffButton1Duration"),
         "5 m",
         "…and re-writes the duration with it, unchanged or not"
     );
 
     s.tick(60.0);
     assert_eq!(
-        text(&s, "BuffButton0Duration"),
+        text(&s, "BuffButton1Duration"),
         "4 m",
         "the minute rollover overwrites the sentinel: the gate passes real changes"
     );
@@ -817,17 +817,17 @@ fn a_settled_buff_button_rewrites_alpha_and_duration_as_the_reference_does() {
     // `HIGHLIGHT_FONT_COLOR` white (`BuffFrame.lua:251-252`).
     s.tick(210.0); // ~29.5 s left
     s.resolve();
-    let a1 = alpha(&s, "BuffButton0");
+    let a1 = alpha(&s, "BuffButton1");
     s.tick(0.2);
-    let a2 = alpha(&s, "BuffButton0");
+    let a2 = alpha(&s, "BuffButton1");
     s.tick(0.3);
-    let a3 = alpha(&s, "BuffButton0");
+    let a3 = alpha(&s, "BuffButton1");
     assert!(
         a1 != a2 && a2 != a3,
         "the warning pulse flows through the gate per tick: {a1} {a2} {a3}"
     );
     s.resolve();
-    let seconds_text = text(&s, "BuffButton0Duration");
+    let seconds_text = text(&s, "BuffButton1Duration");
     assert!(
         seconds_text.ends_with(" s"),
         "inside the last minute the timer counts seconds: {seconds_text}"

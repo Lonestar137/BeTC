@@ -61,6 +61,17 @@ fn load_room(s: &UiScript) {
 /// The room over the stock bag windows; `UIParent.xml` leads because every window parents to it
 /// and `BAG_UI` has no line for it.
 fn load_room_with_bags(s: &UiScript) {
+    // `DressUpFrame.lua:12` reads `UnitRace("player")` at OnLoad, so the shape precedes the room.
+    s.set_unit(
+        "player",
+        Some(UnitState {
+            race: Some("Human".into()),
+            race_file: Some("Human".into()),
+            class: Some("Warrior".into()),
+            class_file: Some("WARRIOR".into()),
+            ..UnitState::default()
+        }),
+    );
     for file in crate::ui_script::test_ui::production_order(&[
         &[r"Interface\FrameXML\UIParent.xml"],
         BAG_UI,
@@ -76,6 +87,20 @@ fn load_room_with_bags(s: &UiScript) {
 fn shown_paper_doll() -> UiScript {
     let mut s = UiScript::new().unwrap();
     s.set_screen_size(1024.0, 768.0);
+    // The shape before the walk: `DressUpFrame.lua:12` reads `UnitRace("player")` at OnLoad, and
+    // `PaperDollFrame_SetLevel` formats race and class unguarded on every show.
+    s.set_unit(
+        "player",
+        Some(UnitState {
+            exists: true,
+            level: 60,
+            race: Some("Human".into()),
+            race_file: Some("Human".into()),
+            class: Some("Warrior".into()),
+            class_file: Some("WARRIOR".into()),
+            ..UnitState::default()
+        }),
+    );
     for file in crate::ui_script::test_ui::production_order(&[
         CHARACTER_UI,
         &[
@@ -94,18 +119,6 @@ fn shown_paper_doll() -> UiScript {
     ]) {
         super::test_ui::load_ui_strict(&s, file);
     }
-    s.set_unit(
-        "player",
-        Some(UnitState {
-            exists: true,
-            level: 60,
-            race: Some("Human".into()),
-            race_file: Some("Human".into()),
-            class: Some("Warrior".into()),
-            class_file: Some("WARRIOR".into()),
-            ..UnitState::default()
-        }),
-    );
     s
 }
 

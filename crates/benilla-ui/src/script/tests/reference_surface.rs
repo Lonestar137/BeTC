@@ -143,6 +143,19 @@ const BEYOND_1_12: &[&str] = &[
     "GetArenaCurrency",
     "GetUnitMaxHealthModifier",
     "GetSpellCritChanceFromIntellect",
+    "GetDeathReleasePosition",
+    "GetTitleName",
+    "GetVoiceStatus",
+    "UnitIsInMyGuild",
+    "GetUnitHealthRegenRateFromSpirit",
+    "GetUnitManaRegenRateFromSpirit",
+    "GetUnitHealthModifier",
+    "GetMuteStatus",
+    "CanSendLFGQuery",
+    "GetCombatRating",
+    "GetNumGuildBankTabs",
+    "InviteUnit",
+    "UpdateAddOnMemoryUsage",
 ];
 
 /// `reference/1.12-globals.tsv`'s names.

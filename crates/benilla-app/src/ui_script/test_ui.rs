@@ -85,6 +85,7 @@ pub(super) fn load_ui_no_warnings(s: &UiScript, entry: &str) -> usize {
 
 fn load_entry(s: &UiScript, entry: &str, strict_templates: bool, no_warnings: bool) -> usize {
     follow_production_order(s, entry);
+    seat_player_shape(s);
     seat_skipped_frames(s, entry);
     // The app registers its CVars before any file loads: stock `UIOptionsFrame.xml` reads two
     // camera CVars at `OnLoad` and raises on a nil. A value a test already set stands.
@@ -185,6 +186,20 @@ const FRAME_DECLARERS: &[(&str, &str)] = &[
         "AudioOptionsFrame",
         r"Interface\FrameXML\AudioOptionsFrame.xml",
     ),
+    ("MainMenuBar", r"Interface\FrameXML\MainMenuBar.xml"),
+    ("Minimap", r"Interface\FrameXML\Minimap.xml"),
+    (
+        "MultiBarBottomRight",
+        r"Interface\FrameXML\MultiActionBars.xml",
+    ),
+    ("HelpFrame", r"Interface\FrameXML\HelpFrame.xml"),
+    ("ItemTextFrame", r"Interface\FrameXML\ItemTextFrame.xml"),
+    ("BankFrame", r"Interface\FrameXML\BankFrame.xml"),
+];
+
+/// [`FRAME_DECLARERS`]' fits that must be seated as Buttons: `VoiceChat.lua:256` calls
+/// `Enable`/`Disable` on the audio tabs, which a plain Frame does not have.
+const BUTTON_DECLARERS: &[(&str, &str)] = &[
     (
         "AudioOptionsFrameTab1",
         r"Interface\FrameXML\AudioOptionsFrame.xml",
@@ -197,49 +212,83 @@ const FRAME_DECLARERS: &[(&str, &str)] = &[
         "AudioOptionsFrameTab3",
         r"Interface\FrameXML\AudioOptionsFrame.xml",
     ),
-    ("MainMenuBar", r"Interface\FrameXML\MainMenuBar.xml"),
-    ("Minimap", r"Interface\FrameXML\Minimap.xml"),
-    (
-        "MultiBarBottomRight",
-        r"Interface\FrameXML\MultiActionBars.xml",
-    ),
-    ("HelpFrame", r"Interface\FrameXML\HelpFrame.xml"),
-    ("ItemTextFrame", r"Interface\FrameXML\ItemTextFrame.xml"),
-    ("BankFrame", r"Interface\FrameXML\BankFrame.xml"),
 ];
 
 /// Engine-created frames build 8606's FrameXML indexes but no toc row declares — the reference
 /// makes them in code (`CWorldMap::CreatePlayerArrowFrame()`), so a stand-in never shadows one.
 const ENGINE_FRAMES: &[&str] = &["PlayerArrowEffectFrame"];
 
+/// Frames a kit needs before any file declares them, seated at every kit load. Build 8606's
+/// `WorldFrame_OnUpdate` (`WorldFrame.lua:45`) indexes `ItemTextFrame` on every tick, and a kit's
+/// ticks run after its last file, by which point no `ItemTextFrame.xml` has loaded. No kit loads
+/// that file directly, so the stand-in cannot shadow a real frame.
+const KIT_ALWAYS_SEAT: &[&str] = &["ItemTextFrame"];
+
+/// The reference's UI only ever loads in-world, where a character exists: stock
+/// `DressUpFrame.lua:12` reads `UnitRace("player")` at OnLoad and raises on a nil file token. A
+/// test world has no pick, so seat the shape — never a name, so `UnitName("player")` still answers
+/// nil — unless the test already did.
+fn seat_player_shape(s: &UiScript) {
+    if !s
+        .eval::<bool>("return UnitRace('player') == nil")
+        .unwrap_or(false)
+    {
+        return;
+    }
+    s.set_unit(
+        "player",
+        Some(benilla_ui::script::UnitState {
+            race: Some("Human".into()),
+            race_file: Some("Human".into()),
+            class: Some("Warrior".into()),
+            class_file: Some("WARRIOR".into()),
+            sex: 2,
+            ..Default::default()
+        }),
+    );
+}
+
 /// Seat a hidden stand-in for each [`FRAME_DECLARERS`] frame whose declaring file has already
 /// passed in the production order and which the kit did not load, and for every [`ENGINE_FRAMES`]
 /// frame. Called before every load walk.
 fn seat_skipped_frames(s: &UiScript, entry: &str) {
     let rank = production_rank(entry);
+    let past = |decl: &&str| rank.is_some_and(|r| production_rank(decl).is_some_and(|d| d < r));
     let mut names: Vec<&str> = ENGINE_FRAMES.to_vec();
-    if let Some(rank) = rank {
+    names.extend_from_slice(KIT_ALWAYS_SEAT);
+    let mut buttons: Vec<&str> = Vec::new();
+    if rank.is_some() {
         names.extend(
             FRAME_DECLARERS
                 .iter()
-                .filter(|(_, decl)| production_rank(decl).is_some_and(|r| r < rank))
+                .filter(|(_, decl)| past(decl))
+                .map(|(name, _)| *name),
+        );
+        buttons.extend(
+            BUTTON_DECLARERS
+                .iter()
+                .filter(|(_, decl)| past(decl))
                 .map(|(name, _)| *name),
         );
     }
-    if names.is_empty() {
-        return;
-    }
-    let list = names
-        .iter()
-        .map(|n| format!("\"{n}\""))
-        .collect::<Vec<_>>()
-        .join(", ");
-    let chunk = format!(
-        "for _, name in ipairs({{ {list} }}) do \
-           if not getglobal(name) then local f = CreateFrame(\"Frame\") f:Hide() setglobal(name, f) end \
-         end"
-    );
-    let _ = s.run(&chunk);
+    let seat = |kind: &str, names: &[&str]| {
+        if names.is_empty() {
+            return;
+        }
+        let list = names
+            .iter()
+            .map(|n| format!("\"{n}\""))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let chunk = format!(
+            "for _, name in ipairs({{ {list} }}) do \
+               if not getglobal(name) then local f = CreateFrame(\"{kind}\") f:Hide() setglobal(name, f) end \
+             end"
+        );
+        let _ = s.run(&chunk);
+    };
+    seat("Frame", &names);
+    seat("Button", &buttons);
 }
 
 /// Where `entry` falls in the production load, for [`follow_production_order`]: a `FrameXML.toc`
@@ -396,6 +445,10 @@ pub(super) const UIPARENT_STAND_INS: &str = r#"
     CastingBarFrame_OnLoad = CastingBarFrame_OnLoad or function() end
     TalentFrame_Load = TalentFrame_Load or function() end
     TotemFrame_Update = TotemFrame_Update or function() end
+    -- Build 8606's `PaperDollFrame.lua:1202` calls it, from a file a character kit may stop short
+    -- of; the offline game has no guild bank to repair.
+    MerchantFrame_UpdateGuildBankRepair = MerchantFrame_UpdateGuildBankRepair or function() end
+    MerchantFrame_UpdateCanRepairAll = MerchantFrame_UpdateCanRepairAll or function() end
     -- `ChatFrame.lua:5` sets it; `HelpFrame.lua:38` concatenates it.
     NUM_CHAT_WINDOWS = NUM_CHAT_WINDOWS or 7
     NUM_CONTAINER_FRAMES = NUM_CONTAINER_FRAMES or 0
@@ -694,7 +747,13 @@ pub(super) const CHARACTER_UI: &[&str] = &[
     // `updateContainerFrameAnchors`, which `ReputationWatchBar_Update` calls when the bar moves
     // (`ReputationFrame.lua:248`): in the reference the bar's presence reflows the bag row.
     "Interface\\FrameXML\\ContainerFrame.xml",
+    // `WhoFrameColumn_SetWidth`, which `PVPFrame.xml`'s column headers call at OnLoad, is defined
+    // in `FriendsFrame.lua`; build 8606 puts it above the tab-5 page.
+    "Interface\\FrameXML\\FriendsFrame.xml",
     "Interface\\FrameXML\\BonusActionBarFrame.xml",
+    // Tab 5's page: build 8606's `CHARACTERFRAME_SUBFRAMES` ends in `PVPFrame`, not `HonorFrame`,
+    // and `CharacterFrame_ShowSubFrame` sweeps every name unguarded.
+    "Interface\\FrameXML\\PVPFrame.xml",
     "ScrollTemplates.xml", // our scroll kit
 ];
 

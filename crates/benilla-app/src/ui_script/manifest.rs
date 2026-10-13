@@ -158,6 +158,23 @@ pub(crate) fn load_default_ui(script: &UiScript) -> Vec<String> {
     // and a bare `UiScript::new()` has only `benilla-ui`'s own. A re-register only refreshes
     // defaults.
     script.register_cvars(crate::cvars::registered_pairs());
+    // The reference's UI only ever loads in-world, where a character exists: `DressUpTexturePath`
+    // (`DressUpFrame.lua:12`) reads `UnitRace("player")` unguarded and raises on a nil file token.
+    // A test world has no pick, so seat the shape — never a name, so `UnitName("player")` still
+    // answers nil — unless the caller already did.
+    if script.eval::<bool>("return UnitRace('player') == nil").unwrap_or(false) {
+        script.set_unit(
+            "player",
+            Some(benilla_ui::script::UnitState {
+                race: Some("Human".into()),
+                race_file: Some("Human".into()),
+                class: Some("Warrior".into()),
+                class_file: Some("WARRIOR".into()),
+                sex: 2,
+                ..Default::default()
+            }),
+        );
+    }
     let mut failures = silenced_ui_load(&mut &*script, |script| {
         let mut failures = load_core(script);
         if layer_enabled() {
