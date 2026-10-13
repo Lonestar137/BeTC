@@ -114,7 +114,7 @@ mod tests {
         let data = crate::wow_data_or_skip!();
         let mut chain = crate::open_chain(&data).expect("open chain");
         let cat = load_anim_data_catalog(&mut chain).expect("load AnimationData");
-        assert_eq!(cat.len(), 208);
+        assert_eq!(cat.len(), 226);
 
         for (&id, row) in &cat.rows {
             assert!(

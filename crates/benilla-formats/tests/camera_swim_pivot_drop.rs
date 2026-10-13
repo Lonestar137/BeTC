@@ -3,7 +3,7 @@
 //! `cam+0x198 < 1.8315`, a pair benilla serves with one standing height. `0x50ca90` builds all
 //! three from `attach17.z + 0.0972` and lowers only `+0x124`, by `S * (Stand.max.z - Swim.max.z)`
 //! over the `0x711a20` boxes of sequences 0 and 42 (`0x50cccf`, `0x50ccde`, `0x50ccf6`). For the
-//! Human Male at scale 1 the binary gives `+0x11c = +0x120 = 1.9002692`, `+0x124 = 1.5120120`.
+//! Human Male at scale 1 build 8606 gives `+0x11c = +0x120 = 1.9002470`, `+0x124 = 1.5119565`.
 
 use benilla_formats::{load_m2_bounds, open_chain};
 
@@ -21,17 +21,17 @@ fn the_swim_preset_is_the_stand_minus_swim_sequence_box_delta() {
     let standing = b.pivot_z.expect("HumanMale authors attachment 17") + PIVOT_BASE;
 
     assert!(
-        (b.swim_pivot_drop - 0.3882572).abs() < 1e-5,
-        "HumanMale swim_pivot_drop {:.7} should be the reference's 1.9002692 − 1.5120120 = 0.3882572",
+        (b.swim_pivot_drop - 0.3882905).abs() < 1e-5,
+        "HumanMale swim_pivot_drop {:.7} should be build 8606's 1.9002470 − 1.5119565 = 0.3882905",
         b.swim_pivot_drop
     );
     assert!(
-        (standing - 1.9002692).abs() < 1e-4,
-        "HumanMale standing preset {standing:.7} should be the reference's cam+0x11c 1.9002692"
+        (standing - 1.9002470).abs() < 1e-4,
+        "HumanMale standing preset {standing:.7} should be build 8606's cam+0x11c 1.9002470"
     );
     assert!(
-        (standing - b.swim_pivot_drop - 1.512_012).abs() < 1e-4,
-        "HumanMale swim preset {:.7} should be the reference's cam+0x124 1.5120120",
+        (standing - b.swim_pivot_drop - 1.5119565).abs() < 1e-4,
+        "HumanMale swim preset {:.7} should be build 8606's cam+0x124 1.5119565",
         standing - b.swim_pivot_drop
     );
 }
@@ -43,9 +43,9 @@ fn the_drop_is_per_model_and_zero_for_a_body_with_no_swim_sequence() {
 
     // (model, the drop measured off the shipped M2); how far the swim pose sinks is per skeleton.
     let cases = [
-        ("Character\\Human\\Male\\HumanMale.mdx", 0.3882571_f32),
-        ("Character\\Tauren\\Male\\TaurenMale.mdx", 0.4236124),
-        ("Character\\NightElf\\Female\\NightElfFemale.mdx", 0.1288066),
+        ("Character\\Human\\Male\\HumanMale.mdx", 0.3882905_f32),
+        ("Character\\Tauren\\Male\\TaurenMale.mdx", 0.4236122),
+        ("Character\\NightElf\\Female\\NightElfFemale.mdx", 0.1288071),
         // No Swim sequence: the reference's both-present guard (`0x711960` on 0 and 0x2a at
         // `0x50cc43`/`0x50cc4f`) keeps the standing preset.
         ("Creature\\Chicken\\Chicken.mdx", 0.0),
@@ -66,3 +66,4 @@ fn the_drop_is_per_model_and_zero_for_a_body_with_no_swim_sequence() {
         );
     }
 }
+

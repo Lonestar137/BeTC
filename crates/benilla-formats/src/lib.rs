@@ -685,7 +685,7 @@ fn schema_for(dbc_name: &str) -> Option<Schema> {
     }
 
     if base.eq_ignore_ascii_case("TaxiNodes.dbc") {
-        // 16 fields, 64-byte records.
+        // 24 fields, 96-byte records.
         let mut s = Schema::new("TaxiNodes");
         s.add_field(SchemaField::new("ID", FieldType::UInt32));
         s.add_field(SchemaField::new("MapID", FieldType::UInt32));
@@ -696,7 +696,7 @@ fn schema_for(dbc_name: &str) -> Option<Schema> {
         s.add_field(SchemaField::new_array(
             "NameOtherLocales",
             FieldType::String,
-            7,
+            15,
         ));
         s.add_field(SchemaField::new("NameFlags", FieldType::UInt32));
         s.add_field(SchemaField::new("MountIdHorde", FieldType::UInt32));
@@ -757,7 +757,7 @@ fn schema_for(dbc_name: &str) -> Option<Schema> {
     }
 
     if base.eq_ignore_ascii_case("TaxiPathNode.dbc") {
-        // 9 fields, as `taxi.rs` loads them.
+        // 11 fields, as `taxi.rs` loads them.
         let mut s = Schema::new("TaxiPathNode");
         for name in ["ID", "PathID", "NodeIndex", "MapID"] {
             s.add_field(SchemaField::new(name, FieldType::UInt32));
@@ -765,7 +765,7 @@ fn schema_for(dbc_name: &str) -> Option<Schema> {
         for name in ["LocX", "LocY", "LocZ"] {
             s.add_field(SchemaField::new(name, FieldType::Float32));
         }
-        for name in ["Flags", "Delay"] {
+        for name in ["Flags", "Delay", "ArrivalEventID", "DepartureEventID"] {
             s.add_field(SchemaField::new(name, FieldType::UInt32));
         }
         s.set_key_field("ID");

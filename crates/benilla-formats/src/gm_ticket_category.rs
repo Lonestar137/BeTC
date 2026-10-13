@@ -44,7 +44,7 @@ impl GmTicketCategoryCatalog {
 fn gm_ticket_category_schema() -> Schema {
     let mut s = Schema::new("GMTicketCategory");
     s.add_field(SchemaField::new("ID", FieldType::UInt32));
-    for i in 0..8 {
+    for i in 0..16 {
         s.add_field(SchemaField::new(format!("Name{i}"), FieldType::String));
     }
     s.add_field(SchemaField::new("NameFlags", FieldType::UInt32));
@@ -73,10 +73,9 @@ pub fn load_gm_ticket_categories(chain: &mut Chain) -> Result<GmTicketCategoryCa
 mod tests {
     use super::*;
 
-    /// The 5875 ids (the wire values) in file order (the painted order), matching
-    /// `GENERAL_HELPFRAME`'s ten keys.
+    /// The 8606 ids (the wire values) in file order (the painted order).
     #[test]
-    fn the_shipped_categories_are_the_ten_help_window_rows_in_order() {
+    fn the_shipped_categories_are_the_help_window_rows_in_order() {
         let data = crate::wow_data_or_skip!();
         let mut chain = crate::open_chain(&data).expect("open chain");
         let cat = load_gm_ticket_categories(&mut chain).expect("GMTicketCategory.dbc");
@@ -89,6 +88,7 @@ mod tests {
         assert_eq!(
             rows,
             vec![
+                (0, "<not set>"),
                 (1, "Stuck"),
                 (2, "Behavior/Harassment"),
                 (3, "Guild"),
@@ -99,9 +99,35 @@ mod tests {
                 (8, "Technical"),
                 (9, "Account/Billing"),
                 (10, "Character"),
+                (11, "Arena/Honor item issues"),
+                (12, "Arena/Honor points issues"),
+                (13, "Botting/Cheating/Hacking"),
+                (14, "Bug report"),
+                (15, "Compromised account issue"),
+                (16, "Game suggestions"),
+                (17, "Gameplay question"),
+                (18, "Guild bank issue"),
+                (19, "Guild master issue"),
+                (20, "Harassment/Scam report"),
+                (21, "Inappropriate name Guild/Arena/Character/Pet"),
+                (22, "Known issue fix"),
+                (23, "Latency/Lag report"),
+                (24, "Looting issue/mistake"),
+                (25, "Mail issue"),
+                (26, "Non in game related inquiry"),
+                (27, "Parental controls/CAIS"),
+                (28, "PCNC"),
+                (29, "PCT"),
+                (30, "Restoration status/follow up"),
+                (31, "Server/Instance issues"),
+                (32, "Spam"),
+                (33, "Suicide case"),
+                (34, "Suspension questions"),
+                (35, "Technical/Sound/Graphics issue"),
+                (36, "UI issue"),
             ],
             "the wire ids and the painted order both matter — see the module doc"
         );
-        assert_eq!(cat.len(), 10, "the whole shipped table");
+        assert_eq!(cat.len(), 37, "the whole shipped table");
     }
 }

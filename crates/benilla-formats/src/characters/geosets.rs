@@ -661,13 +661,18 @@ mod tests {
         let dups: Vec<_> = keys.iter().filter(|(_, v)| v.len() > 1).collect();
         assert_eq!(
             dups.len(),
-            1,
-            "exactly one duplicated (race,sex,variation) key ships; got {dups:?}"
+            2,
+            "build 8606 ships two duplicated (race,sex,variation) keys; got {dups:?}"
         );
         assert_eq!(
             keys.get(&(9, 0, 0)).map(Vec::as_slice),
             Some([1u32, 2, 1, 2].as_slice()),
             "the goblin-male block is the duplicate, in file order"
+        );
+        assert_eq!(
+            keys.get(&(8, 0, 0)).map(Vec::as_slice),
+            Some([0u32, 0, 0].as_slice()),
+            "troll-male's three rows all name geoset 0"
         );
 
         let cg = CharacterGeosets::load(&mut chain).expect("load customization tables");

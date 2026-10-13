@@ -213,6 +213,6 @@ mod tests {
             (1000, -100, 500)
         );
 
-        assert_eq!(times.len(), 52, "5875 ships 52 SpellCastTimes rows");
+        assert_eq!(times.len(), 60, "5875 ships 52 SpellCastTimes rows");
     }
 }

@@ -14,9 +14,9 @@ use crate::dbc::{parse, str_at, u32_at};
 
 const LOCK_TYPE: &str = "DBFilesClient\\LockType.dbc";
 /// The file's column count, which `benilla-dbc` checks against the header.
-const LOCK_TYPE_FIELDS: usize = 29;
+const LOCK_TYPE_FIELDS: usize = 53;
 /// `CursorName`, the `[row+0x70]` that `0x5f3070` reads.
-const CURSOR_NAME_FIELD: usize = 28;
+const CURSOR_NAME_FIELD: usize = 52;
 /// The `Name` block's enUS column, the toast's `[row + locale*4 + 4]` at locale 0.
 const NAME_FIELD: usize = 1;
 
@@ -107,10 +107,10 @@ mod tests {
         );
 
         // A slip to `ResourceName` (field 10) would print "Requires Herbs".
-        assert_eq!(cat.name(1), Some("Pick Lock"));
+        assert_eq!(cat.name(1), Some("Lockpicking"), "build 8606's row name");
         assert_eq!(cat.name(2), Some("Herbalism"));
         assert_eq!(cat.name(3), Some("Mining"));
-        assert_eq!(cat.name(19), Some("Fishing"));
+        assert_eq!(cat.name(19), Some("Fishing (DND)"));
         assert_eq!(cat.name(0), None);
     }
 }

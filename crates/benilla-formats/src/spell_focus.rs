@@ -11,7 +11,7 @@ use crate::Chain;
 use crate::dbc::{parse, str_at, u32_at};
 
 const SPELL_FOCUS_OBJECT: &str = "DBFilesClient\\SpellFocusObject.dbc";
-const SPELL_FOCUS_FIELDS: usize = 10;
+const SPELL_FOCUS_FIELDS: usize = 18;
 const COL_NAME_ENUS: usize = 1;
 
 /// `SpellFocusObject` id → its enUS name.
@@ -77,6 +77,6 @@ mod tests {
         assert_eq!(cat.name(3), Some("Forge"));
         assert_eq!(cat.name(4), Some("Cooking Fire"));
         assert_eq!(cat.name(0), None, "0 = no requirement");
-        assert_eq!(cat.len(), 138, "the 5875 file's full row count");
+        assert_eq!(cat.len(), 246, "the 5875 file's full row count");
     }
 }

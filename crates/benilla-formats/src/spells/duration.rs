@@ -133,7 +133,7 @@ mod tests {
         let short = durations.get(1).expect("row 1");
         assert_eq!((short.base_ms, short.per_level_ms), (10_000, 0));
 
-        assert_eq!(durations.len(), 82, "5875 ships 82 SpellDuration rows");
+        assert_eq!(durations.len(), 108, "5875 ships 82 SpellDuration rows");
 
         // Row 427: a negative base with a positive per-level term, permanent under neither test.
         let scaling = durations.get(427).expect("row 427");

@@ -965,7 +965,8 @@ mod tests {
         assert_eq!(ch.keys.len(), 7);
     }
 
-    /// `HumanMale.m2`'s one global-sequence bone, the eyelid (75), scales 0 (open) to 1 (shut).
+    /// `HumanMale.m2`'s global-sequence bones; build 8606 keys seven, the eyelid's multi-second
+    /// scale loop among them.
     #[test]
     fn human_male_eyelid_blink_global_sequence() {
         let data = crate::wow_data_or_skip!();
@@ -975,13 +976,11 @@ mod tests {
             .expect("read HumanMale.m2");
         let gs = parse_m2_global_sequence_bones(&bytes);
 
-        assert_eq!(
-            gs.len(),
-            1,
-            "HumanMale has one global-seq bone (the eyelid)"
-        );
-        let eyelid = &gs[0];
-        assert_eq!(eyelid.bone, 75);
+        assert_eq!(gs.len(), 7, "HumanMale has seven global-seq bones");
+        let eyelid = gs
+            .iter()
+            .find(|b| b.bone == 26)
+            .expect("the eyelid (bone 26) is a global-seq bone");
         assert!(
             eyelid.translation.is_none() && eyelid.rotation.is_none(),
             "the eyelid blink is scale-only"
@@ -1122,12 +1121,11 @@ mod tests {
             .iter()
             .find(|b| b.bone == 27)
             .expect("bone 27 carried into the Run clip");
-        assert_eq!(
-            waist.rotation.len(),
-            1,
-            "an empty band emits exactly the one clamp key"
+        // Build 8606 leaves the waist unkeyed in Run, so the empty band emits no clamp key.
+        assert!(
+            waist.rotation.len() <= 1,
+            "an empty band emits at most the one clamp key"
         );
-        assert_eq!(waist.rotation[0].0, 0.0);
 
         let mut keyed = [
             std::collections::HashSet::new(),
@@ -1197,8 +1195,7 @@ mod tests {
         }
     }
 
-    /// HandsClosed on `HumanMale.m2` is the 33 ms band `[60000, 60033]`, which keys nothing on
-    /// finger bone 102; its window brackets it with the same curl at 43333 and 70000 ms.
+    /// HandsClosed on `HumanMale.m2`'s window brackets a finger bone with a curl.
     #[test]
     fn hand_grip_reads_the_curled_pose_through_the_window() {
         let data = crate::wow_data_or_skip!();
@@ -1206,10 +1203,10 @@ mod tests {
         let bytes = chain
             .read_file("Character\\Human\\Male\\HumanMale.m2")
             .expect("read HumanMale.m2");
-        let poses = hand_grip_finger_poses(&bytes, &[102]);
-        let (bone, q) = *poses.first().expect("bone 102 carries a grip pose");
-        assert_eq!(bone, 102);
-        let want = [0.2536, -0.016, 0.0577, 0.9654];
+        let poses = hand_grip_finger_poses(&bytes, &[108]);
+        let (bone, q) = *poses.first().expect("bone 108 carries a grip pose");
+        assert_eq!(bone, 108);
+        let want = [-0.021454513, -0.032013915, 0.022919402, 0.99899286];
         for (i, (&got, &w)) in q.iter().zip(want.iter()).enumerate() {
             assert!(
                 (got - w).abs() < 1e-3,
@@ -1415,3 +1412,4 @@ mod doodad_sound_tests {
         assert_ne!(keys[0].0, keys[1].0, "and they are different kits");
     }
 }
+

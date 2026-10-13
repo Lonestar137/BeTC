@@ -19,7 +19,7 @@ pub fn load_race_creature_types(chain: &mut Chain) -> Result<HashMap<u8, u32>> {
         .read_file(CHR_RACES)
         .with_context(|| format!("reading {CHR_RACES}"))?;
     let mut schema = Schema::new("ChrRaces");
-    for i in 0..29 {
+    for i in 0..69 {
         let ty = match i {
             15 | 26 | 27 | 28 => FieldType::String,
             _ => FieldType::UInt32,
@@ -38,17 +38,18 @@ pub fn load_race_creature_types(chain: &mut Chain) -> Result<HashMap<u8, u32>> {
 mod tests {
     use super::*;
 
-    /// Nine rows, every one Humanoid (7), the rows `race_creature_type` freezes.
+    /// Every shipped row is Humanoid (7): races 1..15 and 18, the rows `race_creature_type`
+    /// freezes.
     #[test]
     fn every_shipped_race_reads_humanoid() {
         let data = crate::wow_data_or_skip!();
         let mut chain = crate::open_chain(&data).expect("open chain");
         let rows = load_race_creature_types(&mut chain).expect("load ChrRaces");
-        assert_eq!(rows.len(), 9, "ChrRaces.dbc row count");
-        for race in 1..=9u8 {
+        assert_eq!(rows.len(), 16, "ChrRaces.dbc row count");
+        for race in (1..=15u8).chain([18]) {
             assert_eq!(rows.get(&race), Some(&7), "race {race}");
         }
-        for race in [0u8, 10, 255] {
+        for race in [0u8, 16, 17, 19, 255] {
             assert!(!rows.contains_key(&race), "race {race} has no row");
         }
     }

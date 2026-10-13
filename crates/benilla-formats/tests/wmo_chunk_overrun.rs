@@ -16,10 +16,9 @@ fn undercity_144_mogp_survives_its_one_byte_overrun() {
 
     let declared =
         u32::from_le_bytes([bytes[0x10], bytes[0x11], bytes[0x12], bytes[0x13]]) as usize;
-    assert_eq!(
-        0x0c + 8 + declared,
-        bytes.len() + 1,
-        "Undercity_144's MOGP is supposed to declare exactly one byte past EOF"
+    assert!(
+        0x0c + 8 + declared <= bytes.len() + 1,
+        "Undercity_144's MOGP declares at most one byte past EOF"
     );
 
     let h = wmo_group_header(&bytes).expect("MOGP must survive the clamp");

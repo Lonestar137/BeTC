@@ -21,22 +21,32 @@ pub struct RealmCategory {
     pub name: String,
 }
 
-/// `ID`, `Region`, eight locale names and their flags: the 11 columns × 0x2c bytes the loader
-/// (`0x5411b0`) gates on.
+/// The 21 columns × 0x54 bytes of build-8606's `Cfg_Categories.dbc`: `ID`, the region/locale mask,
+/// two scalars, the sixteen-locale `Name` block and its flags (cmangos-tbc `DBCStructure.h`'s
+/// `Cfg_CategoriesEntry`). The name's enUS slot is column 4.
 fn cfg_categories_schema() -> Schema {
     let mut s = Schema::new("Cfg_Categories");
     s.add_field(SchemaField::new("ID", FieldType::UInt32));
     s.add_field(SchemaField::new("Region", FieldType::UInt32));
-    for i in 0..8 {
+    s.add_field(SchemaField::new("CharsetMask", FieldType::UInt32));
+    s.add_field(SchemaField::new("Flags", FieldType::UInt32));
+    for i in 0..16 {
         s.add_field(SchemaField::new(format!("Name{i}"), FieldType::String));
     }
     s.add_field(SchemaField::new("NameFlags", FieldType::UInt32));
     s
 }
 
-/// The categories of `region`, in file order (`0x46e3b1`: a row joins when its column 1 equals
-/// the Region). A Region no row names yields none.
+/// The enUS `Name_Lang` slot of build-8606's `Cfg_Categories.dbc`.
+const CATEGORY_NAME_FIELD: usize = 4;
+
+/// The categories of `region`, in file order. Build-8606's column 1 is a bitmask: a row joins when
+/// bit `region - 1` is set (`0x46e3b1`'s equality test is build-5875's). A `region` of 0, or one
+/// past the word, names no category.
 pub fn load_realm_categories(chain: &mut Chain, region: u32) -> Result<Vec<RealmCategory>> {
+    let Some(bit) = region.checked_sub(1).filter(|b| *b < 32).map(|b| 1u32 << b) else {
+        return Ok(Vec::new());
+    };
     let bytes = chain
         .read_file(CFG_CATEGORIES)
         .with_context(|| format!("reading {CFG_CATEGORIES}"))?;
@@ -44,12 +54,12 @@ pub fn load_realm_categories(chain: &mut Chain, region: u32) -> Result<Vec<Realm
     Ok(rs
         .records()
         .iter()
-        .filter(|r| u32_at(r, 1) == Some(region))
+        .filter(|r| u32_at(r, 1).is_some_and(|mask| mask & bit != 0))
         .filter_map(|r| {
             Some(RealmCategory {
                 id: u32_at(r, 0)?,
                 // An empty name is pushed as the empty string; only a missing row reads "UNKNOWN".
-                name: str_at(&rs, r, 2).unwrap_or_default(),
+                name: str_at(&rs, r, CATEGORY_NAME_FIELD).unwrap_or_default(),
             })
         })
         .collect())
@@ -66,25 +76,23 @@ mod tests {
         Some(cats.into_iter().map(|c| (c.id, c.name)).collect())
     }
 
-    /// Region 1 is the US client's: "United States" and "Oceanic", ids 1 and 5, in file order.
+    /// The installed `Wow.ini` names Region 3 (enGB); build-8606's column 1 is a bitmask, so the
+    /// rows are the five language tabs carrying bit 2.
     #[test]
-    fn the_us_region_is_united_states_then_oceanic() {
-        let Some(us) = rows(1) else { return };
-        assert_eq!(
-            us,
-            [(1, "United States".to_string()), (5, "Oceanic".to_string())]
-        );
+    fn the_installed_region_is_the_language_tabs() {
+        let Some(region) = rows(3) else { return };
+        let ids: Vec<u32> = region.iter().map(|(id, _)| *id).collect();
+        assert_eq!(ids, [8, 9, 10, 11, 13], "the ids are not contiguous");
+        assert_eq!(region[0].1, "English");
+        assert_eq!(region[3].1, "Spanish");
+        assert_eq!(region[4].1, "Tournament");
     }
 
-    /// Region 3 is Europe's four language tabs; the ids are not contiguous, so a category is
-    /// matched by id, never by position.
+    /// A category is matched by its own id, never by position in the list.
     #[test]
-    fn the_european_region_is_four_tabs_with_a_gap_in_the_ids() {
-        let Some(eu) = rows(3) else { return };
-        let ids: Vec<u32> = eu.iter().map(|(id, _)| *id).collect();
-        assert_eq!(ids, [1, 2, 3, 5]);
-        assert_eq!(eu[0].1, "English");
-        assert_eq!(eu[3].1, "Spanish");
+    fn a_category_keeps_its_own_id() {
+        let Some(region) = rows(3) else { return };
+        assert!(region.iter().any(|(id, name)| *id == 8 && name == "English"));
     }
 
     /// No row carries Region 0, the value a client without a `Wow.ini` Region reads.

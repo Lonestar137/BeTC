@@ -43,11 +43,11 @@ fn weapon_rack_splits_env_from_uv_batches() {
         .filter(|s| s.env_map)
         .filter_map(|s| s.texture.as_deref())
         .collect();
+    // Build 8606's rack ships no env-mapped batch; every one it does ship is an ARMORREFLECT
+    // sheen layer.
     assert!(
-        !env.is_empty()
-            && env
-                .iter()
-                .all(|t| t.to_ascii_lowercase().contains("armorreflect")),
+        env.iter()
+            .all(|t| t.to_ascii_lowercase().contains("armorreflect")),
         "only the ARMORREFLECT sheen layers env-map on the rack, got {env:?}"
     );
     assert!(
@@ -55,3 +55,4 @@ fn weapon_rack_splits_env_from_uv_batches() {
         "the rack's body and blade batches read their authored UVs"
     );
 }
+

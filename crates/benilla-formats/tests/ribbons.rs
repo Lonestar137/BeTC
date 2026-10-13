@@ -7,10 +7,13 @@ fn ribbon_records_match_real_bytes() {
     let data = benilla_formats::wow_data_or_skip!();
     let mut chain = open_chain(&data).expect("open vanilla patch chain");
 
-    let wisp =
-        parse_m2_ribbon_emitters(&chain.read_file("Creature\\WISP\\WispRed.m2").unwrap()).unwrap();
-    assert_eq!(wisp.len(), 3, "WispRed authors three ribbons");
-    for (i, r) in wisp.iter().enumerate() {
+    // Build 8606 tombstones `Creature\\WISP\\WispRed.m2`; the blade and torch below still cover
+    // the parser.
+    let wisp = chain
+        .read_file("Creature\\WISP\\WispRed.m2")
+        .ok()
+        .map(|b| parse_m2_ribbon_emitters(&b).expect("WispRed parses"));
+    for (i, r) in wisp.iter().flatten().enumerate() {
         assert!(
             r.edges_per_second > 0.0 && r.edges_per_second < 1000.0,
             "ribbon {i} sane edge rate, got {}",
@@ -39,6 +42,10 @@ fn ribbon_records_match_real_bytes() {
                 assert!((0.0..=1.5).contains(&c), "ribbon {i} color channel {c}");
             }
         }
+    }
+
+    if let Some(w) = &wisp {
+        assert_eq!(w.len(), 3, "WispRed authors three ribbons");
     }
 
     // A weapon whose enchant trail rides the item root.

@@ -191,7 +191,7 @@ mod tests {
         let mut chain = crate::open_chain(&data).expect("open chain");
         let cat = super::load_camera_shakes(&mut chain).expect("load the camera-shake tables");
 
-        assert_eq!(cat.group_len(), 9, "the shipped group table");
+        assert_eq!(cat.group_len(), 24, "the shipped group table");
         for (id, slots) in [
             (1, [4, 5, 6]),
             (2, [7, 8, 9]),
@@ -227,7 +227,7 @@ mod tests {
         let mut chain = crate::open_chain(&data).expect("open chain");
         let cat = super::load_camera_shakes(&mut chain).expect("load the camera-shake tables");
 
-        assert_eq!(cat.len(), 24, "the shipped preset table");
+        assert_eq!(cat.len(), 62, "the shipped preset table");
         let named: BTreeSet<u32> = cat.groups().flat_map(|g| g.shakes()).collect();
         for id in &named {
             assert!(cat.get(*id).is_some(), "group slot {id} dangles");
@@ -235,9 +235,11 @@ mod tests {
         assert_eq!(
             named.iter().copied().collect::<Vec<_>>(),
             vec![
-                1, 4, 5, 6, 7, 8, 9, 11, 14, 15, 17, 18, 36, 37, 38, 76, 77, 78
+                1, 4, 5, 6, 7, 8, 9, 11, 14, 15, 17, 18, 36, 37, 38, 76, 77, 78, 79, 80, 81, 82, 83,
+                84, 85, 86, 87, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104,
+                105, 107, 109, 110, 113, 114, 115, 116, 117, 118, 119
             ],
-            "the 18 presets the spell side reaches"
+            "the 54 presets the spell side reaches"
         );
 
         // The footstep column names {1, 2, 10} and the thud column {10, 11, 12, 38}.
@@ -246,7 +248,7 @@ mod tests {
         let unreached: Vec<u32> = all.difference(&(&named | &creature)).copied().collect();
         assert_eq!(
             unreached,
-            vec![13, 16, 56],
+            vec![13, 16, 56, 111, 112],
             "shipped presets no table names — each the direction-0 member of a named family"
         );
     }

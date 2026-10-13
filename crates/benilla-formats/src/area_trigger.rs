@@ -196,7 +196,7 @@ mod tests {
         let data = crate::wow_data_or_skip!();
         let mut chain = crate::open_chain(&data).expect("open chain");
         let cat = load_area_trigger_catalog(&mut chain).expect("load AreaTrigger");
-        assert_eq!(cat.len(), 432, "5875 ships 432 area triggers");
+        assert_eq!(cat.len(), 755, "8606 ships 755 area triggers");
 
         // The Darnassus portal pair, 10-yd spheres on Kalimdor: vmangos's `areatrigger_teleport`
         // sends 527 to (8785.79, 966.98, 30.20), trigger 542's position here, and 542 to 527's.
@@ -223,6 +223,6 @@ mod tests {
         );
 
         assert!(cat.on_map(1).iter().all(|t| t.map_id == 1));
-        assert_eq!((cat.on_map(0).len(), cat.on_map(1).len()), (133, 121));
+        assert_eq!((cat.on_map(0).len(), cat.on_map(1).len()), (152, 146));
     }
 }

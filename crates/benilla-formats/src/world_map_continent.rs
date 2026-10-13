@@ -138,7 +138,7 @@ mod tests {
         let data = crate::wow_data_or_skip!();
         let mut chain = crate::open_chain(&data).expect("open chain");
         let cat = load_world_map_continent_catalog(&mut chain).expect("load WorldMapContinent");
-        assert_eq!(cat.len(), 2);
+        assert_eq!(cat.len(), 3);
 
         let azeroth = cat.get(0).expect("Azeroth (mapId 0)");
         assert_eq!(
@@ -148,15 +148,15 @@ mod tests {
                 azeroth.top_boundary,
                 azeroth.bottom_boundary
             ),
-            (23, 47, 15, 61)
+            (23, 47, 9, 61)
         );
         assert!((azeroth.offset_x - 14.5).abs() < 0.01);
-        assert!((azeroth.offset_y - (-7.0)).abs() < 0.01);
+        assert!((azeroth.offset_y - (-4.75)).abs() < 0.01);
         assert!((azeroth.scale - 0.75).abs() < 0.001);
-        assert!((azeroth.taxi_min.0 - (-15980.0)).abs() < 0.1);
-        assert!((azeroth.taxi_min.1 - (-11880.0)).abs() < 0.1);
-        assert!((azeroth.taxi_max.0 - 5817.0).abs() < 0.1);
-        assert!((azeroth.taxi_max.1 - 9917.0).abs() < 0.1);
+        assert!((azeroth.taxi_min.0 - (-16530.0)).abs() < 0.1);
+        assert!((azeroth.taxi_min.1 - (-16530.0)).abs() < 0.1);
+        assert!((azeroth.taxi_max.0 - 12270.0).abs() < 0.1);
+        assert!((azeroth.taxi_max.1 - 12270.0).abs() < 0.1);
 
         let kalimdor = cat.get(1).expect("Kalimdor (mapId 1)");
         assert_eq!(
@@ -166,7 +166,7 @@ mod tests {
                 kalimdor.top_boundary,
                 kalimdor.bottom_boundary
             ),
-            (23, 48, 9, 52)
+            (14, 48, 9, 52)
         );
         assert!((kalimdor.scale - 0.75).abs() < 0.001);
     }

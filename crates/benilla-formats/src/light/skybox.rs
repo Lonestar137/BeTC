@@ -58,14 +58,17 @@ pub(super) fn load_skyboxes(chain: &mut Chain, file: &str) -> Result<HashMap<u32
         .get(8..12)
         .map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
         .unwrap_or(2);
-    let extended = fields >= 4;
+    let extended = fields >= 3;
     let mut schema = Schema::new("LightSkybox");
     schema.add_field(SchemaField::new("ID", FieldType::UInt32));
     schema.add_field(SchemaField::new("Name", FieldType::String));
     if extended {
+        // Build 8606 adds `Flags`; build 3.x adds `CelestialName` after it. Columns past what
+        // this client reads, if a later table carries them, stay opaque dwords.
         schema.add_field(SchemaField::new("Flags", FieldType::UInt32));
-        schema.add_field(SchemaField::new("CelestialName", FieldType::String));
-        // Columns past the four this client reads, if a later table carries them.
+        if fields >= 4 {
+            schema.add_field(SchemaField::new("CelestialName", FieldType::String));
+        }
         for i in 4..fields {
             schema.add_field(SchemaField::new(format!("extra{i}"), FieldType::UInt32));
         }
@@ -79,9 +82,13 @@ pub(super) fn load_skyboxes(chain: &mut Chain, file: &str) -> Result<HashMap<u32
         let (flags, celestial) = if extended {
             (
                 u32_at(r, 2).unwrap_or(0),
-                str_at(&rs, r, 3)
-                    .filter(|c| !c.trim().is_empty())
-                    .map(|c| crate::models::model_path(&c)),
+                (fields >= 4)
+                    .then(|| {
+                        str_at(&rs, r, 3)
+                            .filter(|c| !c.trim().is_empty())
+                            .map(|c| crate::models::model_path(&c))
+                    })
+                    .flatten(),
             )
         } else {
             (0, None)

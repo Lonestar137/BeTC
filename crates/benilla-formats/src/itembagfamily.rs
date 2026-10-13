@@ -39,7 +39,7 @@ impl ItemBagFamilyCatalog {
 fn item_bag_family_schema() -> Schema {
     let mut s = Schema::new("ItemBagFamily");
     s.add_field(SchemaField::new("ID", FieldType::UInt32));
-    for i in 0..8 {
+    for i in 0..16 {
         s.add_field(SchemaField::new(format!("Name{i}"), FieldType::String));
     }
     s.add_field(SchemaField::new("NameFlags", FieldType::UInt32));
@@ -58,6 +58,10 @@ pub fn load_item_bag_families(chain: &mut Chain) -> Result<ItemBagFamilyCatalog>
         else {
             continue;
         };
+        // Family 0 is "no family": build 8606 names the row "NONE", which must not render.
+        if id == 0 {
+            continue;
+        }
         names.insert(id, name);
     }
     Ok(ItemBagFamilyCatalog { names })
@@ -80,10 +84,10 @@ mod tests {
         assert_eq!(cat.name(7), Some("Enchanting Supplies"));
         assert_eq!(cat.name(8), Some("Engineering Supplies"));
         assert_eq!(cat.name(9), Some("Keys"), "the keyring family");
-        // 4 and 5 do not ship.
-        assert_eq!(cat.name(4), None);
-        assert_eq!(cat.name(5), None);
+        // Build 8606 names the families 5875 leaves empty.
+        assert_eq!(cat.name(4), Some("Leatherworking Supplies"));
+        assert_eq!(cat.name(5), Some("Unused"));
         assert_eq!(cat.name(0), None, "family 0 must not render as \"NONE\"");
-        assert_eq!(cat.len(), 8, "the whole shipped table");
+        assert_eq!(cat.len(), 13, "the whole shipped table");
     }
 }

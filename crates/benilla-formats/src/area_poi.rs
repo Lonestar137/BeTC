@@ -80,7 +80,7 @@ fn schema() -> Schema {
         s.add_field(SchemaField::new_array(
             format!("{name_col}OtherLocales"),
             FieldType::String,
-            7,
+            15,
         ));
         s.add_field(SchemaField::new(flags_col, FieldType::UInt32));
     }
@@ -108,8 +108,8 @@ pub fn load_area_poi_catalog(chain: &mut Chain) -> Result<AreaPoiCatalog> {
             flags: u32_at(r, 8).unwrap_or(0),
             area_id: u32_at(r, 9).unwrap_or(0),
             name: str_at(&rs, r, 10).unwrap_or_default(),
-            description: str_at(&rs, r, 19).unwrap_or_default(),
-            world_state_id: u32_at(r, 28).unwrap_or(0),
+            description: str_at(&rs, r, 27).unwrap_or_default(),
+            world_state_id: u32_at(r, 44).unwrap_or(0),
         };
         by_id.insert(id, rows.len());
         rows.push((id, poi));
@@ -127,7 +127,7 @@ mod tests {
         let data = crate::wow_data_or_skip!();
         let mut chain = crate::open_chain(&data).expect("open chain");
         let cat = load_area_poi_catalog(&mut chain).expect("load AreaPOI");
-        assert_eq!(cat.len(), 339, "all 339 rows load");
+        assert_eq!(cat.len(), 546, "all 546 rows load");
 
         let mut nonempty_names = 0;
         let mut worldstate_nonzero = 0;
@@ -145,7 +145,7 @@ mod tests {
                 worldstate_nonzero += 1;
             }
         }
-        assert_eq!(nonempty_names, 339, "every row has a readable enUS name");
+        assert_eq!(nonempty_names, 546, "every row has a readable enUS name");
         assert!(
             worldstate_nonzero >= 100,
             "a meaningful share of rows carry a live WorldStateID: {worldstate_nonzero}"

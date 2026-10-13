@@ -34,7 +34,7 @@ impl CreatureTypeFlags {
 fn creature_type_schema() -> Schema {
     let mut s = Schema::new("CreatureType");
     s.add_field(SchemaField::new("ID", FieldType::UInt32));
-    for i in 0..8 {
+    for i in 0..16 {
         s.add_field(SchemaField::new(format!("Name{i}"), FieldType::String));
     }
     s.add_field(SchemaField::new("NameFlags", FieldType::UInt32));
@@ -51,7 +51,7 @@ pub fn load_creature_type_flags(chain: &mut Chain) -> Result<CreatureTypeFlags> 
     let mut flags = HashMap::with_capacity(rs.records().len());
     for r in rs.records() {
         if let Some(id) = u32_at(r, 0) {
-            flags.insert(id, u32_at(r, 10).unwrap_or(0));
+            flags.insert(id, u32_at(r, 18).unwrap_or(0));
         }
     }
     Ok(CreatureTypeFlags(flags))
@@ -66,7 +66,7 @@ mod tests {
         let data = crate::wow_data_or_skip!();
         let mut chain = crate::open_chain(&data).expect("open chain");
         let flags = load_creature_type_flags(&mut chain).expect("load CreatureType.dbc");
-        assert_eq!(flags.len(), 11, "1.12 ships 11 creature types");
+        assert_eq!(flags.len(), 13, "8606 ships 13 creature types");
         assert!(flags.no_tab_target(8), "Critter (8) must be un-TAB-able");
         for id in [1, 7, 11] {
             assert!(!flags.no_tab_target(id), "type {id} must be targetable");

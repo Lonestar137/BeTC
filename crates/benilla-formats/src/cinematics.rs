@@ -333,8 +333,8 @@ mod tests {
         let data = crate::wow_data_or_skip!();
         let mut chain = crate::open_chain(&data).expect("open chain");
         let cat = load_cinematics(&mut chain).expect("load cinematic tables");
-        assert_eq!(cat.sequence_count(), 10);
-        assert_eq!(cat.camera_count(), 10);
+        assert_eq!(cat.sequence_count(), 13);
+        assert_eq!(cat.camera_count(), 13);
 
         for id in RACE_INTROS {
             let seq = cat.sequence(id).unwrap_or_else(|| panic!("sequence {id}"));

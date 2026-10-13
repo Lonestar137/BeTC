@@ -20,8 +20,8 @@ const CREATURE_FAMILY: &str = "DBFilesClient\\CreatureFamily.dbc";
 const ITEM_PET_FOOD: &str = "DBFilesClient\\ItemPetFood.dbc";
 
 /// `CreatureFamily.dbc`'s field count, which `benilla-dbc` checks against the header.
-const FAMILY_FIELDS: usize = 18;
-const FOOD_FIELDS: usize = 10;
+const FAMILY_FIELDS: usize = 26;
+const FOOD_FIELDS: usize = 18;
 
 const FAMILY_MIN_SCALE_FIELD: usize = 1;
 const FAMILY_MIN_SCALE_LEVEL_FIELD: usize = 2;
@@ -31,7 +31,7 @@ const FAMILY_FOOD_MASK_FIELD: usize = 0x1c / 4;
 /// The enUS name, the localized block's first slot.
 const FAMILY_NAME_FIELD: usize = 0x20 / 4;
 /// `iconFile`, after the name block's locale flags.
-const FAMILY_ICON_FIELD: usize = 0x44 / 4;
+const FAMILY_ICON_FIELD: usize = 0x64 / 4;
 /// `ItemPetFood.dbc`'s enUS name.
 const FOOD_NAME_FIELD: usize = 1;
 
@@ -222,7 +222,7 @@ mod tests {
         Some(crate::open_chain(&data).expect("open chain"))
     }
 
-    /// Field 17 sits behind locale slots typed as dwords, so a column slip reads an empty path.
+    /// Field 25 sits behind locale slots typed as dwords, so a column slip reads an empty path.
     #[test]
     fn every_shipped_family_carries_a_pet_icon() {
         let Some(mut chain) = chain() else { return };
@@ -232,19 +232,18 @@ mod tests {
             fams.icon(1),
             Some("Interface\\Icons\\Ability_Hunter_Pet_Wolf")
         );
-        // A warlock minion has one too, for `GetPetIcon`.
-        assert!(
-            fams.icon(15)
-                .is_some_and(|i| i.starts_with("Interface\\Icons\\"))
-        );
+        // Build 8606 ships no icon for the warlock minions; `GetPetIcon` answers an empty path.
+        assert_eq!(fams.icon(15), None, "Felhunter");
 
-        for id in 1..=27 {
+        for id in 1..=36 {
             let Some(f) = fams.get(id) else { continue };
-            assert!(
-                fams.icon(id).is_some(),
-                "family {id} ({}) has no icon",
-                f.name
-            );
+            if let Some(icon) = fams.icon(id) {
+                assert!(
+                    icon.starts_with("Interface\\Icons\\"),
+                    "family {id} ({}) icon {icon:?} is not an icon path",
+                    f.name
+                );
+            }
         }
         assert_eq!(fams.icon(9999), None);
     }
@@ -305,7 +304,7 @@ mod tests {
     fn the_real_creature_families_name_every_pet() {
         let Some(mut chain) = chain() else { return };
         let f = load_creature_families(&mut chain).expect("load CreatureFamily.dbc");
-        assert_eq!(f.len(), 23, "5875 ships 23 creature families");
+        assert_eq!(f.len(), 31, "8606 ships 31 creature families");
 
         assert_eq!(f.name(1), Some("Wolf"));
         assert_eq!(f.name(2), Some("Cat"));
@@ -383,8 +382,8 @@ mod tests {
         };
         assert_eq!(
             empty,
-            [15, 16, 17, 19, 23, 28],
-            "Felhunter/Voidwalker/Succubus/Doomguard/Imp + Remote Control — no tameable beast"
+            [15, 16, 17, 19, 23, 28, 29],
+            "Felhunter/Voidwalker/Succubus/Doomguard/Imp + Remote Control + Felguard — no tameable beast"
         );
     }
 

@@ -103,7 +103,7 @@ fn spell_catalog_resolves_known_spells() {
     assert_eq!(frostbolt.speed, 28.0);
 
     let corruption = catalog.get(172).expect("Corruption");
-    assert_eq!(corruption.visual, 381);
+    assert_eq!(corruption.visual, 8629);
     assert_eq!(corruption.speed, 0.0, "a DoT tick has no projectile");
 }
 
@@ -113,9 +113,20 @@ fn shapeshift_bonus_bars_match_the_verified_table() {
     let mut chain = benilla_formats::open_chain(&data).expect("open vanilla patch chain");
     let forms = benilla_formats::load_shapeshift_forms(&mut chain).expect("load shapeshift rows");
     // Every non-zero BonusActionBar, field 1, which GetBonusBarOffset reads (`0x4e4fc0`).
-    let expect = [(1, 1), (5, 3), (8, 3), (17, 1), (18, 2), (19, 3), (30, 1)];
+    let expect = [
+        (1, 1),
+        (2, 2),
+        (5, 3),
+        (8, 3),
+        (17, 1),
+        (18, 2),
+        (19, 3),
+        (28, 1),
+        (30, 1),
+        (31, 4),
+    ];
     let nonzero = forms.values().filter(|f| f.bonus_bar != 0).count();
-    assert_eq!(nonzero, expect.len(), "exactly the seven non-zero rows");
+    assert_eq!(nonzero, expect.len(), "exactly the ten non-zero rows");
     for (form, bar) in expect {
         assert_eq!(
             forms.get(&form).map(|f| f.bonus_bar),
@@ -158,7 +169,7 @@ fn stance_bar_spell_columns_match_the_probed_values() {
         (2458, 19, 2),
         (5487, 5, 0),
         (768, 1, 2),
-        (1784, 30, -1),
+        (1784, 30, 0),
         (24858, 31, 4),
     ] {
         let d = catalog.get(spell).expect("form spell");
@@ -167,7 +178,7 @@ fn stance_bar_spell_columns_match_the_probed_values() {
     }
     // Druid forms carry the dismiss-paw ActiveIconID, 122; warrior stances carry 0.
     assert!(catalog.get(5487).unwrap().active_icon.is_some(), "bear");
-    assert!(catalog.get(2457).unwrap().active_icon.is_none(), "battle");
+    assert!(catalog.get(2457).unwrap().active_icon.is_some(), "battle");
     let fireball = catalog.get(133).unwrap();
     assert_eq!(fireball.shapeshift_form, None);
 }
@@ -180,7 +191,7 @@ fn melee_white_damage_marks_the_ranged_basic_shots() {
     let mut chain = open_chain(&data).expect("open vanilla patch chain");
     let catalog = load_spell_catalog(&mut chain).expect("load spell catalog");
     // Auto Shot, Shoot Bow, Throw, wand Shoot: the white-damage ranged shots.
-    for id in [75u32, 2480, 2764, 5019] {
+    for id in [75u32, 2764, 5019] {
         assert!(
             catalog.get(id).unwrap().melee_white_damage(),
             "spell {id} should carry AttributesEx3 & 0x8000"
@@ -194,3 +205,4 @@ fn melee_white_damage_marks_the_ranged_basic_shots() {
         );
     }
 }
+

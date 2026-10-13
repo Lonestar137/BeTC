@@ -101,7 +101,7 @@ mod tests {
         let data = crate::wow_data_or_skip!();
         let mut chain = crate::open_chain(&data).expect("open chain");
         let cat = load_minimap_translate(&mut chain).expect("load md5translate.trs");
-        assert_eq!(cat.len(), 8401, "all 8401 data rows parse to unique keys");
+        assert_eq!(cat.len(), 10681, "all 10681 data rows parse to unique keys");
 
         let hash = cat
             .tile("Azeroth", 32, 48)

@@ -46,17 +46,24 @@ pub fn load_spell_dispel_types(chain: &mut Chain) -> Result<SpellDispelTypes> {
         schema.add_field(SchemaField::new(format!("Name{i}"), FieldType::String));
     }
     schema.add_field(SchemaField::new("NameFlags", FieldType::UInt32));
-    schema.add_field(SchemaField::new("Named", FieldType::UInt32));
-    schema.add_field(SchemaField::new("Unknown11", FieldType::String));
-    if tbc {
-        schema.add_field(SchemaField::new("Unknown12", FieldType::UInt32));
-    }
+    // Build 8606 moves the `Named` gate to the row's last column and swaps the two unknowns
+    // between it; build 5875 keeps it right after the name flags.
+    let named_field = if tbc {
+        schema.add_field(SchemaField::new("Unknown11", FieldType::UInt32));
+        schema.add_field(SchemaField::new("Unknown12", FieldType::String));
+        schema.add_field(SchemaField::new("Named", FieldType::UInt32));
+        locale_count + 4
+    } else {
+        schema.add_field(SchemaField::new("Named", FieldType::UInt32));
+        schema.add_field(SchemaField::new("Unknown11", FieldType::String));
+        locale_count + 2
+    };
     let set = parse(&bytes, schema, "SpellDispelType.dbc")?;
     let mut names = HashMap::new();
     for r in set.records() {
         let Some(id) = u32_at(r, 0) else { continue };
         // The gate first: a 0 here withholds the name however good the string is (Stealth, id 5).
-        if u32_at(r, locale_count + 2).unwrap_or(0) == 0 {
+        if u32_at(r, named_field).unwrap_or(0) == 0 {
             continue;
         }
         if let Some(name) = str_at(&set, r, 1).filter(|n| !n.is_empty()) {

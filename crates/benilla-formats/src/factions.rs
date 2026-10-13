@@ -793,7 +793,7 @@ mod tests {
         let cat = load_faction_catalog(&mut chain).expect("load factions");
 
         // 54 of the table's 190 rows carry a reputation slot; the rest are reaction-only.
-        assert_eq!(cat.reputation_factions().count(), 54);
+        assert_eq!(cat.reputation_factions().count(), 75);
 
         // The four Alliance cities sit under Alliance (469), the four Horde ones under Horde (67).
         for id in [72 /* Stormwind */, 47, 69, 54] {
@@ -831,7 +831,7 @@ mod tests {
             .into_iter()
             .collect();
         parents.sort_unstable();
-        assert_eq!(parents, [67, 169, 469, 891, 892]);
+        assert_eq!(parents, [67, 169, 469, 891, 892, 936, 980]);
 
         assert!(
             cat.faction_description(529)

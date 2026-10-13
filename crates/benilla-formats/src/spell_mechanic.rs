@@ -11,7 +11,7 @@ use crate::Chain;
 use crate::dbc::{parse, str_at, u32_at};
 
 const SPELL_MECHANIC: &str = "DBFilesClient\\SpellMechanic.dbc";
-const SPELL_MECHANIC_FIELDS: usize = 10;
+const SPELL_MECHANIC_FIELDS: usize = 18;
 const COL_NAME_ENUS: usize = 1;
 
 /// Mechanic id → name, lower-case in the data ("stunned") and left so, as the reference does.
@@ -81,6 +81,6 @@ mod tests {
         assert_eq!(cat.name(17), Some("polymorphed"));
         assert_eq!(cat.name(0), None, "0 = no mechanic, and no line to fill");
         assert_eq!(cat.name(999), None);
-        assert_eq!(cat.len(), 27, "the 5875 file's full row count");
+        assert_eq!(cat.len(), 30, "the 5875 file's full row count");
     }
 }

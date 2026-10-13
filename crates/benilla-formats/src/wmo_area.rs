@@ -192,7 +192,7 @@ mod tests {
 
         // Chapel (656) group 478: cave reverb and ambience over the whole-WMO underwater preset.
         let chapel = cat.resolve(656, 0, 478).expect("chapel group row");
-        assert_eq!(chapel.sound_provider, [75, 0]);
+        assert_eq!(chapel.sound_provider, [75, 11]);
         assert_eq!(chapel.ambience, 50);
         assert_eq!(chapel.zone_music, 0);
 

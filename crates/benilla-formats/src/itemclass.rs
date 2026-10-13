@@ -38,7 +38,7 @@ fn item_class_schema() -> Schema {
     s.add_field(SchemaField::new("ClassID", FieldType::UInt32));
     s.add_field(SchemaField::new("SubClassMapID", FieldType::UInt32));
     s.add_field(SchemaField::new("Flags", FieldType::UInt32));
-    for i in 0..8 {
+    for i in 0..16 {
         s.add_field(SchemaField::new(format!("Name{i}"), FieldType::String));
     }
     s.add_field(SchemaField::new("NameFlags", FieldType::UInt32));
@@ -81,7 +81,7 @@ mod tests {
         assert_eq!(cat.name(11), Some("Quiver"), "Bagnon's own expectation");
         assert_eq!(cat.name(15), Some("Miscellaneous"));
         // The reference pushes the row string unfiltered.
-        assert_eq!(cat.name(3), Some("Jewelry(OBSOLETE)"));
+        assert_eq!(cat.name(3), Some("Gem"), "build 8606 renames 5875's Jewelry(OBSOLETE)");
         assert_eq!(cat.name(10), Some("Money(OBSOLETE)"));
         assert_eq!(cat.name(16), None);
         assert_eq!(cat.len(), 16, "the whole shipped table");

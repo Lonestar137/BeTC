@@ -103,6 +103,14 @@ fn nine_period_calibration_report() {
     let cat = load_taxi_path_nodes(&mut chain).expect("load TaxiPathNode");
 
     let variant_count = MODES.len() * STEPS_VARIANTS.len();
+    // The goldens are the 5875 vmangos `transports` table; build 8606's paths differ, so the
+    // periods it computes are a different datum and the 5875 rows cannot pin them.
+    if chain.client_build() == Some(8606) {
+        eprintln!("skipping: the transport goldens are the 5875 vmangos rows");
+        return;
+    }
+
+
     let mut all_nine_exact = vec![true; variant_count];
     let mut all_sniffed_exact = vec![true; variant_count];
 
@@ -195,6 +203,14 @@ fn client_period_bit_exact() {
     let cat = load_taxi_path_nodes(&mut chain).expect("load TaxiPathNode");
 
     let mut failures = Vec::new();
+    // The goldens are the 5875 vmangos `transports` table; build 8606's paths differ, so the
+    // periods it computes are a different datum and the 5875 rows cannot pin them.
+    if chain.client_build() == Some(8606) {
+        eprintln!("skipping: the transport goldens are the 5875 vmangos rows");
+        return;
+    }
+
+
     for g in GOLDENS {
         let nodes = cat
             .path(g.path_id)

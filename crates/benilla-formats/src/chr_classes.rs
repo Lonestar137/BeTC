@@ -30,21 +30,23 @@ use crate::dbc::{parse, str_at, u32_at};
 const CHR_CLASSES: &str = "DBFilesClient\\ChrClasses.dbc";
 
 /// The patch copy's column count, which `benilla-dbc` enforces as the reference loader does
-/// (`0x54240e`, `0x542446`): the base archive's 16-column copy lacks the relic flag and is refused,
-/// never read one column short.
-const CHR_CLASSES_FIELDS: usize = 17;
+/// (`0x54240e`, `0x542446`): build-8606's row is 58 columns, four localized blocks in it.
+const CHR_CLASSES_FIELDS: usize = 58;
 
-/// Field 2, read at `rec + 8` by `GetDamageBonusStat` (`0x48b569`).
-const DAMAGE_BONUS_STAT_FIELD: usize = 0x8 / 4;
+/// Field 1, the damage bonus stat, read by `GetDamageBonusStat` (`0x48b569`).
+const DAMAGE_BONUS_STAT_FIELD: usize = 1;
 
-/// Field 4, read at `rec + 0x10` by `HasPetSpells` (`0x4b447c`).
-const PET_NAME_TOKEN_FIELD: usize = 0x10 / 4;
+/// Field 3, the pet name token, read by `HasPetSpells` (`0x4b447c`).
+const PET_NAME_TOKEN_FIELD: usize = 3;
 
-/// Field 16, read at `row + 0x40` by `UnitHasRelicSlot` (`0x519ebb`).
-const RELIC_SLOT_FIELD: usize = 0x40 / 4;
+/// Field 57, the class flags; bit `0x8` is the relic slot `UnitHasRelicSlot` (`0x519ebb`) reads.
+const RELIC_SLOT_FIELD: usize = 57;
 
-/// Field 15, read at `+0x3c` by `0x6e6ca0`.
-const SPELL_FAMILY_FIELD: usize = 0x3c / 4;
+/// Bit `0x8` of [`RELIC_SLOT_FIELD`], set for Paladin, Shaman and Druid.
+const RELIC_SLOT_BIT: u32 = 0x8;
+
+/// Field 56, the class spell family, read by `0x6e6ca0`.
+const SPELL_FAMILY_FIELD: usize = 56;
 
 /// The literal the reference pushes when the player does not resolve (`0x846a40`). Every class but
 /// the Warlock carries it too, so an unloaded table degrades invisibly.
@@ -126,7 +128,7 @@ pub fn load_chr_classes(chain: &mut Chain) -> Result<ChrClasses> {
             ChrClass {
                 damage_bonus_stat: u32_at(r, DAMAGE_BONUS_STAT_FIELD).unwrap_or(0),
                 pet_name_token: str_at(&rs, r, PET_NAME_TOKEN_FIELD),
-                has_relic_slot: u32_at(r, RELIC_SLOT_FIELD).is_some_and(|v| v != 0),
+                has_relic_slot: u32_at(r, RELIC_SLOT_FIELD).is_some_and(|v| v & RELIC_SLOT_BIT != 0),
                 spell_family: u32_at(r, SPELL_FAMILY_FIELD).unwrap_or(0),
             },
         );

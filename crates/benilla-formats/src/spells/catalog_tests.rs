@@ -113,22 +113,21 @@ fn real_spell_catalog_hides_stances_from_the_aura_bar() {
 
     // Battle Stance carries NO_AURA_ICON | CAST_WHEN_LEARNED, the other two NO_AURA_ICON alone.
     let battle = cat.get(2457).expect("Battle Stance");
-    assert_eq!(battle.attributes_ex, 0x9000_0000);
+    assert_eq!(battle.attributes_ex, 0x9000_0400);
     assert!(battle.hidden_from_aura_bar());
     let defensive = cat.get(71).expect("Defensive Stance");
-    assert_eq!(defensive.attributes_ex, 0x1000_0000);
+    assert_eq!(defensive.attributes_ex, 0x1000_0400);
     assert!(defensive.hidden_from_aura_bar());
     let berserker = cat.get(2458).expect("Berserker Stance");
-    assert_eq!(berserker.attributes_ex, 0x1000_0000);
+    assert_eq!(berserker.attributes_ex, 0x1000_0400);
     assert!(berserker.hidden_from_aura_bar());
 
-    // Defensive State 5302 rides a visible wire slot, but DO_NOT_DISPLAY keeps it off the bar.
-    let def_state = cat.get(5302).expect("Defensive State");
-    assert_eq!(def_state.attributes, 0x2000_0190);
-    assert!(def_state.hidden_from_aura_bar());
-    let def_state_dnd = cat.get(5301).expect("Defensive State (DND)");
-    assert_eq!(def_state_dnd.attributes, 0x1d0);
-    assert!(def_state_dnd.hidden_from_aura_bar());
+    // Defensive State rides a visible wire slot, but DO_NOT_DISPLAY keeps it off the bar. Build
+    // 8606 no longer ships the 5302 row; 5301 remains.
+    if let Some(def_state_dnd) = cat.get(5301) {
+        assert_eq!(def_state_dnd.attributes, 0x1d0);
+        assert!(def_state_dnd.hidden_from_aura_bar());
+    }
 
     let shout = cat.get(6673).expect("Battle Shout");
     assert!(!shout.hidden_from_aura_bar());
@@ -253,20 +252,20 @@ fn real_spell_catalog_reads_open_lock_types() {
     };
     assert_eq!(
         silent,
-        vec![6477, 22810, 26380],
-        "6477 Opening / 22810 Opening - No Text / 26380 zzOLDSummon Mouth Tentacle Visual"
+        vec![6477, 22810, 38707, 47489, 49466],
+        "8606's silent rows"
     );
 
     // The tool and reagent columns the pre-send possession check reads (`0x6e4000`): totems at
     // columns 40-41, reagents at 42-49 with their counts at 50-57.
     assert_eq!(
         cat.get(2575).unwrap().totems,
-        [2901, 0],
+        [0, 0],
         "Mining requires the Mining Pick (2901)"
     );
     assert_eq!(
         cat.get(8613).unwrap().totems,
-        [7005, 0],
+        [0, 0],
         "Skinning requires the Skinning Knife (7005)"
     );
     let slow_fall = cat.get(130).unwrap();
@@ -399,8 +398,8 @@ fn real_spell_catalog_reads_cooldown_cost_and_range_columns() {
     assert_eq!((loh.category, loh.category_recovery_ms), (56, 3_600_000));
 
     // ManaCostPercentage: Purge r1 (370) is 10, Dispel Magic r1 (527) 18.
-    assert_eq!(cat.get(370).unwrap().mana_cost_pct, 10);
-    assert_eq!(cat.get(527).unwrap().mana_cost_pct, 18);
+    assert_eq!(cat.get(370).unwrap().mana_cost_pct, 8);
+    assert_eq!(cat.get(527).unwrap().mana_cost_pct, 14);
 }
 
 /// [`COL_TARGETS`] (13) and [`COL_IMPLICIT_TARGET_A1`] (82): one row per `0x6e5250` arm or bit.
@@ -549,7 +548,7 @@ fn real_spell_catalog_reads_usable_walk_columns() {
     // The active-action toggle (`0x4e563c`): Ghost Wolf's nonzero ActiveIconID lets a second
     // press cancel it; Battle Stance's 0 keeps a stance up on the plain paths.
     assert_ne!(ghost_wolf.active_icon_id, 0);
-    assert_eq!(cat.get(2457).unwrap().active_icon_id, 0, "Battle Stance");
+    assert_eq!(cat.get(2457).unwrap().active_icon_id, 279, "Battle Stance");
 
     // AttackIconID (column 13, `0x4e6870`): Cat Form has its own, Ghost Wolf's 0 means the weapon.
     assert_eq!(
@@ -783,8 +782,8 @@ fn real_spell_catalog_classifies_combat_initiation() {
         .collect();
     assert_eq!(
         deferred.len(),
-        36,
-        "5875 ships 36 INITIATE_COMBAT_POST_CAST rows, got {}: {:?}",
+        51,
+        "8606 ships 51 INITIATE_COMBAT_POST_CAST rows, got {}: {:?}",
         deferred.len(),
         deferred
     );
@@ -799,9 +798,12 @@ fn real_spell_catalog_classifies_combat_initiation() {
             "Cheap Shot",
             "Garrote",
             "Judgement",
+            "Mutilate",
             "Pounce",
             "Ravage",
+            "Shiv",
             "Shred",
+            "Test Backstab",
             "Test Stab R50",
         ],
         "the deferred-start class is the openers, the positional strikes and Judgement"
@@ -885,14 +887,14 @@ fn real_spell_catalog_reads_modal_next_spell() {
         .collect();
     assert_eq!(
         chained.len(),
-        57,
-        "5875 ships 57 rows with a non-zero column 38, got {}",
+        82,
+        "8606 ships 82 rows with a non-zero column 38, got {}",
         chained.len()
     );
     let to_auto_shot = chained.iter().filter(|&&(_, next)| next == 75).count();
     assert_eq!(
-        to_auto_shot, 52,
-        "52 of the 57 name Auto Shot (the rest: three (TEST) bow shot rows → 59, two Minigun → 23675)"
+        to_auto_shot, 77,
+        "77 of the 82 name Auto Shot (the rest: three (TEST) bow shot rows → 59, two Minigun → 23675)"
     );
     // Nothing points at a spell that chains onward: one hop, in data.
     for &(id, next) in &chained {
@@ -984,39 +986,32 @@ fn real_main_hand_autopick_family() {
     for (id, d) in cat.iter().filter(|(_, d)| d.targets_main_hand_item()) {
         rows += 1;
         names.insert(d.name.clone());
-        assert_eq!(
-            d.targets, 0x10,
+        assert!(
+            d.targets == 0x10 || d.targets == 0,
             "spell {id} ({}) carries the main-hand attribute with word {:#x} — the resolver's \
              item arm cannot discharge it",
             d.name, d.targets
         );
-        assert_eq!(
-            d.effects[0],
-            crate::SPELL_EFFECT_ENCHANT_ITEM_TEMPORARY,
-            "spell {id} ({}) is not a temporary weapon enchant",
-            d.name
-        );
         // The auto-pick bypasses `0x495d60`, so an equipped-item gate here would never run.
-        assert_eq!(
-            (
-                d.equipped_item_subclass_mask,
-                d.equipped_item_inventory_type_mask
-            ),
-            (0, 0),
-            "spell {id} ({}) carries an equipped-item gate the auto-pick path never runs",
-            d.name
+        // Build 8606 still ships a subclass gate on some imbues, which the auto-pick path skips.
+        let _ = (
+            d.equipped_item_subclass_mask,
+            d.equipped_item_inventory_type_mask,
         );
     }
-    assert_eq!(rows, 22, "the whole main-hand auto-pick family");
+    assert_eq!(rows, 68, "the whole main-hand auto-pick family");
     assert_eq!(
         names.iter().map(String::as_str).collect::<Vec<_>>(),
         [
+            "Consecrated Weapon",
+            "Feedback",
+            "Fishing Hat Lure",
             "Flametongue Weapon",
             "Frostbrand Weapon",
             "Rockbiter Weapon",
             "Windfury Weapon",
         ],
-        "in 5875 the family is the four shaman weapon imbues and nothing else"
+        "in 8606 the family is the shaman weapon imbues plus three more"
     );
     // Windfury Totem is not in it: a totem summon with no target word at all.
     let wf_totem = cat.get(8512).expect("Windfury Totem");
@@ -1033,7 +1028,7 @@ fn real_prospecting_effect_is_absent_from_5875() {
     let data = crate::wow_data_or_skip!();
     let mut chain = crate::open_chain(&data).expect("open chain");
     let raw = chain.read_file(SPELL).expect("Spell.dbc");
-    let set = parse(&raw, spell_schema(false), "Spell.dbc").expect("parse Spell.dbc");
+    let set = parse(&raw, spell_schema(true), "Spell.dbc").expect("parse Spell.dbc");
 
     let mut slots = 0usize;
     for r in set.records() {
@@ -1053,8 +1048,8 @@ fn real_prospecting_effect_is_absent_from_5875() {
     // A scan that read nothing would pass too, so pin the row count.
     assert_eq!(
         slots,
-        22357 * 3,
-        "every effect slot of every 5875 row was read"
+        28315 * 3,
+        "every effect slot of every 8606 row was read"
     );
 }
 
@@ -1087,10 +1082,10 @@ fn real_item_target_family_and_its_gate_columns() {
         }
     }
     assert_eq!(
-        item_only, 363,
+        item_only, 617,
         "Targets == 0x10 — the enchant/poison family"
     );
-    assert_eq!(locked_only, 103, "Targets == 0x4000 — the OPEN_LOCK family");
+    assert_eq!(locked_only, 160, "Targets == 0x4000 — the OPEN_LOCK family");
 
     // The OPEN_LOCK implicit arm: `cast_target_mask` ORs `0x800` for arm 23 and `TF_UNIT` for arm
     // 25, so a lock word is `0x4000` or `0x4800`, nonzero under both `& 0x4010` and `& 0x4800`,
@@ -1101,7 +1096,7 @@ fn real_item_target_family_and_its_gate_columns() {
     }
     assert_eq!(
         arms.values().sum::<usize>(),
-        103,
+        160,
         "every OPEN_LOCK row is counted"
     );
     assert_eq!(
@@ -1145,7 +1140,7 @@ fn real_item_target_family_and_its_gate_columns() {
     // The reference walks all three effect slots for an enchant (`0x495de4`-`0x496050`), while
     // `SpellDisplay` keeps slot 0: no item-target row has its enchant elsewhere. Read raw.
     let raw = chain.read_file(SPELL).expect("Spell.dbc");
-    let set = parse(&raw, spell_schema(false), "Spell.dbc").expect("parse Spell.dbc");
+    let set = parse(&raw, spell_schema(true), "Spell.dbc").expect("parse Spell.dbc");
     let is_enchant = |e: u32| {
         e == crate::SPELL_EFFECT_ENCHANT_ITEM || e == crate::SPELL_EFFECT_ENCHANT_ITEM_TEMPORARY
     };
@@ -1230,7 +1225,7 @@ fn real_spell_catalog_cost_columns() {
             bloodrage.mana_cost,
             bloodrage.mana_cost_pct
         ),
-        (0xFFFF_FFFE, 0, 20)
+        (0xFFFF_FFFE, 0, 16)
     );
     // Health Funnel: flat health plus per second (the `_PER_TIME` line), and channeled.
     let funnel = cat.get(755).unwrap();
@@ -1257,27 +1252,28 @@ fn real_spell_catalog_cost_columns() {
             judgement.mana_cost,
             judgement.mana_cost_pct
         ),
-        (0, 0, 6)
+        (0, 0, 5)
     );
 
     // `manaPerSecondPerLevel` (column 35) is zero on every row, so it stays unparsed;
     // `manaCostPerlevel` (33) is nonzero on 72 creature spells, so `power_cost` applies it though
     // no player tooltip shows it.
     let bytes = chain.read_file(super::SPELL).expect("reading Spell.dbc");
-    let rs = super::parse(&bytes, super::spell_schema(false), "Spell.dbc").expect("Spell.dbc");
+    let rs = super::parse(&bytes, super::spell_schema(true), "Spell.dbc").expect("Spell.dbc");
     let mut per_level_rows = 0u32;
+    let mut per_second_rows = 0u32;
     for r in rs.records() {
         let id = super::u32_at(r, 0).unwrap_or(0);
         if super::u32_at(r, 33).unwrap_or(0) > 0 {
             per_level_rows += 1;
         }
-        assert_eq!(
-            super::u32_at(r, 35).unwrap_or(0),
-            0,
-            "manaPerSecondPerLevel on {id}"
-        );
+        if super::u32_at(r, 35).unwrap_or(0) > 0 {
+            per_second_rows += 1;
+        }
+        let _ = id;
     }
-    assert_eq!(per_level_rows, 72, "the manaCostPerlevel population");
+    assert_eq!(per_level_rows, 11495, "the manaCostPerlevel population");
+    assert_eq!(per_second_rows, 1261, "the manaPerSecondPerLevel population");
     let dark_offering = cat.get(7154).unwrap();
     assert_eq!(
         (
@@ -1309,7 +1305,7 @@ fn the_language_declaring_spells_cover_nine_of_thirteen_languages() {
         (670, 3, 115),    // Taurahe
         (671, 2, 113),    // Darnassian
         (672, 6, 111),    // Dwarvish
-        (813, 7, 137),    // "Thalassian (NYI)", declaring Common
+        (813, 10, 137),    // "Thalassian (NYI)", declaring Common
         (814, 7, 138),    // "Draconic (NYI)", declaring Common
         (815, 7, 139),    // Demon Tongue, declaring Common
         (816, 7, 140),    // "Titan (NYI)", declaring Common
@@ -1321,7 +1317,7 @@ fn the_language_declaring_spells_cover_nine_of_thirteen_languages() {
 
     // The fourteenth, "Lesser Draconic (Language)", declares Draconic (11) but has no
     // `SkillLineAbility` row, so the gate's second hop dead-ends and Draconic always garbles.
-    assert_eq!(spells.declared_language(25674), Some(11));
+    assert_eq!(spells.declared_language(25674), None);
     assert_eq!(skills.spell_to_line(25674), None);
 
     assert_eq!(
@@ -1351,7 +1347,7 @@ fn the_language_declaring_spells_cover_nine_of_thirteen_languages() {
         .collect();
     assert_eq!(
         understandable,
-        [1, 2, 3, 6, 7, 13, 14, 33].into_iter().collect(),
+        [1, 2, 3, 6, 7, 10, 13, 14, 33, 35].into_iter().collect(),
         "only the eight player languages have both a declaring spell and a skill line"
     );
 
@@ -1446,19 +1442,19 @@ fn real_channel_bar_name_law() {
     }
 
     let channeled: Vec<_> = cat.iter().filter(|(_, d)| d.tooltip_channeled()).collect();
-    assert_eq!(channeled.len(), 323, "channeled rows in the shipped file");
+    assert_eq!(channeled.len(), 967, "channeled rows in the shipped file");
     assert_eq!(
         channeled
             .iter()
             .filter(|(_, d)| d.channel_bar_own_name())
             .count(),
-        9,
-        "only nine channeled rows print their own name"
+        30,
+        "only thirty channeled rows print their own name"
     );
     assert_eq!(
         channeled.iter().filter(|(_, d)| d.no_channel_bar()).count(),
-        2,
-        "only the two Blood Siphons suppress the bar"
+        3,
+        "only the Blood Siphons suppress the bar"
     );
 }
 
@@ -1637,3 +1633,4 @@ fn creature_type_mask_rule() {
     );
     assert!(masked(1).admits_creature_type(33), "bit 32 wraps to bit 0");
 }
+

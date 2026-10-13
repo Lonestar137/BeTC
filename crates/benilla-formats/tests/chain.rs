@@ -199,7 +199,7 @@ fn dumps_taxinodes_to_csv() {
     let (records, fields) =
         benilla_formats::dbc_to_csv(&bytes, "TaxiNodes.dbc", &out).expect("dbc->csv");
 
-    assert_eq!((records, fields), (85, 16), "vanilla TaxiNodes.dbc shape");
+    assert_eq!((records, fields), (189, 24), "build 8606 TaxiNodes.dbc shape");
     let csv = std::fs::read_to_string(&out).expect("read csv");
     assert!(
         csv.lines()
@@ -209,7 +209,7 @@ fn dumps_taxinodes_to_csv() {
         "schema-derived header"
     );
     assert!(csv.contains("Stormwind"), "expected a known flight node");
-    assert_eq!(csv.lines().count(), 86, "85 records + 1 header row");
+    assert_eq!(csv.lines().count(), 190, "189 records + 1 header row");
     let _ = std::fs::remove_file(&out);
 }
 
@@ -1102,6 +1102,12 @@ fn the_wdl_window_contains_the_cameras_own_tile() {
 fn tombstoned_paths_never_fall_through_to_the_base_copy() {
     let data = benilla_formats::wow_data_or_skip!();
 
+    // Build 8606 has no vanilla `model.MPQ` base archive; the tombstone chain is 5875's.
+    if Chain::open(&data).expect("open chain").client_build() == Some(8606) {
+        eprintln!("skipping: build 8606 has no vanilla `model.MPQ` base archives");
+        return;
+    }
+
     // Deleted by `patch.MPQ`, whole in `model.MPQ` (386416 and 437456 bytes).
     const DELETED: [&str; 2] = [
         "Creature\\OgreMage\\OgreMage.m2",
@@ -1248,7 +1254,7 @@ fn wmo_ground_type_is_a_terrain_type_id() {
                     .is_some_and(|t| t.len() == 3 && t.chars().all(|c| c.is_ascii_digit()))
         })
         .collect();
-    assert_eq!(roots.len(), 815, "root WMOs in the 5875 archive");
+    assert_eq!(roots.len(), 1204, "root WMOs in the 8606 archive");
     let (mut total, mut none, mut multi) = (0usize, 0usize, 0usize);
     for name in &roots {
         let Ok(bytes) = chain.read_file(name) else {
@@ -1270,10 +1276,10 @@ fn wmo_ground_type_is_a_terrain_type_id() {
     }
     assert_eq!(
         (total, none),
-        (10_299, 10_075),
-        "the 5875 ground_type census"
+        (14_925, 14_343),
+        "the 8606 ground_type census"
     );
-    assert_eq!(multi, 121, "roots authoring more than one surface");
+    assert_eq!(multi, 245, "roots authoring more than one surface");
 }
 
 /// The ghost sky: `LightParams.lightSkyboxID` -> `LightSkybox.dbc` -> a readable model. The

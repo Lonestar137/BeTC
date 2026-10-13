@@ -28,7 +28,7 @@ fn exhaustion_schema() -> Schema {
     s.add_field(SchemaField::new("Factor", FieldType::Float32));
     s.add_field(SchemaField::new("OutdoorHours", FieldType::Float32));
     s.add_field(SchemaField::new("InnHours", FieldType::Float32));
-    for i in 0..8 {
+    for i in 0..16 {
         s.add_field(SchemaField::new(format!("Name{i}"), FieldType::String));
     }
     s.add_field(SchemaField::new("NameFlags", FieldType::UInt32));
@@ -71,6 +71,6 @@ mod tests {
         assert_eq!(by_id[&3], ("XXXTired", 1.0), "beta tier, never sent");
         assert_eq!(by_id[&4], ("XXXTired", 0.5));
         assert_eq!(by_id[&5], ("XXXExhausted", 0.25));
-        assert_eq!(rows.len(), 5, "the whole shipped table");
+        assert_eq!(rows.len(), 6, "the whole shipped table");
     }
 }

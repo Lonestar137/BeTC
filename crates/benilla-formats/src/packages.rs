@@ -13,7 +13,7 @@ use crate::dbc::{parse, str_at, u32_at};
 const PACKAGE: &str = "DBFilesClient\\Package.dbc";
 
 /// The column count the loader requires.
-const PACKAGE_FIELDS: usize = 12;
+const PACKAGE_FIELDS: usize = 20;
 
 /// One `Package.dbc` row.
 #[derive(Clone, Debug, PartialEq, Eq)]

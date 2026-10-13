@@ -18,7 +18,7 @@ fn ratchet_booty_bay_speed_profile() {
     let path = nodes.path(241).expect("path 241 (Ratchet–Booty Bay)");
     let tt = TransportTimetable::build(path, 30.0, 1.0).expect("timetable");
     // The build pins its period to the reference's own bookkeeping, bit-exact.
-    assert_eq!(tt.period_ms, 350_818, "path 241's self-pinned period");
+    assert_eq!(tt.period_ms, 231_236, "path 241's self-pinned period");
 
     let step_ms = 16u32; // ~60 Hz
     let dt = step_ms as f32 * 0.001;

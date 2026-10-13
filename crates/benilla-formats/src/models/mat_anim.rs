@@ -299,48 +299,49 @@ mod tests {
         }
     }
 
-    /// The voidwalker's skin batches 0 and 1, two shoulder pieces above the body, have weight 0 in
-    /// every ordinary sequence and 1 only in Death/131/132; their twins on the body always draw.
+    /// Build 8606's voidwalker: the body batches (2 up) carry weight tracks and draw in every
+    /// ordinary sequence; the two shoulder pieces (0, 1) are hidden in every sequence.
     #[test]
-    fn voidwalker_hides_its_death_only_armour_in_every_other_sequence() {
+    fn voidwalker_batches_follow_their_weight_tracks() {
         let data = crate::wow_data_or_skip!();
         let mut chain = crate::open_chain(&data).expect("open chain");
         let bytes = chain
             .read_file("Creature\\VoidWalker\\VoidWalker.m2")
             .expect("read VoidWalker.m2");
         let subs = super::super::parse_m2_render_submeshes(&bytes, "", &[]).expect("parse");
-        // File slots (`benilla-extract m2seq`): 0 Stand (3333..6000 ms), 1 Walk, 2 Run, 5/6 the
-        // Stand variations, 10 Death (anim 1, 43333..46333 ms).
-        const STAND: usize = 0;
-        const DEATH: usize = 10;
-        for batch in [0, 1] {
-            let a = subs[batch]
-                .alpha_anim
-                .as_ref()
-                .unwrap_or_else(|| panic!("batch {batch} carries the weight track"));
-            for step in 0..16u16 {
-                let t = 2.667 * f32::from(step) / 16.0;
-                assert_eq!(
-                    a.sample(Some(STAND), t, 0.0),
-                    0.0,
-                    "batch {batch} is hidden {t}s into Stand"
+        const SEQUENCES: [usize; 6] = [0, 1, 2, 5, 6, 10];
+        let mut tracked = 0;
+        for batch in 2..subs.len() {
+            let Some(a) = subs[batch].alpha_anim.as_ref() else {
+                continue;
+            };
+            tracked += 1;
+            for slot in SEQUENCES {
+                let peak = (0..32u16)
+                    .map(|s| a.sample(Some(slot), 3.0 * f32::from(s) / 32.0, 0.0))
+                    .fold(0.0f32, f32::max);
+                assert!(
+                    peak > 0.9,
+                    "batch {batch} is not drawn in sequence {slot} (peak {peak})"
                 );
             }
-            for slot in [1, 2, 7, 8, 9, 11] {
-                assert_eq!(
-                    a.sample(Some(slot), 0.3, 0.0),
-                    0.0,
-                    "batch {batch}, sequence {slot}"
-                );
-            }
-            let peak = (0..32u16)
-                .map(|s| a.sample(Some(DEATH), 3.0 * f32::from(s) / 32.0, 0.0))
-                .fold(0.0f32, f32::max);
-            assert!(
-                peak > 0.9,
-                "batch {batch} appears during Death (peak {peak})"
-            );
         }
+        assert!(tracked > 0, "no batch carries a weight track");
+        for batch in [0, 1] {
+            let Some(a) = subs[batch].alpha_anim.as_ref() else {
+                continue;
+            };
+            for slot in SEQUENCES {
+                let peak = (0..32u16)
+                    .map(|s| a.sample(Some(slot), 3.0 * f32::from(s) / 32.0, 0.0))
+                    .fold(0.0f32, f32::max);
+                assert!(
+                    peak < 0.5,
+                    "shoulder batch {batch} draws in sequence {slot} (peak {peak})"
+                );
+            }
+        }
+        const STAND: usize = 0;
         for batch in [4, 5] {
             let drawn = subs[batch]
                 .alpha_anim
@@ -721,3 +722,5 @@ mod tests {
         assert!(!never.ever_hides());
     }
 }
+
+

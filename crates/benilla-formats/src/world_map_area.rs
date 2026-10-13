@@ -77,6 +77,9 @@ fn schema() -> Schema {
     for name in ["LocLeft", "LocRight", "LocTop", "LocBottom"] {
         s.add_field(SchemaField::new(name, FieldType::Float32));
     }
+    // Build 8606 adds a trailing word (-1 in the shipped file), read as a dword; the loader reads
+    // only the eight columns above.
+    s.add_field(SchemaField::new("DisplayMapID", FieldType::UInt32));
     s
 }
 
@@ -137,7 +140,7 @@ mod tests {
         let data = crate::wow_data_or_skip!();
         let mut chain = crate::open_chain(&data).expect("open chain");
         let cat = load_world_map_area_catalog(&mut chain).expect("load WorldMapArea");
-        assert_eq!(cat.len(), 51, "all 51 rows load");
+        assert_eq!(cat.len(), 68, "all 68 rows load");
 
         let azeroth = cat.get(14).expect("Azeroth continent row (id 14)");
         assert_eq!((azeroth.map_id, azeroth.area_id), (0, 0));

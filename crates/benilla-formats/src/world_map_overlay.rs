@@ -127,7 +127,7 @@ mod tests {
         let data = crate::wow_data_or_skip!();
         let mut chain = crate::open_chain(&data).expect("open chain");
         let cat = load_world_map_overlay_catalog(&mut chain).expect("load WorldMapOverlay");
-        assert_eq!(cat.len(), 526, "all 526 rows load");
+        assert_eq!(cat.len(), 818, "all 818 rows load");
 
         let teldrassil = cat.for_area(41);
         assert!(
