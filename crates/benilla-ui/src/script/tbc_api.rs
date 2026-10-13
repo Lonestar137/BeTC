@@ -104,6 +104,14 @@ pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
         lua.create_function(|_, ()| Ok((0i64, 0i64)))?,
     )?;
 
+    // `GetExpertisePercent()`: the dodge and parry reduction the wearer's expertise buys, as two
+    // percentages. Build 8606's `PaperDollFrame.lua:980` formats both with `"%.2f"` unguarded, so
+    // nil raises; the offline player wears no expertise, so `0, 0`.
+    g.set(
+        "GetExpertisePercent",
+        lua.create_function(|_, ()| Ok((0.0f64, 0.0f64)))?,
+    )?;
+
     // `Sound_GameSystem_GetOutputDriverNameByIndex(i)` (`0x77e7e0`): no driver list, no name.
     g.set(
         "Sound_GameSystem_GetOutputDriverNameByIndex",

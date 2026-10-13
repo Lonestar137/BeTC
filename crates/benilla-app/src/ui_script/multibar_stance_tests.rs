@@ -472,7 +472,7 @@ fn multibar_hover_renders_the_buttons_own_action() {
 
     let hover_name = |s: &UiScript, button: &str| -> Option<String> {
         s.run(&format!(
-            "GameTooltip:Hide() this = {button} ActionButton_SetTooltip()"
+            "GameTooltip:Hide() ActionButton_SetTooltip({button})"
         ))
         .unwrap();
         s.eval::<Option<String>>(

@@ -1142,4 +1142,12 @@ pub(crate) const REGISTERED: &[Registered] = &[
         "0",
         "build 8606 chat speaker icons — 1.12's chat has no icon column",
     ),
+    // `Sound_OutputDriverIndex` (`0x63db90` register): build 8606's `SoundOptionsFrame.lua:110`
+    // reads it and `:335` writes it, so `GetCVar` warns on an unregistered name. The offline
+    // client has one output device, index 0.
+    ours(
+        "Sound_OutputDriverIndex",
+        "0",
+        "build 8606's sound output device list — the offline client has one",
+    ),
 ];

@@ -984,9 +984,12 @@ fn shipped_merchant_frame_arms_the_buy_cursor_on_hover() {
     s.resolve();
     assert_eq!(s.ui_cursor(), None, "no override before any hover");
 
-    // The row button's inline `<OnEnter>`, fired as the engine fires it: `this` bound first.
-    s.run("this = MerchantItem1ItemButton MerchantItem1ItemButton:GetScript(\"OnEnter\")() this = nil")
-        .unwrap();
+    // The row button's inline `<OnEnter>`, fired as the engine fires it: the frame as the
+    // argument (`MerchantFrame.xml:68` passes `self`).
+    s.run(
+        "MerchantItem1ItemButton:GetScript(\"OnEnter\")(MerchantItem1ItemButton)",
+    )
+    .unwrap();
     s.tick(0.016);
     assert!(s.errors().is_empty(), "hover errors: {:?}", s.errors());
     assert_eq!(

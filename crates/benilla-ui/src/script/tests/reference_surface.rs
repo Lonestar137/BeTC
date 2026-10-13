@@ -158,6 +158,7 @@ const BEYOND_1_12: &[&str] = &[
     "GetArmorPenetration",
     "GetCritChance",
     "GetExpertise",
+    "GetExpertisePercent",
     "GetNumGuildBankTabs",
     "InviteUnit",
     "UpdateAddOnMemoryUsage",

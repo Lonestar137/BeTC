@@ -115,9 +115,9 @@ fn unit_frame_hover_takes_the_default_corner_and_drops_on_leave() {
         "Interface\\FrameXML\\PetFrame.xml",
     ]);
     s.set_unit("target", Some(wolf()));
-    // `UnitFrame_OnEnter` takes no arguments and reads `this` (`UnitFrame.lua:47`), as the stock
-    // `<OnEnter>` calls it (`TargetFrame.xml:505`).
-    s.run("this = TargetFrame UnitFrame_OnEnter() this = nil")
+    // Build 8606's `<OnEnter>` passes the frame (`TargetFrame.xml:427`), so
+    // `UnitFrame_OnEnter(self)` (`UnitFrame.lua:57`) gets it as its argument.
+    s.run("UnitFrame_OnEnter(TargetFrame)")
         .unwrap();
     assert!(s.errors().is_empty(), "hover errors: {:?}", s.errors());
     s.resolve();
@@ -217,7 +217,7 @@ fn your_own_portrait_explains_the_menu_instead_of_showing_your_health() {
     ]);
     s.set_unit("player", Some(wolf()));
 
-    s.run("this = PlayerFrame UnitFrame_OnEnter() this = nil")
+    s.run("UnitFrame_OnEnter(PlayerFrame)")
         .unwrap();
     assert_eq!(
         s.eval::<String>("return GameTooltipTextLeft1:GetText()")
@@ -248,7 +248,7 @@ fn your_own_portrait_explains_the_menu_instead_of_showing_your_health() {
             ..wolf()
         }),
     );
-    s.run("this = TargetFrame UnitFrame_OnEnter() this = nil")
+    s.run("UnitFrame_OnEnter(TargetFrame)")
         .unwrap();
     assert_eq!(
         s.eval::<String>("return GameTooltipTextLeft1:GetText()")
@@ -279,7 +279,7 @@ fn action_button_hover_takes_the_default_corner() {
         "Interface\\FrameXML\\BonusActionBarFrame.xml",
     ]);
     s.register_cvars(crate::cvars::registered_pairs());
-    s.run("this = ActionButton3 ActionButton_SetTooltip()")
+    s.run("ActionButton_SetTooltip(ActionButton3)")
         .unwrap();
     assert!(s.errors().is_empty(), "hover errors: {:?}", s.errors());
     let ok: bool = s
@@ -336,7 +336,7 @@ fn ubertooltips_off_seats_action_bar_plates_beside_the_button() {
         .unwrap()
     };
 
-    s.run("this = ActionButton3 ActionButton_SetTooltip()")
+    s.run("ActionButton_SetTooltip(ActionButton3)")
         .unwrap();
     assert!(
         s.eval::<bool>("return GameTooltip.default == nil").unwrap(),
@@ -355,7 +355,7 @@ fn ubertooltips_off_seats_action_bar_plates_beside_the_button() {
 
     // The LEFT set is by parent frame, not visibility: the vertical bars are hidden here.
     for bar in ["MultiBarBottomRight", "MultiBarRight", "MultiBarLeft"] {
-        s.run(&format!("this = {bar}Button1 ActionButton_SetTooltip()"))
+        s.run(&format!("ActionButton_SetTooltip({bar}Button1)"))
             .unwrap();
         assert_eq!(
             seat(&s),
@@ -365,7 +365,7 @@ fn ubertooltips_off_seats_action_bar_plates_beside_the_button() {
     }
 
     s.set_cvar_engine("UberTooltips", "1");
-    s.run("this = MultiBarBottomRightButton1 ActionButton_SetTooltip()")
+    s.run("ActionButton_SetTooltip(MultiBarBottomRightButton1)")
         .unwrap();
     assert!(
         s.eval::<bool>("return GameTooltip.default ~= nil").unwrap(),

@@ -1104,6 +1104,12 @@ fn a_frame_arriving_at_center_puts_the_child_windows_away() {
     load_xml(&s, r"Interface\FrameXML\ItemButtonTemplate.xml");
     load_xml(&s, r"Interface\FrameXML\StaticPopup.xml");
 
+    // `ShowUIPanel` → `SetUIPanel` → `UpdateUIPanelPositions` → `GetMaxUIPanelsWidth`
+    // (`UIParent.lua:1680`) reads `Minimap` unguarded, and the real interface always has it up:
+    // this kit stops short of `Minimap.xml`, so seat it here rather than leave the panel walk to
+    // trip over a nil.
+    s.run(r#"if not Minimap then Minimap = CreateFrame("Frame") Minimap:Hide() end"#)
+        .unwrap();
     // MerchantFrame (pushable 0) holds left; TradeFrame (pushable 1) arrives at center
     // (`UIParent.lua:738-739`).
     s.run(
