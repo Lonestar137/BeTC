@@ -99,6 +99,8 @@ fn an_error_toast_draws_over_an_open_panel_window() {
     load_xml(&s, r"Interface\FrameXML\UIParent.xml");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.lua");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.xml");
+    load_xml(&s, r"Interface\FrameXML\MoneyInputFrame.lua");
+    load_xml(&s, r"Interface\FrameXML\MoneyInputFrame.xml");
     load_xml(&s, "Interface\\FrameXML\\GameTooltip.xml");
     load_xml(&s, r"Interface\FrameXML\UIPanelTemplates.lua");
     load_xml(&s, r"Interface\FrameXML\UIPanelTemplates.xml");

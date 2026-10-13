@@ -39,8 +39,11 @@ fn load_tot() -> UiScript {
     load_xml(&s, r"Interface\FrameXML\UIParent.xml");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.lua");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.xml");
+    load_xml(&s, r"Interface\FrameXML\MoneyInputFrame.lua");
+    load_xml(&s, r"Interface\FrameXML\MoneyInputFrame.xml");
     load_xml(&s, "Interface\\FrameXML\\GameTooltip.xml");
     load_xml(&s, "Interface\\FrameXML\\UIDropDownMenu.xml");
+    load_xml(&s, "Interface\\FrameXML\\SecureTemplates.xml");
     load_xml(&s, "Interface\\FrameXML\\TextStatusBar.lua");
     load_xml(&s, "Interface\\FrameXML\\TextStatusBar.xml");
     load_xml(&s, "Interface\\FrameXML\\MainMenuBar.xml");
@@ -49,15 +52,17 @@ fn load_tot() -> UiScript {
     load_xml(&s, "Interface\\FrameXML\\ActionBarFrame.xml");
     load_xml(&s, "Interface\\FrameXML\\BuffFrame.xml");
     load_xml(&s, "Interface\\FrameXML\\CombatFeedback.xml");
+    load_xml(&s, "Interface\\FrameXML\\CastingBarFrame.xml");
+    load_xml(&s, "Interface\\FrameXML\\CastingBarFrame.xml");
     load_xml(&s, "Interface\\FrameXML\\UnitPopup.xml");
     load_xml(&s, "Interface\\FrameXML\\UnitFrame.xml");
+    load_xml(&s, "Interface\\FrameXML\\VoiceChat.xml");
+    load_xml(&s, "Interface\\FrameXML\\ReadyCheck.xml");
     load_xml(&s, "Interface\\FrameXML\\PlayerFrame.xml");
     load_xml(&s, "Interface\\FrameXML\\PartyFrame.xml");
     load_xml(&s, "Interface\\FrameXML\\TargetFrame.xml");
     load_xml(&s, "Interface\\FrameXML\\PetFrame.xml");
     load_xml(&s, "Interface\\FrameXML\\BonusActionBarFrame.xml");
-    // The pair's defaults from stock `UIOptionsFrame_Init` (`UIOptionsFrame.lua:116-119`), which
-    // this kit does not load.
     s.run(r#"SHOW_TARGET_OF_TARGET = "0" SHOW_TARGET_OF_TARGET_STATE = "5""#)
         .unwrap();
     s.set_unit("player", Some(unit("Tri", 0x100, 100)));

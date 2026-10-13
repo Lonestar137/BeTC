@@ -16,11 +16,14 @@ pub(crate) fn chat_frame() -> UiScript {
     // `FCF_Tab_OnClick` uses the dropdown kit, whose backdrop reads GameTooltip.lua's colour.
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.lua");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.xml");
+    load_xml(&s, r"Interface\FrameXML\MoneyInputFrame.lua");
+    load_xml(&s, r"Interface\FrameXML\MoneyInputFrame.xml");
     load_xml(&s, "Interface\\FrameXML\\GameTooltip.xml");
     load_xml(&s, "Interface\\FrameXML\\UIMenu.xml"); // the kit the chat menus build from
     load_xml(&s, "Interface\\FrameXML\\UIDropDownMenu.xml");
     load_xml(&s, "Interface\\FrameXML\\UIPanelTemplates.lua");
     load_xml(&s, "Interface\\FrameXML\\UIPanelTemplates.xml");
+    load_xml(&s, r"Interface\FrameXML\ItemButtonTemplate.xml");
     load_xml(&s, r"Interface\FrameXML\StaticPopup.xml");
     load_xml(&s, "Interface\\FrameXML\\TextStatusBar.lua");
     load_xml(&s, "Interface\\FrameXML\\TextStatusBar.xml");
@@ -930,11 +933,14 @@ fn the_chat_menu_builds_its_rows_on_the_references_kit() {
         r"Interface\FrameXML\UIParent.xml",
         r"Interface\FrameXML\MoneyFrame.lua",
         r"Interface\FrameXML\MoneyFrame.xml",
+        r"Interface\FrameXML\MoneyInputFrame.lua",
+        r"Interface\FrameXML\MoneyInputFrame.xml",
         "Interface\\FrameXML\\GameTooltip.xml",
         r"Interface\FrameXML\UIMenu.xml",
         "Interface\\FrameXML\\UIDropDownMenu.xml",
         r"Interface\FrameXML\UIPanelTemplates.lua",
         r"Interface\FrameXML\UIPanelTemplates.xml",
+        "Interface\\FrameXML\\ItemButtonTemplate.xml",
         "Interface\\FrameXML\\StaticPopup.xml",
         "Interface\\FrameXML\\ChatFrame.xml",
         "Interface\\FrameXML\\FloatingChatFrame.xml",

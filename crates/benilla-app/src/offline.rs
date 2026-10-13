@@ -907,18 +907,31 @@ fn hostile_spell_state_events(
     hostile: &benilla_game_core::HostileState,
     expired_aura: Option<u32>,
 ) -> Vec<SessionEvent> {
-    let auras = if hostile.burn_spell_id != 0 && hostile.burn_remaining_ms > 0 {
-        vec![CharacterAura {
+    let mut auras = Vec::new();
+    if hostile.burn_spell_id != 0 && hostile.burn_remaining_ms > 0 {
+        auras.push(CharacterAura {
             slot: 32,
             spell_id: hostile.burn_spell_id,
             flags: 0x08,
             level: hostile.burn_level,
             stacks: 1,
             remaining_ms: Some(hostile.burn_remaining_ms),
-        }]
-    } else {
-        Vec::new()
-    };
+            interrupt_flags: 0,
+            mods: benilla_game_core::AuraStatMods::default(),
+        });
+    }
+    if let Some(debuff) = hostile.debuff {
+        auras.push(CharacterAura {
+            slot: 33,
+            spell_id: debuff.spell_id,
+            flags: 0x08,
+            level: 1,
+            stacks: 1,
+            remaining_ms: Some(debuff.remaining_ms),
+            interrupt_flags: 0,
+            mods: benilla_game_core::AuraStatMods::default(),
+        });
+    }
     // Dynamic-flag bit 0x20 means feign death; health zero alone represents an ordinary death.
     let mut fields = vec![(22, hostile.health), (143, 0)];
     fields.extend(character_aura_field_pairs(&auras));
@@ -1004,6 +1017,62 @@ fn summon_pet_bar(pet_guid: u64) -> benilla_protocol::messages::PetSpells {
 /// act as a stun here — wander and flee are not modeled), root (Frost Nova) or snare (Frostbolt's
 /// -40), for the row's own duration. The strongest arm of the row wins, and an arm without a row
 /// duration lands no control.
+/// The flat stat deltas one aura row contributes (`SPELL_AURA_MOD_RESISTANCE` 22 arms):
+/// `EffectMiscValue` is a school mask — bit 0 physical (the armor total), bit `s` school `s` — and
+/// the amount is the effect's floor value (`EffectBasePoints + dice`); every shipped stat row's
+/// roll range is a single value and none of them scale per level. Percent, regen, stat and
+/// attack-power arms are not modeled (`RULES.md`, "Auras").
+fn aura_stat_mods(spell: &benilla_formats::SpellDisplay) -> benilla_game_core::AuraStatMods {
+    /// `SPELL_AURA_MOD_RESISTANCE` (cmangos `SpellAuraDefines.h`).
+    const SPELL_AURA_MOD_RESISTANCE: u32 = 22;
+    let mut mods = benilla_game_core::AuraStatMods::default();
+    for slot in 0..3 {
+        if spell.effects[slot] != SPELL_EFFECT_APPLY_AURA
+            || spell.effect_apply_aura[slot] != SPELL_AURA_MOD_RESISTANCE
+        {
+            continue;
+        }
+        let Some((amount, _)) = spell.base_effect_range(slot) else {
+            continue;
+        };
+        let mask = spell.effect_misc_value[slot].max(0) as u32;
+        for school in 0..7 {
+            if mask & (1 << school) != 0 {
+                mods.resistances[school] += amount;
+            }
+        }
+    }
+    mods
+}
+
+/// `SPELL_AURA_MOD_SILENCE` (27) and `SPELL_AURA_MOD_PACIFY_SILENCE` (60) (cmangos
+/// `SpellAuraDefines.h`), on an implicit arm that enumerates enemies around the source
+/// (`TARGET_ENUM_UNITS_ENEMY_AOE_AT_SRC_LOC` 15, Arcane Torrent's pair with `..._CASTER_SRC` 22):
+/// a hostile-area status centered on the caster. The radius is the aura slot's `SpellRadius` row
+/// (the `$a1` token), the lifetime the row's own; anything else is left to the ordinary aura arm.
+fn hostile_area_debuff(
+    spell: &benilla_formats::SpellDisplay,
+    spells: &crate::ui_action::Spells,
+) -> Option<benilla_game_core::DirectSpellEffect> {
+    /// `SPELL_AURA_MOD_SILENCE` / `SPELL_AURA_MOD_PACIFY_SILENCE`.
+    const SILENCE_AURAS: [u32; 2] = [27, 60];
+    /// `TARGET_ENUM_UNITS_ENEMY_AOE_AT_SRC_LOC`.
+    const ENEMY_AOE_AT_SRC: u32 = 15;
+    let slot = (0..3).find(|&slot| {
+        spell.effects[slot] == SPELL_EFFECT_APPLY_AURA
+            && SILENCE_AURAS.contains(&spell.effect_apply_aura[slot])
+            && (spell.effect_implicit_target_a[slot] == ENEMY_AOE_AT_SRC
+                || spell.effect_implicit_target_b[slot] == ENEMY_AOE_AT_SRC)
+    })?;
+    let radius_yards = spells.radii.get(spell.effect_radius_index[slot])?.radius;
+    let duration_ms = u32::try_from(spells.durations.get(spell.duration_index)?.base_ms).ok()?;
+    (duration_ms > 0).then_some(benilla_game_core::DirectSpellEffect::AreaDebuff {
+        duration_ms,
+        radius_yards,
+        kind: benilla_game_core::DebuffKind::Silence,
+    })
+}
+
 fn control_effect(
     durations: &benilla_formats::SpellDurationCatalog,
     spell: &benilla_formats::SpellDisplay,
@@ -1189,8 +1258,8 @@ fn inventory_item_guid(
 
 /// Every inventory field the player object carries: the 19 worn slots and 16 backpack slots as
 /// item guids (0 when empty, so a vacated slot clears live), each worn item's public entry for the
-/// model, and `UNIT_FIELD_RESISTANCES[0]` = the worn armor total. Shared by world entry and every
-/// live inventory move.
+/// model, `UNIT_FIELD_RESISTANCES[0]` = the worn armor total, and the live auras' resistance-buff
+/// splits. Shared by world entry and every live inventory move.
 fn player_item_field_pairs(snapshot: &benilla_game_core::CharacterSnapshot) -> Vec<(u16, u32)> {
     use benilla_game_core::quest::{BACKPACK_SLOTS, EQUIPMENT_SLOTS};
 
@@ -1226,6 +1295,7 @@ fn player_item_field_pairs(snapshot: &benilla_game_core::CharacterSnapshot) -> V
         .map(|template| template.armor)
         .sum();
     pairs.push((FIELD_UNIT_RESISTANCES, armor));
+    pairs.extend(resistance_buff_field_pairs(&snapshot.auras));
     pairs
 }
 
@@ -1237,6 +1307,35 @@ const FIELD_PLAYER_PACK_SLOT_1: u16 = 532;
 const FIELD_PLAYER_VISIBLE_ITEM_1_CREATOR: u16 = 258;
 /// `UNIT_FIELD_RESISTANCES[0]`, the armor total.
 const FIELD_UNIT_RESISTANCES: u16 = 155;
+/// `PLAYER_FIELD_RESISTANCEBUFFMODSPOSITIVE`, ×7 signed ints, school 0 the armor buff split.
+const FIELD_PLAYER_RESISTANCEBUFFMODSPOSITIVE: u16 = 1187;
+/// `PLAYER_FIELD_RESISTANCEBUFFMODSNEGATIVE`, ×7 signed ints (≤ 0).
+const FIELD_PLAYER_RESISTANCEBUFFMODSNEGATIVE: u16 = 1194;
+
+/// The seven positive/negative resistance-buff splits the live auras contribute
+/// ([`benilla_game_core::AuraStatMods`]): what `UnitArmor`/`UnitResistance` report as the buff
+/// half of the armor and resistance totals.
+fn resistance_buff_field_pairs(auras: &[CharacterAura]) -> Vec<(u16, u32)> {
+    let mut sums = [0i32; 7];
+    for aura in auras {
+        for (school, sum) in sums.iter_mut().enumerate() {
+            *sum += aura.mods.resistances[school];
+        }
+    }
+    let mut pairs = Vec::with_capacity(14);
+    for (school, sum) in sums.into_iter().enumerate() {
+        let school = school as u16;
+        pairs.push((
+            FIELD_PLAYER_RESISTANCEBUFFMODSPOSITIVE + school,
+            sum.max(0) as u32,
+        ));
+        pairs.push((
+            FIELD_PLAYER_RESISTANCEBUFFMODSNEGATIVE + school,
+            sum.min(0) as u32,
+        ));
+    }
+    pairs
+}
 /// The wire bag byte that names the player's own inventory array (equipment + backpack + bank).
 const BAG_PLAYER_INVENTORY: u8 = 255;
 /// The first backpack slot in that array; equipment is `0..19`.
@@ -1362,6 +1461,13 @@ fn offline_use_item(
     bag_index: u8,
     slot: u8,
 ) {
+    // Using an item is the interrupt's "removed by item use" event: the click is an action even
+    // where the use resolves to an equip.
+    let dropped = core.interrupt_active_auras(benilla_game_core::AURA_INTERRUPT_ITEM_USE);
+    if !dropped.is_empty() {
+        publish_offline_auras(core, channels, &dropped);
+        save_after_command(core, persistence);
+    }
     let Some(benilla_game_core::ItemSlot::Backpack(backpack_slot)) =
         wire_item_slot(bag_index, slot)
     else {
@@ -2431,17 +2537,27 @@ fn drive_offline_gameplay(
                                     }
                                 }
                             }
-                            None => benilla_game_core::DirectSpellEffect::Aura {
-                                school: 1_u32.checked_shl(spell.school).unwrap_or(1),
-                                periodic: None,
-                                // The row's own lifetime; 0 (or the permanent sentinel) means the
-                                // aura lasts until it is cancelled.
-                                duration_ms: spells
-                                    .durations
-                                    .get(spell.duration_index)
-                                    .and_then(|duration| u32::try_from(duration.base_ms).ok())
-                                    .unwrap_or(0),
-                            },
+                            None => {
+                                if let Some(debuff) = hostile_area_debuff(spell, spells) {
+                                    debuff
+                                } else {
+                                    benilla_game_core::DirectSpellEffect::Aura {
+                                        school: 1_u32.checked_shl(spell.school).unwrap_or(1),
+                                        periodic: None,
+                                        // The row's own lifetime; 0 (or the permanent sentinel)
+                                        // means the aura lasts until it is cancelled.
+                                        duration_ms: spells
+                                            .durations
+                                            .get(spell.duration_index)
+                                            .and_then(|duration| {
+                                                u32::try_from(duration.base_ms).ok()
+                                            })
+                                            .unwrap_or(0),
+                                        mods: aura_stat_mods(spell),
+                                        interrupt_flags: spell.aura_interrupt_flags,
+                                    }
+                                }
+                            }
                         }
                     };
                     // Rogue mechanics: a finishing move spends the target's points, adding
@@ -2468,8 +2584,12 @@ fn drive_offline_gameplay(
                         benilla_formats::RangeTargets::default(),
                     );
                     let range_yards = match (effect, range) {
-                        (benilla_game_core::DirectSpellEffect::Heal { .. }, None)
-                        | (benilla_game_core::DirectSpellEffect::Aura { .. }, None) => 0.0,
+                        (
+                            benilla_game_core::DirectSpellEffect::Heal { .. }
+                            | benilla_game_core::DirectSpellEffect::Aura { .. }
+                            | benilla_game_core::DirectSpellEffect::AreaDebuff { .. },
+                            None,
+                        ) => 0.0,
                         (_, Some((_, max))) => max,
                         _ => return None,
                     };
@@ -2550,7 +2670,9 @@ fn drive_offline_gameplay(
     let elapsed_ms = (time.delta_secs_f64() * 1000.0).round() as u32;
     let mut changed =
         advance_offline_combat_with_talents(&mut core.0, &channels, elapsed_ms, talents.as_deref());
-    let expired_auras = core.0.advance_active_auras(elapsed_ms);
+    // Interrupted auras (movement, casting, attacks) drop in the core and expire here.
+    let mut expired_auras = core.0.drain_interrupted_auras();
+    expired_auras.extend(core.0.advance_active_auras(elapsed_ms));
     if !expired_auras.is_empty() {
         publish_offline_auras(&core.0, &channels, &expired_auras);
         changed = true;
@@ -2621,11 +2743,12 @@ fn set_offline_watched_faction(core: &GameCore, channels: &OfflineChannels, rep_
 
 fn publish_offline_auras(core: &GameCore, channels: &OfflineChannels, removed: &[CharacterAura]) {
     let Some(id) = core.active() else { return };
+    let auras = core.active_auras().unwrap_or_default();
+    let mut fields = character_aura_field_pairs(auras);
+    fields.extend(resistance_buff_field_pairs(auras));
     let mut events = vec![SessionEvent::ObjectValues {
         guid: id.presentation_guid(),
-        fields: ObjectFields::from_pairs(&character_aura_field_pairs(
-            core.active_auras().unwrap_or_default(),
-        )),
+        fields: ObjectFields::from_pairs(&fields),
     }];
     events.extend(removed.iter().map(|aura| SessionEvent::AuraDuration {
         slot: aura.slot,
@@ -2732,7 +2855,8 @@ fn start_offline_cast(
     let player_guid = id.presentation_guid();
     let (presentation_target, cast_target) = match effect {
         benilla_game_core::DirectSpellEffect::Summon { .. }
-        | benilla_game_core::DirectSpellEffect::Totem { .. } => (
+        | benilla_game_core::DirectSpellEffect::Totem { .. }
+        | benilla_game_core::DirectSpellEffect::AreaDebuff { .. } => (
             Some(player_guid),
             benilla_game_core::SpellTarget::SelfCharacter,
         ),
@@ -3713,6 +3837,29 @@ fn advance_offline_combat_with_talents(
                 changed = true;
                 let _ = (spawn_id, applied, remaining_ms);
             }
+            CombatUpdate::HostileDebuff {
+                spawn_id,
+                remaining_ms,
+                ..
+            } => {
+                // The creature's status debuff (Arcane Torrent's silence) rides its aura block;
+                // an expiry also zeroes the slot's duration.
+                changed = true;
+                let Some(hostile) = core.hostile(spawn_id) else {
+                    continue;
+                };
+                let Some(guid) = combat_target_guid(&hostile) else {
+                    continue;
+                };
+                let mut events = hostile_spell_state_events(guid, &hostile, None);
+                if remaining_ms.is_none() {
+                    events.push(SessionEvent::AuraDuration {
+                        slot: 33,
+                        remaining_ms: 0,
+                    });
+                }
+                send_gameplay_events(channels, events);
+            }
             CombatUpdate::PlayerAura {
                 slot, remaining_ms, ..
             } => {
@@ -4388,6 +4535,8 @@ mod tests {
                 school: 1,
                 periodic: None,
                 duration_ms: 0,
+                mods: benilla_game_core::AuraStatMods::default(),
+                interrupt_flags: 0,
             },
             benilla_game_core::ComboEffect::None,
             false,
@@ -7153,6 +7302,317 @@ mod tests {
         );
     }
 
+    /// Acceptance: the armor buff works and reports itself. Demon Skin (687) lands its
+    /// `SPELL_AURA_MOD_RESISTANCE` arm as +40 armor: the `RESISTANCEBUFFMODSPOSITIVE[0]` split
+    /// publishes with the aura block (so `UnitArmor` shows the buff half), and a recast refreshes
+    /// the one slot instead of applying the buff twice.
+    #[test]
+    fn offline_buff_armor_reports_the_resistance_buff_split_and_never_stacks() {
+        let Some(spells) = crate::ui_action::real_spells() else {
+            return;
+        };
+        let id = CharacterId::parse("00000000000000000000000000000009").unwrap();
+        let appearance = Appearance {
+            race: 10,
+            class: 9,
+            gender: 0,
+            skin: 0,
+            face: 0,
+            hair_style: 0,
+            hair_color: 0,
+            facial_hair: 0,
+        };
+        let mut core = GameCore::default();
+        core.create_character(
+            id.clone(),
+            "Velindra",
+            appearance,
+            starting_position(10).unwrap(),
+        )
+        .unwrap();
+        enter_test_world(&mut core, 10);
+
+        let (_pick_tx, picks) = crossbeam_channel::unbounded();
+        let (events, received) = crossbeam_channel::unbounded();
+        let (commands, command_receiver) = crossbeam_channel::unbounded();
+        let mut app = App::new();
+        app.insert_resource(OfflineChannels {
+            picks,
+            events,
+            commands: command_receiver,
+        })
+        .insert_resource(OfflineGameCore(core))
+        .insert_resource(OfflinePersistence::new(false))
+        .insert_resource(Time::<()>::default())
+        .insert_resource(spells);
+
+        // Demon Skin rank 1: `EffectBasePoints 39 + dice 1` on the MOD_RESISTANCE arm, physical
+        // mask `EffectMiscValue 1` = +40 armor.
+        commands
+            .send(crate::net::ClientCommand::CastSpell {
+                spell_id: 687,
+                target: Some(id.presentation_guid()),
+            })
+            .unwrap();
+        app.world_mut()
+            .run_system_once(drive_offline_gameplay)
+            .expect("the buff command is handled");
+        let channels = app.world().resource::<OfflineChannels>().clone();
+        {
+            let core = &mut app.world_mut().resource_mut::<OfflineGameCore>().0;
+            advance_offline_combat(core, &channels, 1);
+        }
+        let buffed: Vec<_> = received.try_iter().collect();
+        assert!(
+            buffed.iter().any(|event| matches!(
+                event,
+                SessionEvent::ObjectValues { guid, fields }
+                    if *guid == id.presentation_guid()
+                        && fields.player_resistance_buff_pos(0) == Some(40)
+            )),
+            "the armor buff publishes in the resistance-buff split: {buffed:?}"
+        );
+
+        // Recast after the global cooldown: the buff refreshes its own slot, applied once.
+        {
+            let core = &mut app.world_mut().resource_mut::<OfflineGameCore>().0;
+            advance_offline_combat(core, &channels, 2_000);
+        }
+        commands
+            .send(crate::net::ClientCommand::CastSpell {
+                spell_id: 687,
+                target: Some(id.presentation_guid()),
+            })
+            .unwrap();
+        app.world_mut()
+            .run_system_once(drive_offline_gameplay)
+            .expect("the recast command is handled");
+        {
+            let core = &mut app.world_mut().resource_mut::<OfflineGameCore>().0;
+            advance_offline_combat(core, &channels, 1);
+        }
+        let recast: Vec<_> = received.try_iter().collect();
+        assert!(
+            recast.iter().any(|event| matches!(
+                event,
+                SessionEvent::ObjectValues { guid, fields }
+                    if *guid == id.presentation_guid()
+                        && (0..32).filter(|slot| fields
+                            .unit_aura(*slot)
+                            .is_some_and(|aura| aura.spell_id == 687))
+                            .count()
+                            == 1
+                        && fields.player_resistance_buff_pos(0) == Some(40)
+            )),
+            "the recast leaves exactly one 687 aura and one +40 armor: {recast:?}"
+        );
+        let core = &app.world().resource::<OfflineGameCore>().0;
+        assert_eq!(
+            core.active_auras()
+                .unwrap()
+                .iter()
+                .filter(|aura| aura.spell_id == 687)
+                .count(),
+            1,
+            "the simulation holds the buff once"
+        );
+        assert_eq!(core.active_resistance_mods()[0], 40);
+    }
+
+    /// Acceptance: Shadowmeld (20580) breaks on movement — the walking character's stealth aura
+    /// expires in the simulation and the presentation is told to drop the icon.
+    #[test]
+    fn offline_movement_drops_the_shadowmeld_stealth() {
+        let Some(spells) = crate::ui_action::real_spells() else {
+            return;
+        };
+        let id = CharacterId::parse("00000000000000000000000000000004").unwrap();
+        let appearance = Appearance {
+            race: 4,
+            class: 1,
+            gender: 0,
+            skin: 0,
+            face: 0,
+            hair_style: 0,
+            hair_color: 0,
+            facial_hair: 0,
+        };
+        let mut core = GameCore::default();
+        core.create_character(
+            id.clone(),
+            "Cethel",
+            appearance,
+            starting_position(4).unwrap(),
+        )
+        .unwrap();
+        enter_test_world(&mut core, 4);
+
+        let (_pick_tx, picks) = crossbeam_channel::unbounded();
+        let (events, received) = crossbeam_channel::unbounded();
+        let (commands, command_receiver) = crossbeam_channel::unbounded();
+        let mut app = App::new();
+        app.insert_resource(OfflineChannels {
+            picks,
+            events,
+            commands: command_receiver,
+        })
+        .insert_resource(OfflineGameCore(core))
+        .insert_resource(OfflinePersistence::new(false))
+        .insert_resource(Time::<()>::default())
+        .insert_resource(spells);
+
+        commands
+            .send(crate::net::ClientCommand::CastSpell {
+                spell_id: 20_580,
+                target: Some(id.presentation_guid()),
+            })
+            .unwrap();
+        app.world_mut()
+            .run_system_once(drive_offline_gameplay)
+            .expect("the Shadowmeld command is handled");
+        let channels = app.world().resource::<OfflineChannels>().clone();
+        {
+            let core = &mut app.world_mut().resource_mut::<OfflineGameCore>().0;
+            advance_offline_combat(core, &channels, 1);
+        }
+        let melded: Vec<_> = received.try_iter().collect();
+        assert!(
+            melded.iter().any(|event| matches!(
+                event,
+                SessionEvent::ObjectValues { guid, fields }
+                    if *guid == id.presentation_guid()
+                        && (0..32).any(|slot| fields
+                            .unit_aura(slot)
+                            .is_some_and(|aura| aura.spell_id == 20_580))
+            )),
+            "the stealth aura is up: {melded:?}"
+        );
+
+        // A walk drops it: the pose's movement is an interrupt, and the next gameplay tick
+        // expires the aura in both the simulation and the presentation.
+        {
+            let core = &mut app.world_mut().resource_mut::<OfflineGameCore>().0;
+            let mut moved = core.snapshot(&id).unwrap().position;
+            moved.x += 2.0;
+            core.update_active(moved, 0).unwrap();
+        }
+        app.world_mut()
+            .run_system_once(drive_offline_gameplay)
+            .expect("the gameplay tick is handled");
+        let walked: Vec<_> = received.try_iter().collect();
+        assert!(
+            walked.iter().any(|event| matches!(
+                event,
+                SessionEvent::ObjectValues { guid, fields }
+                    if *guid == id.presentation_guid()
+                        && (0..32).all(|slot| fields
+                            .unit_aura(slot)
+                            .is_none_or(|aura| aura.spell_id != 20_580))
+            )),
+            "the aura block clears the stealth: {walked:?}"
+        );
+        assert!(
+            walked.iter().any(|event| matches!(
+                event,
+                SessionEvent::AuraDuration { slot, remaining_ms: 0 } if *slot < 32
+            )),
+            "the buff frame is told to expire the icon: {walked:?}"
+        );
+    }
+
+    /// Acceptance: Arcane Torrent (28730) silences the enemies around the caster — it never puts
+    /// a "Silenced." buff on the player. The debuff lands in the creature's aura block and the
+    /// player's own aura slots stay clean.
+    #[test]
+    fn offline_arcane_torrent_silences_the_enemies_around_the_caster() {
+        let Some(spells) = crate::ui_action::real_spells() else {
+            return;
+        };
+        let id = CharacterId::parse("0000000000000000000000000000000b").unwrap();
+        let appearance = Appearance {
+            race: 10,
+            class: 2,
+            gender: 0,
+            skin: 0,
+            face: 0,
+            hair_style: 0,
+            hair_color: 0,
+            facial_hair: 0,
+        };
+        let mut core = GameCore::default();
+        core.create_character(
+            id.clone(),
+            "Solanar",
+            appearance,
+            starting_position(10).unwrap(),
+        )
+        .unwrap();
+        enter_test_world(&mut core, 10);
+        let hostile = core.hostiles().first().copied().expect("imported target");
+        core.update_active(hostile.position, 0).unwrap();
+
+        let (_pick_tx, picks) = crossbeam_channel::unbounded();
+        let (events, received) = crossbeam_channel::unbounded();
+        let (commands, command_receiver) = crossbeam_channel::unbounded();
+        let mut app = App::new();
+        app.insert_resource(OfflineChannels {
+            picks,
+            events,
+            commands: command_receiver,
+        })
+        .insert_resource(OfflineGameCore(core))
+        .insert_resource(OfflinePersistence::new(false))
+        .insert_resource(Time::<()>::default())
+        .insert_resource(spells);
+
+        commands
+            .send(crate::net::ClientCommand::CastSpell {
+                spell_id: 28_730,
+                target: Some(id.presentation_guid()),
+            })
+            .unwrap();
+        app.world_mut()
+            .run_system_once(drive_offline_gameplay)
+            .expect("the Arcane Torrent command is handled");
+        let channels = app.world().resource::<OfflineChannels>().clone();
+        {
+            let core = &mut app.world_mut().resource_mut::<OfflineGameCore>().0;
+            advance_offline_combat(core, &channels, 1);
+        }
+        let silenced: Vec<_> = received.try_iter().collect();
+        let hostile_guid = imported_guid(hostile.creature_entry, hostile.spawn_id);
+        assert!(
+            silenced.iter().any(|event| matches!(
+                event,
+                SessionEvent::ObjectValues { guid, fields }
+                    if *guid == hostile_guid
+                        && (32..48).any(|slot| fields
+                            .unit_aura(slot)
+                            .is_some_and(|aura| aura.spell_id == 28_730))
+            )),
+            "the enemy shows the silence in its aura block: {silenced:?}"
+        );
+        assert!(
+            silenced.iter().all(|event| !matches!(
+                event,
+                SessionEvent::ObjectValues { guid, fields }
+                    if *guid == id.presentation_guid()
+                        && (0..32).any(|slot| fields
+                            .unit_aura(slot)
+                            .is_some_and(|aura| aura.spell_id == 28_730))
+            )),
+            "no 'Silenced.' buff ever lands on the player: {silenced:?}"
+        );
+        let core = &app.world().resource::<OfflineGameCore>().0;
+        assert!(
+            core.active_auras()
+                .unwrap_or_default()
+                .iter()
+                .all(|aura| aura.spell_id != 28_730),
+            "the simulation holds no self aura for it"
+        );
+    }
+
     /// Acceptance: the warrior's rage bar follows the fight — the swing's gain and the creature
     /// hit's gain both republish the pools.
     #[test]
@@ -7390,6 +7850,8 @@ mod tests {
             level: 1,
             stacks: 2,
             remaining_ms: Some(3_500),
+            interrupt_flags: 0,
+            mods: benilla_game_core::AuraStatMods::default(),
         };
         let debuff = CharacterAura {
             slot: 36,
@@ -7398,6 +7860,8 @@ mod tests {
             level: 1,
             stacks: 1,
             remaining_ms: None,
+            interrupt_flags: 0,
+            mods: benilla_game_core::AuraStatMods::default(),
         };
         core.set_active_aura(buff).unwrap();
         core.set_active_aura(debuff).unwrap();

@@ -85,6 +85,7 @@ pub(super) fn load_ui_no_warnings(s: &UiScript, entry: &str) -> usize {
 
 fn load_entry(s: &UiScript, entry: &str, strict_templates: bool, no_warnings: bool) -> usize {
     follow_production_order(s, entry);
+    seat_skipped_frames(s, entry);
     // The app registers its CVars before any file loads: stock `UIOptionsFrame.xml` reads two
     // camera CVars at `OnLoad` and raises on a nil. A value a test already set stands.
     s.register_cvars(crate::cvars::registered_pairs());
@@ -166,6 +167,79 @@ fn load_entry(s: &UiScript, entry: &str, strict_templates: bool, no_warnings: bo
         );
     }
     report.frames
+}
+
+/// Stock frames a one-window kit may stop short of, and the `FrameXML.toc` file that declares each.
+/// A named frame's publish never overwrites (`0x701bd0`), so a stand-in is only safe once the
+/// declaring file can no longer load — and a kit follows the production order, so a declaring file
+/// that ranks BELOW the file being loaded has already passed. [`seat_skipped_frames`] seats a
+/// hidden stand-in for each such frame the kit skipped, before a later file indexes it unguarded.
+const FRAME_DECLARERS: &[(&str, &str)] = &[
+    ("WorldFrame", r"Interface\FrameXML\WorldFrame.xml"),
+    ("UIOptionsFrame", r"Interface\FrameXML\UIOptionsFrame.xml"),
+    (
+        "InterfaceOptionsFrame",
+        r"Interface\FrameXML\UIOptionsFrame.xml",
+    ),
+    (
+        "AudioOptionsFrame",
+        r"Interface\FrameXML\AudioOptionsFrame.xml",
+    ),
+    (
+        "AudioOptionsFrameTab1",
+        r"Interface\FrameXML\AudioOptionsFrame.xml",
+    ),
+    (
+        "AudioOptionsFrameTab2",
+        r"Interface\FrameXML\AudioOptionsFrame.xml",
+    ),
+    (
+        "AudioOptionsFrameTab3",
+        r"Interface\FrameXML\AudioOptionsFrame.xml",
+    ),
+    ("MainMenuBar", r"Interface\FrameXML\MainMenuBar.xml"),
+    ("Minimap", r"Interface\FrameXML\Minimap.xml"),
+    (
+        "MultiBarBottomRight",
+        r"Interface\FrameXML\MultiActionBars.xml",
+    ),
+    ("HelpFrame", r"Interface\FrameXML\HelpFrame.xml"),
+    ("ItemTextFrame", r"Interface\FrameXML\ItemTextFrame.xml"),
+    ("BankFrame", r"Interface\FrameXML\BankFrame.xml"),
+];
+
+/// Engine-created frames build 8606's FrameXML indexes but no toc row declares — the reference
+/// makes them in code (`CWorldMap::CreatePlayerArrowFrame()`), so a stand-in never shadows one.
+const ENGINE_FRAMES: &[&str] = &["PlayerArrowEffectFrame"];
+
+/// Seat a hidden stand-in for each [`FRAME_DECLARERS`] frame whose declaring file has already
+/// passed in the production order and which the kit did not load, and for every [`ENGINE_FRAMES`]
+/// frame. Called before every load walk.
+fn seat_skipped_frames(s: &UiScript, entry: &str) {
+    let rank = production_rank(entry);
+    let mut names: Vec<&str> = ENGINE_FRAMES.to_vec();
+    if let Some(rank) = rank {
+        names.extend(
+            FRAME_DECLARERS
+                .iter()
+                .filter(|(_, decl)| production_rank(decl).is_some_and(|r| r < rank))
+                .map(|(name, _)| *name),
+        );
+    }
+    if names.is_empty() {
+        return;
+    }
+    let list = names
+        .iter()
+        .map(|n| format!("\"{n}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let chunk = format!(
+        "for _, name in ipairs({{ {list} }}) do \
+           if not getglobal(name) then local f = CreateFrame(\"Frame\") f:Hide() setglobal(name, f) end \
+         end"
+    );
+    let _ = s.run(&chunk);
 }
 
 /// Where `entry` falls in the production load, for [`follow_production_order`]: a `FrameXML.toc`
@@ -317,6 +391,13 @@ pub(super) const UIPARENT_STAND_INS: &str = r#"
     CloseAllBags = CloseAllBags or function() end
     OpenBackpack = OpenBackpack or function() end
     CloseBackpack = CloseBackpack or function() end
+    -- Build-8606 windows call these at OnLoad from files a kit may stop short of; each is a plain
+    -- `function X()` write, so the real definition replaces the no-op when its file loads.
+    CastingBarFrame_OnLoad = CastingBarFrame_OnLoad or function() end
+    TalentFrame_Load = TalentFrame_Load or function() end
+    TotemFrame_Update = TotemFrame_Update or function() end
+    -- `ChatFrame.lua:5` sets it; `HelpFrame.lua:38` concatenates it.
+    NUM_CHAT_WINDOWS = NUM_CHAT_WINDOWS or 7
     NUM_CONTAINER_FRAMES = NUM_CONTAINER_FRAMES or 0
     -- The reference's own initial values (`ContainerFrame.lua:11-12`), not zeroes: the tooltip's
     -- default corner is `-CONTAINER_OFFSET_X - 13, CONTAINER_OFFSET_Y`, so a kit reading zero here
@@ -349,7 +430,12 @@ pub(super) const UIPARENT_STAND_INS: &str = r#"
             "MainMenuBarMaxLevelBar", "CastingBarFrame", "QuestTimerFrame", "QuestWatchFrame",
             "DurabilityFrame", "DurabilityShield", "DurabilityOffWeapon", "DurabilityRanged",
             "MinimapCluster", "ChatFrame1", "ChatFrame2", "ShapeshiftBarLeft",
-            "ShapeshiftBarMiddle", "ShapeshiftBarRight", "BattlefieldMinimapTab" })
+            "ShapeshiftBarMiddle", "ShapeshiftBarRight", "BattlefieldMinimapTab",
+            -- Build 8606's manage pass and the windows it reaches index these unguarded, and a
+            -- one-window kit may stop short of the file that declares each.
+            "MultiBarBottomRight", "InterfaceOptionsFrame", "PlayerArrowEffectFrame",
+            "AudioOptionsFrame", "WorldFrame", "HelpFrame", "Minimap", "MiniMapTrackingFrame",
+            "Blizzard_CombatLog_Filters", "MacroFrameSelectedMacroButtonIcon" })
         -- …and every FRAME the managed table itself names (`frame:IsObjectType` on a nil is what
         -- a kit missing one raises) — read off the table, so a row added there needs nothing here.
         -- The `isVar` rows are skipped: those keys are global NUMBERS the pass writes
@@ -453,7 +539,7 @@ pub(super) const MICRO_BUTTON_STAND_INS: &str = r#"
     function UpdateMicroButtons()
         for _, name in ipairs({ "CharacterFrame", "SpellBookFrame", "QuestLogFrame", "GameMenuFrame",
             "OptionsFrame", "SoundOptionsFrame", "UIOptionsFrame", "FriendsFrame", "WorldMapFrame",
-            "HelpFrame" }) do
+            "HelpFrame", "AudioOptionsFrame", "TalentFrame", "PlayerTalentFrame", "LFGParentFrame" }) do
             if not getglobal(name) then local f = CreateFrame("Frame") f:Hide() setglobal(name, f) end
         end
         if not KeyRingButton then KeyRingButton = CreateFrame("Button") KeyRingButton:Hide() end
@@ -483,6 +569,8 @@ pub(super) const MERCHANT_UI: &[&str] = &[
     r"Interface\FrameXML\UIParent.xml",
     r"Interface\FrameXML\MoneyFrame.lua",
     r"Interface\FrameXML\MoneyFrame.xml",
+    r"Interface\FrameXML\MoneyInputFrame.lua",
+    r"Interface\FrameXML\MoneyInputFrame.xml",
     "Interface\\FrameXML\\GameTooltip.xml", // app load order: tooltip before merchant
     r"Interface\FrameXML\UIPanelTemplates.lua",
     r"Interface\FrameXML\UIPanelTemplates.xml",
@@ -502,8 +590,11 @@ pub(crate) const GOSSIP_UI: &[&str] = &[
     r"Interface\FrameXML\UIParent.xml",
     r"Interface\FrameXML\MoneyFrame.lua",
     r"Interface\FrameXML\MoneyFrame.xml",
+    r"Interface\FrameXML\MoneyInputFrame.lua",
+    r"Interface\FrameXML\MoneyInputFrame.xml",
     r"Interface\FrameXML\UIPanelTemplates.lua",
     r"Interface\FrameXML\UIPanelTemplates.xml",
+    r"Interface\FrameXML\ItemButtonTemplate.xml",
     r"Interface\FrameXML\StaticPopup.xml",
     "ScrollTemplates.xml",
 ];
@@ -516,9 +607,11 @@ pub(crate) const LOOT_UI: &[&str] = &[
     "Interface\\FrameXML\\GlobalStrings.lua",
     "Interface\\FrameXML\\Fonts.xml",
     "Interface\\FrameXML\\BasicControls.xml", // `TEXT`, which UnitPopup.lua reads at file scope
-    r"Interface\FrameXML\UIParent.xml", // UIParent.lua: the panel slot manager and the fades
+    r"Interface\FrameXML\UIParent.xml",       // UIParent.lua: the panel slot manager and the fades
     r"Interface\FrameXML\MoneyFrame.lua",
     r"Interface\FrameXML\MoneyFrame.xml",
+    r"Interface\FrameXML\MoneyInputFrame.lua",
+    r"Interface\FrameXML\MoneyInputFrame.xml",
     "Interface\\FrameXML\\GameTooltip.xml", // TOOLTIP_DEFAULT_COLOR, read by the dropdown backdrop
     "Interface\\FrameXML\\UIDropDownMenu.xml", // GroupLootDropDown's OnLoad calls UIDropDownMenu_Initialize
     r"Interface\FrameXML\UIPanelTemplates.lua",
@@ -536,6 +629,8 @@ pub(crate) const LOOT_UI: &[&str] = &[
     // declarer, `UIParent.lua:65`, precedes it.
     "Interface\\FrameXML\\UnitPopup.xml",
     "Interface\\FrameXML\\UnitFrame.xml",
+    "Interface\\FrameXML\\VoiceChat.xml",
+    "Interface\\FrameXML\\ReadyCheck.xml",
     "Interface\\FrameXML\\PartyFrame.xml",
 ];
 
@@ -553,6 +648,8 @@ pub(super) const CHARACTER_UI: &[&str] = &[
     r"Interface\FrameXML\UIParent.xml", // Model_OnLoad/_Rotate*/_OnUpdate: the model turntable
     r"Interface\FrameXML\MoneyFrame.lua",
     r"Interface\FrameXML\MoneyFrame.xml",
+    r"Interface\FrameXML\MoneyInputFrame.lua",
+    r"Interface\FrameXML\MoneyInputFrame.xml",
     "Interface\\FrameXML\\GameTooltip.xml",
     "Interface\\FrameXML\\UIMenu.xml",
     // The unit frames' dropdowns call `UIDropDownMenu_Initialize` at load, so the kit and the menu
@@ -560,6 +657,7 @@ pub(super) const CHARACTER_UI: &[&str] = &[
     "Interface\\FrameXML\\UIDropDownMenu.xml",
     r"Interface\FrameXML\UIPanelTemplates.lua",
     r"Interface\FrameXML\UIPanelTemplates.xml",
+    "Interface\\FrameXML\\SecureTemplates.xml",
     "Interface\\FrameXML\\ItemButtonTemplate.xml", // PaperDollItemSlotButtonTemplate's base
     // ReputationFrame's detail check boxes inherit its `OptionsCheckButtonTemplate`.
     "Interface\\FrameXML\\OptionsFrameTemplates.xml",
@@ -574,9 +672,12 @@ pub(super) const CHARACTER_UI: &[&str] = &[
     "Interface\\FrameXML\\ActionButtonTemplate.xml",
     "Interface\\FrameXML\\ActionBarFrame.xml",
     "Interface\\FrameXML\\CombatFeedback.xml",
+    "Interface\\FrameXML\\CastingBarFrame.xml",
     "Interface\\FrameXML\\UnitPopup.xml",
     // `UnitFrame_Initialize` and `CombatFeedback_Initialize`, called by the frames below at load.
     "Interface\\FrameXML\\UnitFrame.xml",
+    "Interface\\FrameXML\\VoiceChat.xml",
+    "Interface\\FrameXML\\ReadyCheck.xml",
     "Interface\\FrameXML\\PlayerFrame.xml",
     // `PetFrame.xml`'s debuff buttons inherit `PartyBuffButtonTemplate`, declared here; the
     // manifest reaches this file only through `PartyFrame.xml`'s `<Include>`.
@@ -606,11 +707,15 @@ pub(super) const SOCIAL_UI: &[&str] = &[
     r"Interface\FrameXML\UIParent.xml",
     r"Interface\FrameXML\MoneyFrame.lua",
     r"Interface\FrameXML\MoneyFrame.xml",
+    r"Interface\FrameXML\MoneyInputFrame.lua",
+    r"Interface\FrameXML\MoneyInputFrame.xml",
     "Interface\\FrameXML\\GameTooltip.xml",
     "Interface\\FrameXML\\UIMenu.xml",
     "Interface\\FrameXML\\UIDropDownMenu.xml",
     "Interface\\FrameXML\\UIPanelTemplates.lua",
     "Interface\\FrameXML\\UIPanelTemplates.xml",
+    "Interface\\FrameXML\\SecureTemplates.xml",
+    "Interface\\FrameXML\\ItemButtonTemplate.xml",
     "Interface\\FrameXML\\OptionsFrameTemplates.xml",
     // The stock window tab, whose `<OnShow>` needs the `UIPanelTemplates` pair above it.
     r"Interface\FrameXML\CharacterFrameTemplates.xml",
@@ -627,9 +732,11 @@ pub(super) const SOCIAL_UI: &[&str] = &[
     "Interface\\FrameXML\\CombatFeedback.xml",
     "Interface\\FrameXML\\UnitPopup.xml",
     "Interface\\FrameXML\\UnitFrame.xml",
-    "Interface\\FrameXML\\PartyFrame.xml",
     "Interface\\FrameXML\\ChatFrame.xml",
     "Interface\\FrameXML\\FloatingChatFrame.xml",
+    "Interface\\FrameXML\\VoiceChat.xml",
+    "Interface\\FrameXML\\ReadyCheck.xml",
+    "Interface\\FrameXML\\PartyFrame.xml",
     "Interface\\FrameXML\\ReputationFrame.xml",
     "Interface\\FrameXML\\FriendsFrame.xml",
     "Interface\\FrameXML\\RaidFrame.xml",
@@ -662,11 +769,14 @@ pub(super) const BAG_UI: &[&str] = &[
     r"Interface\FrameXML\UIParent.xml",
     r"Interface\FrameXML\MoneyFrame.lua",
     r"Interface\FrameXML\MoneyFrame.xml",
+    r"Interface\FrameXML\MoneyInputFrame.lua",
+    r"Interface\FrameXML\MoneyInputFrame.xml",
     "Interface\\FrameXML\\GameTooltip.xml",
     "Interface\\FrameXML\\UIMenu.xml", // the kit ChatMenu/EmoteMenu/VoiceMacroMenu build from
     "Interface\\FrameXML\\UIDropDownMenu.xml",
     r"Interface\FrameXML\UIPanelTemplates.lua",
     r"Interface\FrameXML\UIPanelTemplates.xml",
+    "Interface\\FrameXML\\SecureTemplates.xml",
     "Interface\\FrameXML\\ItemButtonTemplate.xml",
     // The dialog engine, after the `UIPanelCloseButton` it inherits.
     r"Interface\FrameXML\StaticPopup.xml",
@@ -692,13 +802,14 @@ pub(super) const BAG_UI: &[&str] = &[
     // (`PaperDollItemSlotButton_OnLoad`) gives each bag button its inventory-slot id, 20..23.
     // `CharacterFrame.xml` stays out: a missing `parent=` only warns.
     "Interface\\FrameXML\\PaperDollFrame.xml",
-    // The stock bag bar, with `BagSlotButtonTemplate` and `KEYRING_CONTAINER`.
-    "Interface\\FrameXML\\MainMenuBarBagButtons.xml",
+    // The stock bag bar, with `BagSlotButtonTemplate`; `KEYRING_CONTAINER` and the container
+    // frames come from `ContainerFrame.xml`, which build 8606 puts BEFORE the bag bar.
     "Interface\\FrameXML\\ContainerFrame.xml",
     // `updateContainerFrameAnchors` measures every open bag against `BankFrame:GetRight()`
     // (`ContainerFrame.lua:505`) on every open and close, so the bank window is a hard dependency.
     "Interface\\FrameXML\\BankFrame.xml",
     "Interface\\FrameXML\\BonusActionBarFrame.xml",
+    "Interface\\FrameXML\\MainMenuBarBagButtons.xml",
     "ScrollTemplates.xml", // our scroll kit
     // Our adapters over the stock container files, loaded after them and the bar so they win.
     "ContainerFrameAdapters.xml",

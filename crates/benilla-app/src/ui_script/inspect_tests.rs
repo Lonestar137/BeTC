@@ -111,6 +111,8 @@ fn armed() -> UiScript {
     load_xml(&s, r"Interface\FrameXML\UIParent.xml");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.lua");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.xml");
+    load_xml(&s, r"Interface\FrameXML\MoneyInputFrame.lua");
+    load_xml(&s, r"Interface\FrameXML\MoneyInputFrame.xml");
     load_xml(&s, "Interface\\FrameXML\\GameTooltip.xml");
     load_xml(&s, r"Interface\FrameXML\UIPanelTemplates.lua");
     load_xml(&s, r"Interface\FrameXML\UIPanelTemplates.xml");
@@ -147,6 +149,8 @@ fn shipped_inspect_frame_loads_clean() {
     load_xml(&s, r"Interface\FrameXML\UIParent.xml");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.lua");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.xml");
+    load_xml(&s, r"Interface\FrameXML\MoneyInputFrame.lua");
+    load_xml(&s, r"Interface\FrameXML\MoneyInputFrame.xml");
     load_xml(&s, "Interface\\FrameXML\\GameTooltip.xml");
     load_xml(&s, r"Interface\FrameXML\UIPanelTemplates.lua");
     load_xml(&s, r"Interface\FrameXML\UIPanelTemplates.xml");

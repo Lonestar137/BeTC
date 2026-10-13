@@ -15,8 +15,11 @@ fn setup() -> UiScript {
     load_xml(&s, r"Interface\FrameXML\UIParent.xml");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.lua");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.xml");
+    load_xml(&s, r"Interface\FrameXML\MoneyInputFrame.lua");
+    load_xml(&s, r"Interface\FrameXML\MoneyInputFrame.xml");
     load_xml(&s, r"Interface\FrameXML\UIPanelTemplates.lua");
     load_xml(&s, r"Interface\FrameXML\UIPanelTemplates.xml");
+    load_xml(&s, r"Interface\FrameXML\ItemButtonTemplate.xml");
     load_xml(&s, r"Interface\FrameXML\StaticPopup.xml");
     s.set_binder_pending(true);
     s

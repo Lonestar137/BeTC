@@ -18,10 +18,13 @@ fn harness() -> UiScript {
         r"Interface\FrameXML\UIParent.xml",
         r"Interface\FrameXML\MoneyFrame.lua",
         r"Interface\FrameXML\MoneyFrame.xml",
+        r"Interface\FrameXML\MoneyInputFrame.lua",
+        r"Interface\FrameXML\MoneyInputFrame.xml",
         "Interface\\FrameXML\\GameTooltip.xml",
         "Interface\\FrameXML\\UIDropDownMenu.xml", // the map's continent/zone pickers initialize into it at OnLoad
         r"Interface\FrameXML\UIPanelTemplates.lua",
         r"Interface\FrameXML\UIPanelTemplates.xml",
+        "Interface\\FrameXML\\ItemButtonTemplate.xml",
         "Interface\\FrameXML\\StaticPopup.xml",
         // The stock update walks `MAX_PARTY_MEMBERS` and `MAX_RAID_MEMBERS`, set by these two.
         r"Interface\FrameXML\PartyMemberFrame.lua",

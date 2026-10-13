@@ -135,6 +135,14 @@ const BEYOND_1_12: &[&str] = &[
     "SecureButton_GetModifiedAttribute",
     "GetExistingLocales",
     "GetAttackPowerForStat",
+    "GetOptOutOfLoot",
+    "GetChannelDisplayInfo",
+    "GetTrackingInfo",
+    "IsSelectedSpell",
+    "GetNumVoiceSessionMembersBySessionID",
+    "GetArenaCurrency",
+    "GetUnitMaxHealthModifier",
+    "GetSpellCritChanceFromIntellect",
 ];
 
 /// `reference/1.12-globals.tsv`'s names.

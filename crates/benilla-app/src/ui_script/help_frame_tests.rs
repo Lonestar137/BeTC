@@ -21,9 +21,13 @@ fn setup() -> UiScript {
         // Before StaticPopup.xml, whose coin row inherits `SmallMoneyFrameTemplate`.
         r"Interface\FrameXML\MoneyFrame.lua",
         r"Interface\FrameXML\MoneyFrame.xml",
+        r"Interface\FrameXML\MoneyInputFrame.lua",
+        r"Interface\FrameXML\MoneyInputFrame.xml",
         "Interface\\FrameXML\\GameTooltip.xml",
         r"Interface\FrameXML\UIPanelTemplates.lua",
         r"Interface\FrameXML\UIPanelTemplates.xml",
+        "Interface\\FrameXML\\SecureTemplates.xml",
+        "Interface\\FrameXML\\ItemButtonTemplate.xml",
         "Interface\\FrameXML\\StaticPopup.xml",
         "Interface\\FrameXML\\TextStatusBar.lua",
         "Interface\\FrameXML\\TextStatusBar.xml",

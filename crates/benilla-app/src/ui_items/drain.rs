@@ -1276,6 +1276,9 @@ mod bind_confirm_tests {
             r"Interface\FrameXML\UIParent.xml",
             r"Interface\FrameXML\MoneyFrame.lua",
             r"Interface\FrameXML\MoneyFrame.xml",
+            r"Interface\FrameXML\MoneyInputFrame.lua",
+            r"Interface\FrameXML\MoneyInputFrame.xml",
+            "Interface\\FrameXML\\ItemButtonTemplate.xml",
             "Interface\\FrameXML\\StaticPopup.xml",
         ] {
             crate::ui_script::load_ui_for_test(s, file);

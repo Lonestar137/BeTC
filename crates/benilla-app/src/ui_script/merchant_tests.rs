@@ -1203,9 +1203,9 @@ fn shift_click_takes_one_bundle_and_splits_a_single() {
         &[
             "Interface\\FrameXML\\UIMenu.xml",
             "Interface\\FrameXML\\UIDropDownMenu.xml",
+            "Interface\\FrameXML\\StackSplitFrame.xml",
             "Interface\\FrameXML\\ChatFrame.xml",
             "Interface\\FrameXML\\FloatingChatFrame.xml",
-            "Interface\\FrameXML\\StackSplitFrame.xml",
             "Interface\\FrameXML\\MerchantFrame.xml",
         ],
     ]) {

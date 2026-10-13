@@ -17,10 +17,13 @@ pub(crate) fn harness() -> UiScript {
         r"Interface\FrameXML\UIParent.xml",
         r"Interface\FrameXML\MoneyFrame.lua",
         r"Interface\FrameXML\MoneyFrame.xml",
+        r"Interface\FrameXML\MoneyInputFrame.lua",
+        r"Interface\FrameXML\MoneyInputFrame.xml",
         "Interface\\FrameXML\\GameTooltip.xml",
         "Interface\\FrameXML\\UIDropDownMenu.xml",
         r"Interface\FrameXML\UIPanelTemplates.lua",
         r"Interface\FrameXML\UIPanelTemplates.xml",
+        "Interface\\FrameXML\\ItemButtonTemplate.xml",
         // Before our files, as the core loads before the layer: it sources UIParent.lua again.
         r"Interface\FrameXML\GameMenuFrame.xml",
         "Interface\\FrameXML\\StaticPopup.xml",

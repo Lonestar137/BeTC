@@ -53,11 +53,14 @@ fn setup() -> UiScript {
             r"Interface\FrameXML\UIParent.xml",
             r"Interface\FrameXML\MoneyFrame.lua",
             r"Interface\FrameXML\MoneyFrame.xml",
+            r"Interface\FrameXML\MoneyInputFrame.lua",
+            r"Interface\FrameXML\MoneyInputFrame.xml",
             "Interface\\FrameXML\\GameTooltip.xml", // TOOLTIP_DEFAULT_COLOR, for dropdowns
             r"Interface\FrameXML\UIMenu.xml",
             r"Interface\FrameXML\UIDropDownMenu.xml",
             r"Interface\FrameXML\UIPanelTemplates.lua",
             r"Interface\FrameXML\UIPanelTemplates.xml",
+            r"Interface\FrameXML\ItemButtonTemplate.xml",
             r"Interface\FrameXML\StaticPopup.xml",
             // The stock `DELETE_GOOD_ITEM`'s `OnHide` hands focus back to `ChatFrameEditBox`,
             // which FloatingChatFrame.xml declares.

@@ -1089,10 +1089,13 @@ fn an_addons_tab_click_selects_through_the_generic_entry_point() {
     load_xml(&s, r"Interface\FrameXML\UIParent.xml");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.lua");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.xml");
+    load_xml(&s, r"Interface\FrameXML\MoneyInputFrame.lua");
+    load_xml(&s, r"Interface\FrameXML\MoneyInputFrame.xml");
     // `PanelTemplates_SelectTab` asks `GameTooltip:IsOwned(tab)` (`UIPanelTemplates.lua:130`).
     load_xml(&s, "Interface\\FrameXML\\GameTooltip.xml");
     load_xml(&s, r"Interface\FrameXML\UIPanelTemplates.lua");
     load_xml(&s, r"Interface\FrameXML\UIPanelTemplates.xml");
+    load_xml(&s, r"Interface\FrameXML\ItemButtonTemplate.xml");
     load_xml(&s, r"Interface\FrameXML\CharacterFrameTemplates.xml"); // the window tab
     load_xml(&s, r"Interface\FrameXML\StaticPopup.xml");
     load_xml(&s, "ScrollTemplates.xml"); // our scroll kits

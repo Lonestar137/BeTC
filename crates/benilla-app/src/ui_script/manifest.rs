@@ -132,6 +132,24 @@ pub(super) fn silenced_ui_load<S: std::borrow::Borrow<UiScript>, R>(
     out
 }
 
+/// Seat the engine-created frames build 8606's FrameXML indexes but no toc row declares. The
+/// reference makes them in code (`CWorldMap::CreatePlayerArrowFrame()`), so a stand-in can never
+/// shadow a real frame; the manifest loads every row, so a rank-based seat would.
+fn seat_engine_frames(script: &UiScript) {
+    const ENGINE_FRAMES: &[&str] = &["PlayerArrowEffectFrame"];
+    let list = ENGINE_FRAMES
+        .iter()
+        .map(|n| format!("\"{n}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let chunk = format!(
+        "for _, name in ipairs({{ {list} }}) do \
+           if not getglobal(name) then local f = CreateFrame(\"Frame\") f:Hide() setglobal(name, f) end \
+         end"
+    );
+    let _ = script.run(&chunk);
+}
+
 /// Loads the core, then the layer unless [`layer_enabled`] says no, then the load-time repairs:
 /// [`load_ingame_ui`] without the addons, for the tests and [`crate::addon_harness`]. Returns every
 /// failure; a loader error is tagged `"<Addon>/<file>: <error>"`.
@@ -184,6 +202,7 @@ pub(super) fn load_core(script: &UiScript) -> Vec<String> {
         return failures;
     };
     let mut toc = benilla_ui::status::Status::default();
+    seat_engine_frames(script);
     let mut failures = core.load_files_into(script, &core.toc.files, &mut toc);
     let mut log = benilla_ui::status::Status::default();
     let banner = benilla_ui::status::toc_banner(reference_ui::TOC);

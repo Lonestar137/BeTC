@@ -25,9 +25,12 @@ fn shipped_action_bar_drives_end_to_end() {
         r"Interface\FrameXML\UIParent.xml",
         r"Interface\FrameXML\MoneyFrame.lua",
         r"Interface\FrameXML\MoneyFrame.xml",
+        r"Interface\FrameXML\MoneyInputFrame.lua",
+        r"Interface\FrameXML\MoneyInputFrame.xml",
         "Interface\\FrameXML\\GameTooltip.xml",
         r"Interface\FrameXML\UIPanelTemplates.lua",
         r"Interface\FrameXML\UIPanelTemplates.xml",
+        "Interface\\FrameXML\\SecureTemplates.xml",
         r"Interface\FrameXML\OptionsFrameTemplates.xml",
         "Interface\\FrameXML\\TextStatusBar.lua",
         "Interface\\FrameXML\\TextStatusBar.xml",
@@ -175,16 +178,20 @@ fn load_action_bar(s: &UiScript) {
     super::test_ui::load_ui(s, r"Interface\FrameXML\UIParent.xml");
     super::test_ui::load_ui(s, r"Interface\FrameXML\MoneyFrame.lua");
     super::test_ui::load_ui(s, r"Interface\FrameXML\MoneyFrame.xml");
+    super::test_ui::load_ui(s, r"Interface\FrameXML\MoneyInputFrame.lua");
+    super::test_ui::load_ui(s, r"Interface\FrameXML\MoneyInputFrame.xml");
     super::test_ui::load_ui(s, "Interface\\FrameXML\\GameTooltip.xml");
     super::test_ui::load_ui(s, "Interface\\FrameXML\\UIDropDownMenu.xml");
     super::test_ui::load_ui(s, r"Interface\FrameXML\UIPanelTemplates.lua");
     super::test_ui::load_ui(s, r"Interface\FrameXML\UIPanelTemplates.xml");
+    super::test_ui::load_ui(s, "Interface\\FrameXML\\SecureTemplates.xml");
+    // StaticPopup.xml: the keybindings page adds its two confirm dialogs to `StaticPopupDialogs`.
+    super::test_ui::load_ui(s, r"Interface\FrameXML\ItemButtonTemplate.xml");
     super::test_ui::load_ui(s, r"Interface\FrameXML\OptionsFrameTemplates.xml");
     // `UIOptionsFrame_Init` declares `LOCK_ACTIONBAR` and `ALWAYS_SHOW_MULTIBARS`
     // (UIOptionsFrame.lua:93-107), before our window, whose rows take their defaults from them.
     super::test_ui::load_ui(s, r"Interface\FrameXML\OptionsFrame.lua");
     super::test_ui::load_ui(s, r"Interface\FrameXML\UIOptionsFrame.xml");
-    // StaticPopup.xml: the keybindings page adds its two confirm dialogs to `StaticPopupDialogs`.
     super::test_ui::load_ui(s, r"Interface\FrameXML\StaticPopup.xml");
     super::test_ui::load_ui(s, "Interface\\FrameXML\\TextStatusBar.lua");
     super::test_ui::load_ui(s, "Interface\\FrameXML\\TextStatusBar.xml");
@@ -1473,10 +1480,14 @@ fn the_main_bar_pages_and_a_bonus_page_still_outranks_it() {
         r"Interface\FrameXML\UIParent.xml",
         r"Interface\FrameXML\MoneyFrame.lua",
         r"Interface\FrameXML\MoneyFrame.xml",
+        r"Interface\FrameXML\MoneyInputFrame.lua",
+        r"Interface\FrameXML\MoneyInputFrame.xml",
         "Interface\\FrameXML\\GameTooltip.xml",
         "Interface\\FrameXML\\UIDropDownMenu.xml",
         r"Interface\FrameXML\UIPanelTemplates.lua",
         r"Interface\FrameXML\UIPanelTemplates.xml",
+        "Interface\\FrameXML\\SecureTemplates.xml",
+        "Interface\\FrameXML\\ItemButtonTemplate.xml",
         r"Interface\FrameXML\OptionsFrameTemplates.xml",
         // `UIOptionsFrame_Init`'s uvars and `UIOptionsFrameCheckButtons`, which
         // `MultiActionBarFrame_OnLoad` writes (MultiActionBars.lua:8-22), so ahead of the bars.
@@ -1623,9 +1634,12 @@ fn bonus_bar_slides_up_with_sound_and_down_without() {
     super::test_ui::load_ui(&s, r"Interface\FrameXML\UIParent.xml");
     super::test_ui::load_ui(&s, r"Interface\FrameXML\MoneyFrame.lua");
     super::test_ui::load_ui(&s, r"Interface\FrameXML\MoneyFrame.xml");
+    super::test_ui::load_ui(&s, r"Interface\FrameXML\MoneyInputFrame.lua");
+    super::test_ui::load_ui(&s, r"Interface\FrameXML\MoneyInputFrame.xml");
     super::test_ui::load_ui(&s, "Interface\\FrameXML\\GameTooltip.xml");
     super::test_ui::load_ui(&s, r"Interface\FrameXML\UIPanelTemplates.lua");
     super::test_ui::load_ui(&s, r"Interface\FrameXML\UIPanelTemplates.xml");
+    super::test_ui::load_ui(&s, "Interface\\FrameXML\\SecureTemplates.xml");
     super::test_ui::load_ui(&s, r"Interface\FrameXML\OptionsFrameTemplates.xml");
     super::test_ui::load_ui(&s, "Interface\\FrameXML\\TextStatusBar.lua");
     super::test_ui::load_ui(&s, "Interface\\FrameXML\\TextStatusBar.xml");
@@ -1833,9 +1847,12 @@ fn bonus_bar_turnaround_continues_from_position() {
     super::test_ui::load_ui(&s, r"Interface\FrameXML\UIParent.xml");
     super::test_ui::load_ui(&s, r"Interface\FrameXML\MoneyFrame.lua");
     super::test_ui::load_ui(&s, r"Interface\FrameXML\MoneyFrame.xml");
+    super::test_ui::load_ui(&s, r"Interface\FrameXML\MoneyInputFrame.lua");
+    super::test_ui::load_ui(&s, r"Interface\FrameXML\MoneyInputFrame.xml");
     super::test_ui::load_ui(&s, "Interface\\FrameXML\\GameTooltip.xml");
     super::test_ui::load_ui(&s, r"Interface\FrameXML\UIPanelTemplates.lua");
     super::test_ui::load_ui(&s, r"Interface\FrameXML\UIPanelTemplates.xml");
+    super::test_ui::load_ui(&s, "Interface\\FrameXML\\SecureTemplates.xml");
     super::test_ui::load_ui(&s, r"Interface\FrameXML\OptionsFrameTemplates.xml");
     super::test_ui::load_ui(&s, "Interface\\FrameXML\\TextStatusBar.lua");
     super::test_ui::load_ui(&s, "Interface\\FrameXML\\TextStatusBar.xml");
@@ -1902,9 +1919,12 @@ fn the_page_arrows_do_not_steal_each_other_s_clicks() {
     super::test_ui::load_ui(&s, r"Interface\FrameXML\UIParent.xml");
     super::test_ui::load_ui(&s, r"Interface\FrameXML\MoneyFrame.lua");
     super::test_ui::load_ui(&s, r"Interface\FrameXML\MoneyFrame.xml");
+    super::test_ui::load_ui(&s, r"Interface\FrameXML\MoneyInputFrame.lua");
+    super::test_ui::load_ui(&s, r"Interface\FrameXML\MoneyInputFrame.xml");
     super::test_ui::load_ui(&s, "Interface\\FrameXML\\GameTooltip.xml");
     super::test_ui::load_ui(&s, r"Interface\FrameXML\UIPanelTemplates.lua");
     super::test_ui::load_ui(&s, r"Interface\FrameXML\UIPanelTemplates.xml");
+    super::test_ui::load_ui(&s, "Interface\\FrameXML\\SecureTemplates.xml");
     super::test_ui::load_ui(&s, r"Interface\FrameXML\OptionsFrameTemplates.xml");
     super::test_ui::load_ui(&s, "Interface\\FrameXML\\TextStatusBar.lua");
     super::test_ui::load_ui(&s, "Interface\\FrameXML\\TextStatusBar.xml");
@@ -1915,9 +1935,6 @@ fn the_page_arrows_do_not_steal_each_other_s_clicks() {
     // `ExhaustionTick_Update` reads `ReputationWatchBar`, which ReputationFrame.xml declares.
     super::test_ui::load_ui(&s, r"Interface\FrameXML\ReputationFrame.xml");
     super::test_ui::load_ui(&s, "Interface\\FrameXML\\BonusActionBarFrame.xml");
-    // The rested marker is declared shown in DIALOG strata over the arrows (MainMenuBar.xml:415);
-    // `ExhaustionTick_Update` hides it on PLAYER_ENTERING_WORLD when `GetXPExhaustion()` is nil
-    // (MainMenuBar.lua:29-31), or it eats every click.
     s.fire_event("PLAYER_ENTERING_WORLD", vec![]);
     s.resolve();
 

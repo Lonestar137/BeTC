@@ -25,6 +25,8 @@ fn exp_bar_harness() -> UiScript {
         r"Interface\FrameXML\UIParent.xml",
         r"Interface\FrameXML\MoneyFrame.lua",
         r"Interface\FrameXML\MoneyFrame.xml",
+        r"Interface\FrameXML\MoneyInputFrame.lua",
+        r"Interface\FrameXML\MoneyInputFrame.xml",
         "Interface\\FrameXML\\GameTooltip.xml",
         // `ExhaustionTick_Update` reads `ReputationWatchBar`, which `ReputationFrame.xml`
         // declares; the two template files before it are what its check boxes inherit.
@@ -33,6 +35,7 @@ fn exp_bar_harness() -> UiScript {
         // `ActionButton.lua:119` calls `SecureButton_GetEffectiveButton`, which stock
         // `SecureTemplates.lua` defines; the production load reaches it before the action bars.
         r"Interface\FrameXML\SecureTemplates.xml",
+        "Interface\\FrameXML\\SecureTemplates.xml",
         r"Interface\FrameXML\OptionsFrameTemplates.xml",
         "Interface\\FrameXML\\TextStatusBar.lua",
         "Interface\\FrameXML\\TextStatusBar.xml",

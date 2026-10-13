@@ -36,8 +36,11 @@ fn shipped_gossip_frame_drives_end_to_end() {
     load_xml(&s, r"Interface\FrameXML\UIParent.xml");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.lua");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.xml");
+    load_xml(&s, r"Interface\FrameXML\MoneyInputFrame.lua");
+    load_xml(&s, r"Interface\FrameXML\MoneyInputFrame.xml");
     load_xml(&s, r"Interface\FrameXML\UIPanelTemplates.lua");
     load_xml(&s, r"Interface\FrameXML\UIPanelTemplates.xml");
+    load_xml(&s, r"Interface\FrameXML\ItemButtonTemplate.xml");
     load_xml(&s, r"Interface\FrameXML\StaticPopup.xml");
     // 43 frames, 32 of them the row pool that quests and options share (`NUMGOSSIPBUTTONS`).
     assert_eq!(
@@ -201,8 +204,11 @@ fn shipped_gossip_frame_renders_quest_rows_above_options() {
     load_xml(&s, r"Interface\FrameXML\UIParent.xml");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.lua");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.xml");
+    load_xml(&s, r"Interface\FrameXML\MoneyInputFrame.lua");
+    load_xml(&s, r"Interface\FrameXML\MoneyInputFrame.xml");
     load_xml(&s, r"Interface\FrameXML\UIPanelTemplates.lua");
     load_xml(&s, r"Interface\FrameXML\UIPanelTemplates.xml");
+    load_xml(&s, r"Interface\FrameXML\ItemButtonTemplate.xml");
     load_xml(&s, r"Interface\FrameXML\StaticPopup.xml");
     load_xml(&s, "Interface\\FrameXML\\GossipFrame.xml");
     load_xml(&s, "ScrollTemplates.xml"); // our scroll kits
@@ -323,8 +329,11 @@ fn shipped_gossip_rows_grow_to_their_wrapped_labels() {
     load_xml(&s, r"Interface\FrameXML\UIParent.xml");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.lua");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.xml");
+    load_xml(&s, r"Interface\FrameXML\MoneyInputFrame.lua");
+    load_xml(&s, r"Interface\FrameXML\MoneyInputFrame.xml");
     load_xml(&s, r"Interface\FrameXML\UIPanelTemplates.lua");
     load_xml(&s, r"Interface\FrameXML\UIPanelTemplates.xml");
+    load_xml(&s, r"Interface\FrameXML\ItemButtonTemplate.xml");
     load_xml(&s, r"Interface\FrameXML\StaticPopup.xml");
     load_xml(&s, "Interface\\FrameXML\\GossipFrame.xml");
     load_xml(&s, "ScrollTemplates.xml"); // our scroll kits
@@ -422,8 +431,11 @@ fn gossip_show_hide_plays_open_and_close_kits() {
     load_xml(&s, r"Interface\FrameXML\UIParent.xml");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.lua");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.xml");
+    load_xml(&s, r"Interface\FrameXML\MoneyInputFrame.lua");
+    load_xml(&s, r"Interface\FrameXML\MoneyInputFrame.xml");
     load_xml(&s, r"Interface\FrameXML\UIPanelTemplates.lua");
     load_xml(&s, r"Interface\FrameXML\UIPanelTemplates.xml");
+    load_xml(&s, r"Interface\FrameXML\ItemButtonTemplate.xml");
     load_xml(&s, r"Interface\FrameXML\StaticPopup.xml");
     load_xml(&s, "Interface\\FrameXML\\GossipFrame.xml");
     load_xml(&s, "ScrollTemplates.xml"); // our scroll kits
@@ -695,6 +707,8 @@ fn gossip_bank_option_hands_the_left_slot_to_the_bank() {
         load_xml(&s, r"Interface\FrameXML\UIParent.xml");
         load_xml(&s, r"Interface\FrameXML\MoneyFrame.lua");
         load_xml(&s, r"Interface\FrameXML\MoneyFrame.xml");
+        load_xml(&s, r"Interface\FrameXML\MoneyInputFrame.lua");
+        load_xml(&s, r"Interface\FrameXML\MoneyInputFrame.xml");
         load_xml(&s, "Interface\\FrameXML\\GameTooltip.xml");
         // Before BankFrame: its buttons inherit these templates, and `inherits=` resolves at load.
         load_xml(&s, r"Interface\FrameXML\UIPanelTemplates.lua");
@@ -766,8 +780,11 @@ fn an_overflowing_gossip_menu_scrolls_instead_of_spilling() {
     load_xml(&s, r"Interface\FrameXML\UIParent.xml");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.lua");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.xml");
+    load_xml(&s, r"Interface\FrameXML\MoneyInputFrame.lua");
+    load_xml(&s, r"Interface\FrameXML\MoneyInputFrame.xml");
     load_xml(&s, r"Interface\FrameXML\UIPanelTemplates.lua");
     load_xml(&s, r"Interface\FrameXML\UIPanelTemplates.xml"); // UIPanelScrollFrameTemplate
+    load_xml(&s, r"Interface\FrameXML\ItemButtonTemplate.xml");
     load_xml(&s, r"Interface\FrameXML\StaticPopup.xml");
     load_xml(&s, "Interface\\FrameXML\\GossipFrame.xml");
     load_xml(&s, "ScrollTemplates.xml");
@@ -899,8 +916,11 @@ fn an_addons_own_frame_registered_in_uipanelwindows_takes_the_left_slot() {
     load_xml(&s, r"Interface\FrameXML\UIParent.xml");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.lua");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.xml");
+    load_xml(&s, r"Interface\FrameXML\MoneyInputFrame.lua");
+    load_xml(&s, r"Interface\FrameXML\MoneyInputFrame.xml");
     load_xml(&s, r"Interface\FrameXML\UIPanelTemplates.lua");
     load_xml(&s, r"Interface\FrameXML\UIPanelTemplates.xml"); // UIPanelScrollFrameTemplate
+    load_xml(&s, r"Interface\FrameXML\ItemButtonTemplate.xml");
     load_xml(&s, r"Interface\FrameXML\StaticPopup.xml");
     load_xml(&s, "Interface\\FrameXML\\GossipFrame.xml");
     load_xml(&s, "ScrollTemplates.xml");
@@ -965,8 +985,11 @@ fn the_panel_registry_rows_match_the_reference_bytes() {
     load_xml(&s, r"Interface\FrameXML\UIParent.xml");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.lua");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.xml");
+    load_xml(&s, r"Interface\FrameXML\MoneyInputFrame.lua");
+    load_xml(&s, r"Interface\FrameXML\MoneyInputFrame.xml");
     load_xml(&s, r"Interface\FrameXML\UIPanelTemplates.lua");
     load_xml(&s, r"Interface\FrameXML\UIPanelTemplates.xml");
+    load_xml(&s, r"Interface\FrameXML\ItemButtonTemplate.xml");
     load_xml(&s, r"Interface\FrameXML\StaticPopup.xml");
     load_xml(&s, "ScrollTemplates.xml"); // our scroll kits
     for probe in [
@@ -1005,8 +1028,11 @@ fn a_dead_player_opens_only_whiledead_windows() {
     load_xml(&s, r"Interface\FrameXML\UIParent.xml");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.lua");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.xml");
+    load_xml(&s, r"Interface\FrameXML\MoneyInputFrame.lua");
+    load_xml(&s, r"Interface\FrameXML\MoneyInputFrame.xml");
     load_xml(&s, r"Interface\FrameXML\UIPanelTemplates.lua");
     load_xml(&s, r"Interface\FrameXML\UIPanelTemplates.xml");
+    load_xml(&s, r"Interface\FrameXML\ItemButtonTemplate.xml");
     load_xml(&s, r"Interface\FrameXML\StaticPopup.xml");
     s.set_unit(
         "player",
@@ -1071,8 +1097,11 @@ fn a_frame_arriving_at_center_puts_the_child_windows_away() {
     load_xml(&s, r"Interface\FrameXML\UIParent.xml");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.lua");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.xml");
+    load_xml(&s, r"Interface\FrameXML\MoneyInputFrame.lua");
+    load_xml(&s, r"Interface\FrameXML\MoneyInputFrame.xml");
     load_xml(&s, r"Interface\FrameXML\UIPanelTemplates.lua");
     load_xml(&s, r"Interface\FrameXML\UIPanelTemplates.xml");
+    load_xml(&s, r"Interface\FrameXML\ItemButtonTemplate.xml");
     load_xml(&s, r"Interface\FrameXML\StaticPopup.xml");
 
     // MerchantFrame (pushable 0) holds left; TradeFrame (pushable 1) arrives at center

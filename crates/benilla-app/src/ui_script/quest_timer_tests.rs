@@ -20,6 +20,8 @@ fn harness() -> UiScript {
     // QuestLogFrame.xml brings `MAX_QUESTS` (`QuestLogFrame.lua:2`), the repaint's loop bound.
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.lua");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.xml");
+    load_xml(&s, r"Interface\FrameXML\MoneyInputFrame.lua");
+    load_xml(&s, r"Interface\FrameXML\MoneyInputFrame.xml");
     load_xml(&s, r"Interface\FrameXML\UIPanelTemplates.lua");
     load_xml(&s, r"Interface\FrameXML\UIPanelTemplates.xml");
     load_xml(&s, "Interface\\FrameXML\\ItemButtonTemplate.xml");

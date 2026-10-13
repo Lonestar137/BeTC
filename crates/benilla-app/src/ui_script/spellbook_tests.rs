@@ -91,10 +91,14 @@ pub(super) fn spellbook_ui_with(w: f32, h: f32, extra: &[&str]) -> UiScript {
             r"Interface\FrameXML\UIParent.xml",
             r"Interface\FrameXML\MoneyFrame.lua",
             r"Interface\FrameXML\MoneyFrame.xml",
+            r"Interface\FrameXML\MoneyInputFrame.lua",
+            r"Interface\FrameXML\MoneyInputFrame.xml",
             "Interface\\FrameXML\\GameTooltip.xml",
             "Interface\\FrameXML\\UIDropDownMenu.xml",
             r"Interface\FrameXML\UIPanelTemplates.lua",
             r"Interface\FrameXML\UIPanelTemplates.xml",
+            "Interface\\FrameXML\\SecureTemplates.xml",
+            "Interface\\FrameXML\\ItemButtonTemplate.xml",
             r"Interface\FrameXML\OptionsFrameTemplates.xml",
             "Interface\\FrameXML\\StaticPopup.xml",
             "Interface\\FrameXML\\TextStatusBar.lua",
@@ -130,9 +134,12 @@ fn shipped_spellbook_loads_clean() {
     load_xml(&s, r"Interface\FrameXML\UIParent.xml");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.lua");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.xml");
+    load_xml(&s, r"Interface\FrameXML\MoneyInputFrame.lua");
+    load_xml(&s, r"Interface\FrameXML\MoneyInputFrame.xml");
     load_xml(&s, "Interface\\FrameXML\\GameTooltip.xml");
     load_xml(&s, r"Interface\FrameXML\UIPanelTemplates.lua");
     load_xml(&s, r"Interface\FrameXML\UIPanelTemplates.xml");
+    load_xml(&s, r"Interface\FrameXML\ItemButtonTemplate.xml");
     load_xml(&s, r"Interface\FrameXML\StaticPopup.xml");
     let frames = load_xml(&s, "Interface\\FrameXML\\SpellBookFrame.xml");
     load_xml(&s, "ScrollTemplates.xml");
@@ -634,10 +641,14 @@ fn the_macro_editor_takes_a_shift_click_and_only_a_shift_click() {
         r"Interface\FrameXML\UIParent.xml",
         r"Interface\FrameXML\MoneyFrame.lua",
         r"Interface\FrameXML\MoneyFrame.xml",
+        r"Interface\FrameXML\MoneyInputFrame.lua",
+        r"Interface\FrameXML\MoneyInputFrame.xml",
         "Interface\\FrameXML\\GameTooltip.xml",
         "Interface\\FrameXML\\UIDropDownMenu.xml",
         r"Interface\FrameXML\UIPanelTemplates.lua",
         r"Interface\FrameXML\UIPanelTemplates.xml",
+        "Interface\\FrameXML\\SecureTemplates.xml",
+        "Interface\\FrameXML\\ItemButtonTemplate.xml",
         r"Interface\FrameXML\OptionsFrameTemplates.xml",
         "Interface\\FrameXML\\StaticPopup.xml",
         "Interface\\FrameXML\\TextStatusBar.lua",

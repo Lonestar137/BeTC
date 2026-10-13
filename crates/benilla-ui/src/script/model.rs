@@ -1186,8 +1186,16 @@ impl Model {
             cvars_warned: HashSet::new(),
             cvars_read_only: HashSet::new(),
             multisample_formats: Vec::new(),
-            screen_resolutions: Vec::new(),
-            current_resolution: None,
+            // The reference client always has a display, so a bare VM is seeded with one: build
+            // 8606's `UpdateMenuBarTop` (`UIParent.lua:959`) divides the parsed resolution and
+            // raises on an empty list, a state the real client cannot be in. The host's
+            // `set_screen_resolutions` replaces it with the live monitor's modes before the UI
+            // loads.
+            screen_resolutions: vec![super::cvars::ScreenResolution {
+                width: 1024,
+                height: 768,
+            }],
+            current_resolution: Some(0),
             video_caps: super::cvars::VideoCaps::default(),
             restart_gx_asks: 0,
             saved_names: Vec::new(),

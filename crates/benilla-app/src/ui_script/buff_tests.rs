@@ -16,10 +16,14 @@ fn harness() -> UiScript {
     load_xml(&s, r"Interface\FrameXML\UIParent.xml");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.lua");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.xml");
+    load_xml(&s, r"Interface\FrameXML\MoneyInputFrame.lua");
+    load_xml(&s, r"Interface\FrameXML\MoneyInputFrame.xml");
     // `BuffButton_Update` asks `GameTooltip:IsOwned(this)` unguarded (`BuffFrame.lua:104`).
     load_xml(&s, "Interface\\FrameXML\\GameTooltip.xml");
     load_xml(&s, r"Interface\FrameXML\UIPanelTemplates.lua");
     load_xml(&s, r"Interface\FrameXML\UIPanelTemplates.xml");
+    load_xml(&s, "Interface\\FrameXML\\SecureTemplates.xml");
+    load_xml(&s, r"Interface\FrameXML\ItemButtonTemplate.xml");
     load_xml(&s, r"Interface\FrameXML\StaticPopup.xml");
     load_xml(&s, "Interface\\FrameXML\\TextStatusBar.lua");
     load_xml(&s, "Interface\\FrameXML\\TextStatusBar.xml");
@@ -27,7 +31,6 @@ fn harness() -> UiScript {
     load_xml(&s, "Interface\\FrameXML\\Cooldown.xml");
     load_xml(&s, "Interface\\FrameXML\\ActionButtonTemplate.xml");
     load_xml(&s, "Interface\\FrameXML\\ActionBarFrame.xml");
-    // Timers on for these tests; the 1.12 default is "0" (`UIOptionsFrame.lua:104`).
     s.run("SHOW_BUFF_DURATIONS = \"1\"").unwrap();
     load_xml(&s, "Interface\\FrameXML\\BuffFrame.xml");
     load_xml(&s, "Interface\\FrameXML\\BonusActionBarFrame.xml");

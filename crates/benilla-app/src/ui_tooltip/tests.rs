@@ -416,6 +416,33 @@ fn improved_devotion_aura_updates_the_description_but_not_the_aura_text() {
     assert_eq!(improved.aura_description, base.aura_description);
 }
 
+/// Demon Armor rank 1 (706) is the buff tooltip's own text: its `$s` arms expand the row's effect
+/// points, so the plate reports exactly how much armor and Shadow resistance the buff gives.
+#[test]
+fn demon_armors_aura_text_reports_the_armor_it_gives() {
+    let data = benilla_formats::wow_data_or_skip!();
+    let mut chain = benilla_formats::open_chain(&data).expect("open chain");
+    let mut spells = Spells::empty_for_tests();
+    spells.catalog = benilla_formats::load_spell_catalog(&mut chain).expect("Spell.dbc");
+    spells.ranges = benilla_formats::load_spell_ranges(&mut chain).expect("SpellRange.dbc");
+    spells.durations =
+        benilla_formats::load_spell_durations(&mut chain).expect("SpellDuration.dbc");
+    spells.radii = benilla_formats::load_spell_radii(&mut chain).expect("SpellRadius.dbc");
+    let mut t = TestCtx::new();
+    let mut objs = no_objects();
+    let objects = objs.get();
+    let v = spell_tooltip_view(706, &spells, &mut t.ctx(&objects, 0, None)).expect("Demon Armor");
+    assert_eq!(
+        v.aura_description,
+        "Increases armor by 210, Shadow resistance by 3 and restores 7 health every 5 sec."
+    );
+    assert!(
+        !v.aura_description.contains('$'),
+        "no unsubstituted tokens: {}",
+        v.aura_description
+    );
+}
+
 /// Fire Blast rank 1's 8 s is its category recovery, its own recovery 0; Improved Fire Blast's
 /// flat op 11 shortens the category value, and the cell shows the larger column (`0x52eada`).
 #[test]

@@ -1111,4 +1111,19 @@ pub(crate) const REGISTERED: &[Registered] = &[
     // "Last character selected": a 0-based row (the selection cell `[0x83856c]` under `"%d"`), so
     // "0" is the first character. It mirrors [`crate::char_select::Roster::pending_index`].
     same(crate::char_select::CVAR_LAST_CHARACTER, "0"),
+    // `VoiceChatMode` (`0x63db90` register): build 8606's `VoiceOptionsFrame.lua:455` reads it and
+    // adds to it (`..(voiceChatMode+1)`), so a nil raises at OnLoad. The offline game has no voice
+    // chat, so the disabled leg; 1.12 registers no voice CVars at all.
+    ours(
+        "VoiceChatMode",
+        "0",
+        "build 8606 voice chat — the offline game has none, so the disabled leg",
+    ),
+    // `displayWorldPVPObjectives` (`0x63db90` register): build 8606's `UIOptionsPanels.lua:250`
+    // concatenates it onto a global name, so a nil raises. 1.12 has no world-PvP objectives.
+    ours(
+        "displayWorldPVPObjectives",
+        "1",
+        "build 8606 world-PvP objective display — the offline world has none",
+    ),
 ];

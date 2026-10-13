@@ -16,11 +16,14 @@ fn taxi_script() -> UiScript {
     load_xml(&s, r"Interface\FrameXML\UIParent.xml");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.lua");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.xml");
+    load_xml(&s, r"Interface\FrameXML\MoneyInputFrame.lua");
+    load_xml(&s, r"Interface\FrameXML\MoneyInputFrame.xml");
     // TaxiNodeOnButtonEnter's tooltip.
     load_xml(&s, "Interface\\FrameXML\\GameTooltip.xml");
     // Without UIPanelTemplates, `TaxiCloseButton` loses its `UIPanelCloseButton` handler.
     load_xml(&s, "Interface\\FrameXML\\UIPanelTemplates.lua");
     load_xml(&s, "Interface\\FrameXML\\UIPanelTemplates.xml");
+    load_xml(&s, r"Interface\FrameXML\ItemButtonTemplate.xml");
     // UIErrorsFrame takes `DrawOneHopLines`' refusal; a missing `ERR_TAXINOPATHS` draws blank.
     load_xml(&s, "Interface\\FrameXML\\UIErrorsFrame.xml");
     load_xml(&s, r"Interface\FrameXML\StaticPopup.xml");

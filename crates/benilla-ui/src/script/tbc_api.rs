@@ -22,7 +22,6 @@ pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
         "GetCurrentTitle",
         "GetLFGTypes",
         "GetLFGTypeEntries",
-        "GetNumTrackingTypes",
         "IsReferAFriendLinked",
         "GetVoiceCurrentSessionID",
         "GetVoiceSessionInfo",
@@ -31,8 +30,15 @@ pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
         "GetLeftFrame",
         "CanGuildBankRepair",
         "IsFalling",
+        "GetOptOutOfLoot",
+        "GetChannelDisplayInfo",
+        "GetTrackingInfo",
+        "IsSelectedSpell",
     ] {
-        g.set(name, lua.create_function(|_, _: MultiValue| Ok(Value::Nil))?)?;
+        g.set(
+            name,
+            lua.create_function(|_, _: MultiValue| Ok(Value::Nil))?,
+        )?;
     }
 
     // The reference's zero-valued queries.
@@ -49,6 +55,10 @@ pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
         "GetNumTitles",
         "GetHonorCurrency",
         "GetCritChanceFromAgility",
+        "GetNumTrackingTypes",
+        "GetNumVoiceSessionMembersBySessionID",
+        "GetArenaCurrency",
+        "GetSpellCritChanceFromIntellect",
     ] {
         g.set(name, lua.create_function(|_, _: MultiValue| Ok(0i64))?)?;
     }
@@ -77,13 +87,18 @@ pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
         lua.create_function(|_, _: MultiValue| Ok(Value::Nil))?,
     )?;
 
+    // `GetUnitMaxHealthModifier(unit)` (`0x51d1a0`): the health multiplier `PaperDollFrame.lua:236`
+    // folds into the stamina tooltip; 1 is the unmodified body.
+    g.set(
+        "GetUnitMaxHealthModifier",
+        lua.create_function(|_, _: MultiValue| Ok(1.0f64))?,
+    )?;
+
     // `SecureButton_GetModifiedAttribute(button, attribute)` (`SecureTemplates.lua`): the button's
     // own attribute, the identity leg.
     g.set(
         "SecureButton_GetModifiedAttribute",
-        lua.create_function(|_, (button, attr): (mlua::Table, String)| {
-            button.get::<Value>(attr)
-        })?,
+        lua.create_function(|_, (button, attr): (mlua::Table, String)| button.get::<Value>(attr))?,
     )?;
 
     // `SecureButton_GetEffectiveButton(button)` (`SecureTemplates.lua`): the button itself, the
@@ -93,13 +108,14 @@ pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
         lua.create_function(|_, button: Value| Ok(button))?,
     )?;
 
-    // `GetExistingLocales()` (`0x4be5e0`): the client's locale list; enUS alone, as benilla ships.
+    // `GetExistingLocales()` (`0x4be5e0`): the client's locale list as the VARARG
+    // `UIOptionsPanels.lua:828` walks with `select("#", ...)`; enUS alone, as benilla ships.
     g.set(
         "GetExistingLocales",
         lua.create_function(|lua, ()| {
-            let t = lua.create_table()?;
-            t.set(1, "enUS")?;
-            Ok(t)
+            let mut out = MultiValue::new();
+            out.push_back(Value::String(lua.create_string("enUS")?));
+            Ok(out)
         })?,
     )?;
 

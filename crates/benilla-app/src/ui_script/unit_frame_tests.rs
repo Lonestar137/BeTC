@@ -20,14 +20,20 @@ fn load_unit_frames_with(s: &UiScript, extra: &[&str]) {
         r"Interface\FrameXML\UIParent.xml",
         r"Interface\FrameXML\MoneyFrame.lua",
         r"Interface\FrameXML\MoneyFrame.xml",
+        r"Interface\FrameXML\MoneyInputFrame.lua",
+        r"Interface\FrameXML\MoneyInputFrame.xml",
         "Interface\\FrameXML\\GameTooltip.xml",
         "Interface\\FrameXML\\UIDropDownMenu.xml",
         "Interface\\FrameXML\\TextStatusBar.lua",
         "Interface\\FrameXML\\TextStatusBar.xml",
         "Interface\\FrameXML\\BuffFrame.xml",
         "Interface\\FrameXML\\CombatFeedback.xml",
+        "Interface\\FrameXML\\CastingBarFrame.xml",
+        "Interface\\FrameXML\\CastingBarFrame.xml",
         "Interface\\FrameXML\\UnitPopup.xml",
         "Interface\\FrameXML\\UnitFrame.xml",
+        "Interface\\FrameXML\\VoiceChat.xml",
+        "Interface\\FrameXML\\ReadyCheck.xml",
         "Interface\\FrameXML\\PlayerFrame.xml",
         "Interface\\FrameXML\\PartyFrame.xml",
         "Interface\\FrameXML\\TargetFrame.xml",
@@ -1152,10 +1158,13 @@ fn the_party_art_paints_over_the_bars() {
     load_xml(&s, r"Interface\FrameXML\UIParent.xml");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.lua");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.xml");
+    load_xml(&s, r"Interface\FrameXML\MoneyInputFrame.lua");
+    load_xml(&s, r"Interface\FrameXML\MoneyInputFrame.xml");
     load_xml(&s, "Interface\\FrameXML\\GameTooltip.xml");
     load_xml(&s, "Interface\\FrameXML\\UIDropDownMenu.xml");
     load_xml(&s, r"Interface\FrameXML\UIPanelTemplates.lua");
     load_xml(&s, r"Interface\FrameXML\UIPanelTemplates.xml");
+    load_xml(&s, r"Interface\FrameXML\ItemButtonTemplate.xml");
     load_xml(&s, r"Interface\FrameXML\StaticPopup.xml");
     // The stock kit in the production order. `TargetofTargetTextureFrame`'s OnLoad calls
     // `RaiseFrameLevel` (`UIParent.lua:1894-1896`), loaded above.
@@ -1163,8 +1172,12 @@ fn the_party_art_paints_over_the_bars() {
     load_xml(&s, "Interface\\FrameXML\\TextStatusBar.xml");
     load_xml(&s, "Interface\\FrameXML\\BuffFrame.xml");
     load_xml(&s, "Interface\\FrameXML\\CombatFeedback.xml");
+    load_xml(&s, "Interface\\FrameXML\\CastingBarFrame.xml");
+    load_xml(&s, "Interface\\FrameXML\\CastingBarFrame.xml");
     load_xml(&s, "Interface\\FrameXML\\UnitPopup.xml");
     load_xml(&s, "Interface\\FrameXML\\UnitFrame.xml");
+    load_xml(&s, "Interface\\FrameXML\\VoiceChat.xml");
+    load_xml(&s, "Interface\\FrameXML\\ReadyCheck.xml");
     load_xml(&s, "Interface\\FrameXML\\PlayerFrame.xml");
     load_xml(&s, "Interface\\FrameXML\\PartyFrame.xml");
     load_xml(&s, "Interface\\FrameXML\\TargetFrame.xml");

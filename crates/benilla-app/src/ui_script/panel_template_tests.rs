@@ -17,12 +17,15 @@ fn harness() -> UiScript {
         r"Interface\FrameXML\UIParent.xml",
         r"Interface\FrameXML\MoneyFrame.lua",
         r"Interface\FrameXML\MoneyFrame.xml",
+        r"Interface\FrameXML\MoneyInputFrame.lua",
+        r"Interface\FrameXML\MoneyInputFrame.xml",
         "Interface\\FrameXML\\GameTooltip.xml",
         // `UIOptionsCheckButtonTemplate`'s home (`UIOptionsFrame.xml:6`), after the dropdown kit
         // its window uses.
         r"Interface\FrameXML\UIDropDownMenu.xml",
         r"Interface\FrameXML\UIPanelTemplates.lua",
         r"Interface\FrameXML\UIPanelTemplates.xml",
+        "Interface\\FrameXML\\ItemButtonTemplate.xml",
         r"Interface\FrameXML\OptionsFrameTemplates.xml",
         r"Interface\FrameXML\CharacterFrameTemplates.xml",
         r"Interface\FrameXML\UIOptionsFrame.xml",
