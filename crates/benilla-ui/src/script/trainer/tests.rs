@@ -205,8 +205,8 @@ fn state_filter_takes_a_groups_header_with_its_last_service() {
     );
     assert_eq!(
         s.eval::<i64>("return GetTrainerSelectionIndex()").unwrap(),
-        0,
-        "and nothing is selected, which is a different question from what row 1 holds"
+        2,
+        "the selection is the hidden first-learnable row, a different question from what row 1 holds"
     );
 }
 
@@ -300,7 +300,8 @@ fn selection_and_close_intents() {
     s.set_trainer(Some(trainer()));
     assert_eq!(
         s.eval::<i64>("return GetTrainerSelectionIndex()").unwrap(),
-        0
+        2,
+        "a push lands the selection on the first learnable row"
     );
     s.run("SelectTrainerService(2)").unwrap();
     assert_eq!(
@@ -442,10 +443,10 @@ fn the_selection_follows_its_service_and_lands_in_the_tail_when_it_is_hidden() {
     assert_eq!(sel(&mut s), 0, "row 1 is the Arms header");
 }
 
-/// The reference's list builder re-selects a header (`0x4d7560`, `0x4d7b42`), so a re-opened
-/// trainer never keeps the last visit's selection.
+/// A re-opened trainer never keeps the last visit's selection: the client's list handler seats its
+/// own pick, and build 8606's `ClassTrainer_SelectFirstLearnableSkill` reads that back on show.
 #[test]
-fn a_new_list_packet_clears_the_selection() {
+fn a_new_list_packet_reseats_the_selection_on_the_first_learnable() {
     let mut s = UiScript::new().unwrap();
     s.set_trainer(Some(trainer()));
     s.run("SelectTrainerService(5)").unwrap();
@@ -457,8 +458,8 @@ fn a_new_list_packet_clears_the_selection() {
     s.set_trainer(Some(trainer()));
     assert_eq!(
         s.eval::<i64>("return GetTrainerSelectionIndex()").unwrap(),
-        0,
-        "the same spell is still in the list, and it is still not selected"
+        2,
+        "the new list re-seats the selection on its first learnable row"
     );
 }
 

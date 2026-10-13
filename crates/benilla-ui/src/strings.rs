@@ -261,8 +261,9 @@ pub fn global(lua: &mlua::Lua, key: &str) -> Option<String> {
 /// `GetText(token, nil, ordinal)`'s plural pick: `0x52fa50` formats the key and `0x703bf0`
 /// pcalls the Lua `GetText`, where `GetPluralIndex` (`LocaleProperties.lua:56`) is singular for
 /// `not ordinal or ordinal == 1`. So one or no ordinal takes the bare token, anything else the
-/// `_P1` twin, falling back to the bare token. Zero is plural: the test at `0x703c89` is signed,
-/// only a negative becomes nil, and the number `0` is truthy in Lua.
+/// `_P1` twin, falling back to the bare token — which build 8606 usually spells inline instead
+/// (`"%d |4hour:hours;"`), so an unresolved marker is stripped. Zero is plural: the test at
+/// `0x703c89` is signed, only a negative becomes nil, and the number `0` is truthy in Lua.
 pub fn plural(
     token: &str,
     ordinal: Option<u32>,
@@ -273,7 +274,38 @@ pub fn plural(
             return Some(twin);
         }
     }
-    get(token).filter(|s| !s.is_empty())
+    let base = get(token).filter(|s| !s.is_empty())?;
+    // Build 8606 spells the plural inline instead of shipping a `_P1` twin: 2.4.3's
+    // `SPELL_TIME_REMAINING_HOURS` is `"%d |4hour:hours; remaining"`. The form is picked by the
+    // count — 1 takes the first, anything else the second — and the marker never reaches the
+    // screen, so a template that still carries one is resolved here.
+    Some(match ordinal {
+        Some(n) => resolve_inline_plural(&base, n),
+        None => base,
+    })
+}
+
+/// Strip build 8606's `|4singular:plural;` markers from a template, keeping the form `ordinal`
+/// selects. A marker with no colon keeps its body, as the client's own reader does.
+fn resolve_inline_plural(template: &str, ordinal: u32) -> String {
+    let mut out = String::with_capacity(template.len());
+    let mut rest = template;
+    while let Some(at) = rest.find("|4") {
+        out.push_str(&rest[..at]);
+        let after = &rest[at + 2..];
+        let Some(end) = after.find(';') else {
+            rest = after;
+            break;
+        };
+        let body = &after[..end];
+        match body.split_once(':') {
+            Some((one, many)) => out.push_str(if ordinal == 1 { one } else { many }),
+            None => out.push_str(body),
+        }
+        rest = &after[end + 1..];
+    }
+    out.push_str(rest);
+    out
 }
 
 /// Fill a reference template, by the rules in the module doc.

@@ -71,6 +71,7 @@ pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
         "GetCombatRatingBonus",
         "GetArmorPenetration",
         "GetCritChance",
+        "GetExpertise",
         "GetNumGuildBankTabs",
     ] {
         g.set(name, lua.create_function(|_, _: MultiValue| Ok(0i64))?)?;

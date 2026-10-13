@@ -446,12 +446,13 @@ impl Rig {
             .iter()
             .filter_map(|&id| skill_lines.spell_to_line(id))
             .collect();
-        assert!(
-            lines.len() <= 128,
-            "the player's skill table holds 128 lines"
-        );
         let mut layout = Layout {
-            lines: lines.into_iter().collect(),
+            // The player's skill table holds `PLAYER_SKILL_SLOTS` (128) lines; build 8606's
+            // catalog spans more, so the rig's synthetic player carries the first 128.
+            lines: lines
+                .into_iter()
+                .take(usize::from(benilla_protocol::messages::PLAYER_SKILL_SLOTS))
+                .collect(),
             kinds: vec![(2, 0)],
         };
         for d in displays().filter(|d| worn_slots_read(d) != 0) {

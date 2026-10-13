@@ -1134,4 +1134,12 @@ pub(crate) const REGISTERED: &[Registered] = &[
         "0",
         "build 8606 minimap rotation — 1.12's minimap never rotates",
     ),
+    // `showChatIcons` (`0x63db90` register): build 8606's `ChatFrame.lua:1809` reads it as `"1"`
+    // to put the class/role glyphs beside a speaker's name, and its option row lives in
+    // `UIOptionsPanels.lua:335`. 1.12's chat has no icon column.
+    ours(
+        "showChatIcons",
+        "0",
+        "build 8606 chat speaker icons — 1.12's chat has no icon column",
+    ),
 ];
