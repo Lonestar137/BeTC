@@ -171,7 +171,48 @@ pub struct CharacterAura {
     pub level: u8,
     pub stacks: u8,
     pub remaining_ms: Option<u32>,
+    /// The row's `AuraInterruptFlags`: which events drop the aura
+    /// ([`GameCore::interrupt_active_auras`]).
+    #[serde(default)]
+    pub interrupt_flags: u32,
+    /// The flat stat deltas the aura contributes while it is live.
+    #[serde(default)]
+    pub mods: AuraStatMods,
 }
+
+/// The flat stat deltas one live aura contributes, resolved from its `SPELL_AURA_MOD_RESISTANCE`
+/// (22) arms (`EffectMiscValue` a school mask, the amount `EffectBasePoints + dice`). The index is
+/// the school: 0 physical — the armor total — then 1 holy … 6 arcane, the layout the wire
+/// `UNIT_FIELD_RESISTANCES` and `*_RESISTANCEBUFFMODS*` splits use. A negative amount is a
+/// debuff and lands in the negative split. Arms outside this vocabulary — percent modifiers,
+/// regen, stat and attack-power arms — are not modeled (`RULES.md`, "Auras").
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct AuraStatMods {
+    pub resistances: [i32; 7],
+}
+
+/// `SpellAuraInterruptFlags` (build-8606 `Spell.dbc` column 22; cmangos `SpellDefines.h`): the
+/// events that drop a live aura. [`GameCore::interrupt_active_auras`] takes these bits; the
+/// adapter or core reports which fired. The same column drives `ChannelInterruptFlags`.
+pub const AURA_INTERRUPT_HOSTILE_ACTION: u32 = 0x0000_0001;
+/// Removed by any damage taken.
+pub const AURA_INTERRUPT_DAMAGE: u32 = 0x0000_0002;
+/// Removed by any cast.
+pub const AURA_INTERRUPT_ACTION: u32 = 0x0000_0004;
+/// Removed by any movement.
+pub const AURA_INTERRUPT_MOVING: u32 = 0x0000_0008;
+/// Removed by any turning.
+pub const AURA_INTERRUPT_TURNING: u32 = 0x0000_0010;
+/// Removed by talking to an NPC or looting a creature.
+pub const AURA_INTERRUPT_INTERACTING: u32 = 0x0000_0400;
+/// Removed by a mine/use/open action on a game object.
+pub const AURA_INTERRUPT_LOOTING: u32 = 0x0000_0800;
+/// Removed by an attack.
+pub const AURA_INTERRUPT_ATTACKING: u32 = 0x0000_1000;
+/// Removed by using an item.
+pub const AURA_INTERRUPT_ITEM_USE: u32 = 0x0000_2000;
+/// Removed by shapeshifting.
+pub const AURA_INTERRUPT_SHAPESHIFTING: u32 = 0x0000_8000;
 
 /// Optional, cosmetic player-model proportions. Values are signed percentage points from the
 /// stock shape; hard limits keep the M2 silhouette within an authored-looking range.
@@ -279,6 +320,8 @@ pub struct HostileState {
     pub burn_school: u32,
     pub burn_tick_ms: u32,
     pub burn_level: u8,
+    /// The one status debuff ([`HostileDebuff`]) and its remaining duration.
+    pub debuff: Option<HostileDebuff>,
 }
 
 /// A friendly unit the player may heal or buff: a converted friendly NPC or a summon. Friendly
@@ -453,7 +496,7 @@ pub enum CastOutcome {
     QueuedMelee,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum DirectSpellEffect {
     Damage {
         min: u32,
@@ -476,11 +519,16 @@ pub enum DirectSpellEffect {
     },
     /// Aura-only abilities: apply a buff/debuff with no direct amount (Battle Shout, Power Word:
     /// Fortitude). A self-cast lands in the character's aura slots for the row's `duration_ms`
-    /// (0 = permanent); its numbers are not modeled (no stat model).
+    /// (0 = permanent), carrying its stat deltas and its `AuraInterruptFlags`.
     Aura {
         school: u32,
         periodic: Option<PeriodicDamage>,
         duration_ms: u32,
+        /// The stat deltas the aura contributes while live (Demon Armor's armor and Shadow
+        /// resistance).
+        mods: AuraStatMods,
+        /// The row's `AuraInterruptFlags`, which events drop the aura.
+        interrupt_flags: u32,
     },
     /// A channeled per-tick effect (Mind Flay, Drain Life, Arcane Missiles): the cast resolves
     /// nothing at its end but arms a channel that lands `min..=max` every `tick_ms`, `ticks`
@@ -497,6 +545,14 @@ pub enum DirectSpellEffect {
     },
     /// A movement-control spell with no direct amount (Hammer of Justice's stun).
     Control(ControlEffect),
+    /// A hostile-area status centered on the caster (Arcane Torrent's silence): every live
+    /// hostile within `radius_yards` takes the debuff for `duration_ms`. The cast is self-targeted;
+    /// the enemies are enumerated around the source (`TARGET_ENUM_UNITS_ENEMY_AOE_AT_SRC_LOC`).
+    AreaDebuff {
+        duration_ms: u32,
+        radius_yards: f32,
+        kind: DebuffKind,
+    },
     /// A summon (the warlock demons' `SPELL_EFFECT_SUMMON` arm): the row's `EffectMiscValue` is
     /// the summoned creature entry. The pet replaces any current one and joins its owner's
     /// auto-attack target.
@@ -529,6 +585,24 @@ pub enum ControlKind {
     Stun,
     Root,
     Snare,
+}
+
+/// A hostile status debuff outside the movement-control vocabulary (Arcane Torrent's silence).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DebuffKind {
+    /// `SPELL_AURA_MOD_SILENCE` (27) and `SPELL_AURA_MOD_PACIFY_SILENCE` (60): the creature's
+    /// casts are refused while it holds; movement and swings run on. No creature casts exist in
+    /// this slice, so the arm is state and presentation (`RULES.md`, "Debuffs").
+    Silence,
+}
+
+/// One active status debuff on a hostile: its spell and remaining duration. The slice holds one
+/// at a time (the vocabulary is silence alone); a new landing replaces it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HostileDebuff {
+    pub spell_id: u32,
+    pub kind: DebuffKind,
+    pub remaining_ms: u32,
 }
 
 /// The one summoned combat pet (a warlock demon). It is session state — never saved, its summon
@@ -656,6 +730,25 @@ struct PendingChannel {
     tick_damage: u32,
 }
 
+/// A cast that resolves as an aura-only self buff: its landing payload, held until the cast time
+/// runs out.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PendingAura {
+    /// The row's lifetime; 0 (or the permanent sentinel) means the aura lasts until cancelled.
+    duration_ms: u32,
+    mods: AuraStatMods,
+    interrupt_flags: u32,
+}
+
+/// A cast that resolves as a hostile-area status around the caster (Arcane Torrent's silence).
+/// Its radius is a float, so it compares with `PartialEq` only.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct PendingAreaDebuff {
+    kind: DebuffKind,
+    radius_yards: f32,
+    remaining_ms: u32,
+}
+
 /// The running channel: its target, the time to the next tick, and the ticks left.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct ActiveChannel {
@@ -704,6 +797,14 @@ pub enum CombatUpdate {
         spell_id: u32,
         amount: u32,
         remaining_health: u32,
+    },
+    /// The cast resolved and its effect landed: the client's one `SMSG_SPELL_GO`, which finishes
+    /// the cast bar and opens the in-flight guard TryCast refuses behind (`6e4d97`). Every
+    /// completed cast owes it exactly once; `target` names the hostile or ally the cast resolved
+    /// on (`None` is the caster itself).
+    CastResolved {
+        spell_id: u32,
+        target: Option<u32>,
     },
     PeriodicImpact {
         spell_id: u32,
@@ -786,6 +887,12 @@ pub enum CombatUpdate {
     },
     /// A Fireball burn tick (periodic damage) on a living hostile.
     DotImpact(CastImpact),
+    /// A hostile status debuff landed on a creature (`remaining_ms: Some`) or ran out (`None`).
+    HostileDebuff {
+        spawn_id: u32,
+        spell_id: u32,
+        remaining_ms: Option<u32>,
+    },
     Experience {
         spawn_id: u32,
         amount: u32,
@@ -1101,6 +1208,8 @@ pub struct GameCore {
     /// Converted unit reactions for the active character's race; see [`UnitReactions`].
     unit_reactions: UnitReactions,
     open_loot_spawn_id: Option<u32>,
+    /// Auras core-side interrupts dropped, queued for the adapter to publish and persist.
+    interrupted_auras: Vec<CharacterAura>,
     cast_remaining_ms: u32,
     cooldown_remaining_ms: u32,
     spell_cooldowns: BTreeMap<u32, u32>,
@@ -1115,7 +1224,8 @@ pub struct GameCore {
     cast_control: Option<ControlEffect>,
     cast_summon: Option<u32>,
     cast_totem: Option<(u32, TotemBehavior)>,
-    cast_aura_ms: Option<u32>,
+    cast_aura: Option<PendingAura>,
+    cast_area_debuff: Option<PendingAreaDebuff>,
     active_channel: Option<ActiveChannel>,
     summon: Option<SummonState>,
     totems: Vec<TotemState>,
@@ -2400,7 +2510,8 @@ impl GameCore {
         self.cast_control = None;
         self.cast_summon = None;
         self.cast_totem = None;
-        self.cast_aura_ms = None;
+        self.cast_aura = None;
+        self.cast_area_debuff = None;
         self.active_channel = None;
         self.summon = None;
         self.totems.clear();
@@ -2541,7 +2652,7 @@ impl GameCore {
             })
             .ok_or(loot::LootError::NotLootable)?;
         self.open_loot_spawn_id = Some(spawn_id);
-        Ok(loot::LootWindow {
+        let window = loot::LootWindow {
             gold: if corpse.money_looted {
                 0
             } else {
@@ -2555,7 +2666,10 @@ impl GameCore {
                 .filter(|(slot, _)| !corpse.looted_items[*slot])
                 .map(|(slot, item)| (slot as u8, item.clone()))
                 .collect(),
-        })
+        };
+        // Reaching for a corpse is an interact: it drops the auras their flags name.
+        self.queue_aura_interrupts(AURA_INTERRUPT_INTERACTING);
+        Ok(window)
     }
 
     pub fn take_corpse_loot(&mut self, slot: u8) -> Result<quest::InventoryItem, loot::LootError> {
@@ -2782,6 +2896,56 @@ impl GameCore {
         expired
     }
 
+    /// Drop every live aura whose `AuraInterruptFlags` include any of `flags`, returning the
+    /// removed rows so the presentation can expire them. `flags` is a mask of the
+    /// `AURA_INTERRUPT_*` bits the event fired (movement fires [`AURA_INTERRUPT_MOVING`], a cast
+    /// [`AURA_INTERRUPT_ACTION`], …).
+    pub fn interrupt_active_auras(&mut self, flags: u32) -> Vec<CharacterAura> {
+        let Some(id) = self.active.as_ref() else {
+            return Vec::new();
+        };
+        let Some(snapshot) = self.snapshots.get_mut(id) else {
+            return Vec::new();
+        };
+        let mut dropped = Vec::new();
+        for aura in &snapshot.auras {
+            if aura.interrupt_flags & flags != 0 {
+                dropped.push(*aura);
+            }
+        }
+        snapshot
+            .auras
+            .retain(|aura| !dropped.iter().any(|dropped| dropped.slot == aura.slot));
+        dropped
+    }
+
+    /// The same removal for core-side triggers (a cast, a movement sync, an attack) that have no
+    /// event channel to publish through: the dropped rows queue until the adapter drains them
+    /// with [`GameCore::drain_interrupted_auras`].
+    fn queue_aura_interrupts(&mut self, flags: u32) {
+        let dropped = self.interrupt_active_auras(flags);
+        self.interrupted_auras.extend(dropped);
+    }
+
+    /// Auras dropped by core-side interrupts since the last drain, for the presentation to
+    /// expire and the save to record.
+    pub fn drain_interrupted_auras(&mut self) -> Vec<CharacterAura> {
+        std::mem::take(&mut self.interrupted_auras)
+    }
+
+    /// Summed flat stat deltas from the live auras, indexed by school (0 physical — the armor
+    /// total — then 1 holy … 6 arcane): the wire `*_RESISTANCEBUFFMODS*` split.
+    pub fn active_resistance_mods(&self) -> [i32; 7] {
+        self.active_auras().map_or([0; 7], |auras| {
+            auras.iter().fold([0; 7], |mut sums, aura| {
+                for (sum, resistance) in sums.iter_mut().zip(aura.mods.resistances) {
+                    *sum += resistance;
+                }
+                sums
+            })
+        })
+    }
+
     /// Keep simulation combat positions aligned with presentation-only patrol movement.
     pub fn update_hostile_position(
         &mut self,
@@ -2861,7 +3025,8 @@ impl GameCore {
         self.cast_control = None;
         self.cast_summon = None;
         self.cast_totem = None;
-        self.cast_aura_ms = None;
+        self.cast_aura = None;
+        self.cast_area_debuff = None;
         self.active_channel = None;
         self.summon = None;
         self.totems.clear();
@@ -2906,6 +3071,8 @@ impl GameCore {
         if let Some(pet) = &mut self.summon {
             pet.target_spawn_id = Some(spawn_id);
         }
+        // Taking up an attack is the interrupt's "removed by attack" event.
+        self.queue_aura_interrupts(AURA_INTERRUPT_ATTACKING);
         Ok(())
     }
 
@@ -2951,6 +3118,8 @@ impl GameCore {
         if let Some(pet) = &mut self.summon {
             pet.target_spawn_id = Some(spawn_id);
         }
+        // Taking up an attack is the interrupt's "removed by attack" event.
+        self.queue_aura_interrupts(AURA_INTERRUPT_ATTACKING);
         Ok(())
     }
 
@@ -3121,9 +3290,38 @@ impl GameCore {
         };
         // An aura-only self cast lands in the character's aura slots at completion (Battle Shout,
         // Power Word: Fortitude); the row's duration is the aura's lifetime (0 = permanent).
-        let self_aura_ms = match (effect, target) {
-            (DirectSpellEffect::Aura { duration_ms, .. }, SpellTarget::SelfCharacter) => {
-                Some(duration_ms)
+        let self_aura = match (effect, target) {
+            (
+                DirectSpellEffect::Aura {
+                    duration_ms,
+                    mods,
+                    interrupt_flags,
+                    ..
+                },
+                SpellTarget::SelfCharacter,
+            ) => Some(PendingAura {
+                duration_ms,
+                mods,
+                interrupt_flags,
+            }),
+            _ => None,
+        };
+        // A hostile-area status cast lands on the enemies around the caster at completion
+        // (Arcane Torrent's silence); its row must name a radius and a lifetime.
+        let area_debuff = match effect {
+            DirectSpellEffect::AreaDebuff {
+                kind,
+                radius_yards,
+                duration_ms,
+            } => {
+                if !radius_yards.is_finite() || radius_yards < 0.0 || duration_ms == 0 {
+                    return Err(CoreError::UnsupportedSpellEffect);
+                }
+                Some(PendingAreaDebuff {
+                    kind,
+                    radius_yards,
+                    remaining_ms: duration_ms,
+                })
             }
             _ => None,
         };
@@ -3228,6 +3426,11 @@ impl GameCore {
                 ) => (DamageShape::None, Some(spawn_id), None, false, 0, None),
                 // A summon is cast on self: its pet is session state, not a direct amount.
                 (DirectSpellEffect::Summon { .. }, SpellTarget::SelfCharacter) => {
+                    (DamageShape::None, None, None, false, 0, None)
+                }
+                // A hostile-area status is cast on self: its debuff lands on the enemies around
+                // the caster at completion.
+                (DirectSpellEffect::AreaDebuff { .. }, SpellTarget::SelfCharacter) => {
                     (DamageShape::None, None, None, false, 0, None)
                 }
                 // A totem stands at its owner's feet and lands its own effects on its own
@@ -3362,6 +3565,9 @@ impl GameCore {
             });
             (amount, periodic, channel)
         };
+        // Starting a cast is the "any cast" action: it drops the auras their interrupt flags
+        // name (Shadowmeld's), queued for the adapter to expire in the presentation.
+        self.queue_aura_interrupts(AURA_INTERRUPT_ACTION);
         self.cast_remaining_ms = cast_time_ms;
         self.cooldown_remaining_ms = cooldown_ms;
         if spell_cooldown_ms > 0 {
@@ -3395,7 +3601,8 @@ impl GameCore {
         self.cast_control = control;
         self.cast_summon = summon;
         self.cast_totem = totem;
-        self.cast_aura_ms = self_aura_ms;
+        self.cast_aura = self_aura;
+        self.cast_area_debuff = area_debuff;
         self.persist_active_vitals();
         Ok(CastOutcome::Cast)
     }
@@ -3458,7 +3665,8 @@ impl GameCore {
         self.cast_control = None;
         self.cast_summon = None;
         self.cast_totem = None;
-        self.cast_aura_ms = None;
+        self.cast_aura = None;
+        self.cast_area_debuff = None;
         self.active_channel = None;
         self.summon = None;
         self.totems.clear();
@@ -3602,7 +3810,8 @@ impl GameCore {
             self.cast_control = None;
             self.cast_summon = None;
             self.cast_totem = None;
-            self.cast_aura_ms = None;
+            self.cast_aura = None;
+            self.cast_area_debuff = None;
             self.active_channel = None;
             self.summon = None;
             self.totems.clear();
@@ -3658,6 +3867,16 @@ impl GameCore {
                         ));
                     }
                 }
+                // The one `SMSG_SPELL_GO` the cast owes the client, pushed ahead of the effect's
+                // own updates exactly as the wire's GO precedes its effect blocks. The impact and
+                // heal families land through updates that already spell the hit; the families
+                // below land without one (auras, area debuffs, summons, totems, channels, bare
+                // controls — and a target that died before the cast ended), so the resolution is
+                // owed here for every completed cast, once.
+                updates.push(CombatUpdate::CastResolved {
+                    spell_id,
+                    target: target.or(ally_target),
+                });
                 if let Some((entry, behavior)) = self.cast_totem.take() {
                     // A recast of the same totem (any rank) replaces the standing one; different
                     // totems stand together.
@@ -3764,18 +3983,55 @@ impl GameCore {
                             remaining_health: ally.health,
                         });
                     }
-                } else if let Some(duration_ms) = self.cast_aura_ms.take() {
+                } else if let Some(pending) = self.cast_area_debuff.take() {
+                    // A hostile-area status lands on every live hostile within the radius of the
+                    // caster (Arcane Torrent's silence); the creature's one debuff slot refreshes.
+                    let caster_position = self
+                        .active
+                        .as_ref()
+                        .and_then(|id| self.snapshots.get(id))
+                        .map(|snapshot| snapshot.position);
+                    if let Some(caster) = caster_position {
+                        let radius_squared = pending.radius_yards * pending.radius_yards;
+                        for hostile in &mut self.hostiles {
+                            if hostile.health == 0
+                                || hostile.position.map_id != caster.map_id
+                                || distance_squared(caster, hostile.position) > radius_squared
+                            {
+                                continue;
+                            }
+                            hostile.debuff = Some(HostileDebuff {
+                                spell_id,
+                                kind: pending.kind,
+                                remaining_ms: pending.remaining_ms,
+                            });
+                            updates.push(CombatUpdate::HostileDebuff {
+                                spawn_id: hostile.spawn_id,
+                                spell_id,
+                                remaining_ms: Some(pending.remaining_ms),
+                            });
+                        }
+                    }
+                } else if let Some(pending) = self.cast_aura.take() {
                     // An aura-only self cast lands in the character's aura slots: cancelable and
-                    // present for the row's duration (0 = permanent). Its numbers are not modeled
-                    // (no stat model), and its slot is the first free buff slot.
+                    // present for the row's duration (0 = permanent), carrying its stat deltas
+                    // and interrupt flags. A recast of the same spell refreshes its own slot (the
+                    // ally rule), so applying one twice never stacks it; a different spell takes
+                    // the first free buff slot.
                     let slot = self
                         .active_auras()
                         .and_then(|auras| {
-                            (0..AURA_DEBUFF_SLOT)
-                                .find(|slot| !auras.iter().any(|aura| aura.slot == *slot))
+                            auras
+                                .iter()
+                                .find(|aura| aura.spell_id == spell_id)
+                                .map(|aura| aura.slot)
+                                .or_else(|| {
+                                    (0..AURA_DEBUFF_SLOT)
+                                        .find(|slot| !auras.iter().any(|aura| aura.slot == *slot))
+                                })
                         })
                         .unwrap_or(0);
-                    let remaining_ms = (duration_ms > 0).then_some(duration_ms);
+                    let remaining_ms = (pending.duration_ms > 0).then_some(pending.duration_ms);
                     let aura = CharacterAura {
                         slot,
                         spell_id,
@@ -3783,6 +4039,8 @@ impl GameCore {
                         level: caster_level.max(1),
                         stacks: 1,
                         remaining_ms,
+                        interrupt_flags: pending.interrupt_flags,
+                        mods: pending.mods,
                     };
                     if self.set_active_aura(aura).is_ok() {
                         updates.push(CombatUpdate::PlayerAura {
@@ -4347,6 +4605,21 @@ impl GameCore {
         // One periodic school-damage aura per hostile for this initial spell slice.
         let mut killed_entries = Vec::new();
         for hostile in &mut self.hostiles {
+            // A status debuff's clock runs on game time; the expiry is reported so the
+            // presentation drops the icon.
+            if let Some(debuff) = hostile.debuff.as_mut() {
+                debuff.remaining_ms = debuff.remaining_ms.saturating_sub(elapsed_ms);
+                if debuff.remaining_ms == 0 {
+                    let spawn_id = hostile.spawn_id;
+                    let spell_id = debuff.spell_id;
+                    hostile.debuff = None;
+                    updates.push(CombatUpdate::HostileDebuff {
+                        spawn_id,
+                        spell_id,
+                        remaining_ms: None,
+                    });
+                }
+            }
             if hostile.burn_remaining_ms == 0 || hostile.health == 0 {
                 continue;
             }
@@ -4630,6 +4903,8 @@ impl GameCore {
     }
 
     /// Accept the renderer/controller's local pose and elapsed fixed-step time.
+    /// Keep the active character's pose and game clock; movement drops the auras their
+    /// `AuraInterruptFlags` name (Shadowmeld's "Lasts until cancelled or upon moving").
     pub fn update_active(
         &mut self,
         position: WorldPosition,
@@ -4638,10 +4913,34 @@ impl GameCore {
         if !position.is_finite() {
             return Err(CoreError::InvalidPosition);
         }
-        let id = self.active.as_ref().ok_or(CoreError::NoCharacterSelected)?;
+        let id = self.active.clone().ok_or(CoreError::NoCharacterSelected)?;
+        // Translation and turning are separate interrupt bits; pose sync noise stays under the
+        // thresholds, a real walk or turn does not.
+        const MOVE_EPSILON_YARDS: f32 = 0.01;
+        const TURN_EPSILON_RAD: f32 = 0.01;
+        let interrupt = self
+            .snapshots
+            .get(&id)
+            .map(|snapshot| {
+                let previous = snapshot.position;
+                let moved = (previous.x - position.x).abs() > MOVE_EPSILON_YARDS
+                    || (previous.y - position.y).abs() > MOVE_EPSILON_YARDS
+                    || (previous.z - position.z).abs() > MOVE_EPSILON_YARDS;
+                if moved {
+                    AURA_INTERRUPT_MOVING
+                } else if (previous.orientation - position.orientation).abs() > TURN_EPSILON_RAD {
+                    AURA_INTERRUPT_TURNING
+                } else {
+                    0
+                }
+            })
+            .unwrap_or(0);
+        if interrupt != 0 {
+            self.queue_aura_interrupts(interrupt);
+        }
         let snapshot = self
             .snapshots
-            .get_mut(id)
+            .get_mut(&id)
             .ok_or(CoreError::CharacterNotFound)?;
         snapshot.position = position;
         snapshot.play_time_ms = snapshot.play_time_ms.saturating_add(elapsed_ms);
@@ -4784,6 +5083,7 @@ impl GameCore {
             allies: Vec::new(),
             unit_reactions: UnitReactions::default(),
             open_loot_spawn_id: None,
+            interrupted_auras: Vec::new(),
             cast_remaining_ms: 0,
             cooldown_remaining_ms: 0,
             spell_cooldowns: BTreeMap::new(),
@@ -4798,7 +5098,8 @@ impl GameCore {
             cast_control: None,
             cast_summon: None,
             cast_totem: None,
-            cast_aura_ms: None,
+            cast_aura: None,
+            cast_area_debuff: None,
             active_channel: None,
             summon: None,
             totems: Vec::new(),
@@ -5453,6 +5754,7 @@ fn hostile_from_spawn(
         burn_school: 0,
         burn_tick_ms: 0,
         burn_level: 0,
+        debuff: None,
     }
 }
 
@@ -5860,6 +6162,7 @@ mod tests {
             burn_school: 0,
             burn_tick_ms: 0,
             burn_level: 0,
+            debuff: None,
         }
     }
 
@@ -6591,12 +6894,18 @@ mod tests {
         );
         assert_eq!(
             core.advance_combat(1),
-            vec![CombatUpdate::Impact(CastImpact {
-                spawn_id: HOSTILE_SPAWN_ID,
-                damage: 30,
-                remaining_health: 30,
-                killed: false,
-            })]
+            vec![
+                CombatUpdate::CastResolved {
+                    spell_id: FIREBALL_SPELL_ID,
+                    target: Some(HOSTILE_SPAWN_ID),
+                },
+                CombatUpdate::Impact(CastImpact {
+                    spawn_id: HOSTILE_SPAWN_ID,
+                    damage: 30,
+                    remaining_health: 30,
+                    killed: false,
+                }),
+            ]
         );
 
         core.begin_fireball(
@@ -6759,7 +7068,9 @@ mod tests {
         );
 
         let updates = core.advance_combat(FIREBALL_CAST_MS);
-        let CombatUpdate::Impact(impact) = updates[0] else {
+        let [CombatUpdate::CastResolved { .. }, CombatUpdate::Impact(impact)] =
+            updates.as_slice()
+        else {
             panic!("Fireball resolves as a direct impact");
         };
         assert!((FIREBALL_RANK1_DAMAGE_MIN..=FIREBALL_RANK1_DAMAGE_MAX).contains(&impact.damage));
@@ -6807,16 +7118,22 @@ mod tests {
         .unwrap();
         assert_eq!(
             core.advance_combat(1),
-            vec![CombatUpdate::SpellImpact {
-                spell_id: 900_010,
-                school: 4,
-                impact: CastImpact {
-                    spawn_id: target_spawn_id,
-                    damage: 17,
-                    remaining_health: HOSTILE_MAX_HEALTH - 17,
-                    killed: false,
+            vec![
+                CombatUpdate::CastResolved {
+                    spell_id: 900_010,
+                    target: Some(target_spawn_id),
                 },
-            }]
+                CombatUpdate::SpellImpact {
+                    spell_id: 900_010,
+                    school: 4,
+                    impact: CastImpact {
+                        spawn_id: target_spawn_id,
+                        damage: 17,
+                        remaining_health: HOSTILE_MAX_HEALTH - 17,
+                        killed: false,
+                    },
+                },
+            ]
         );
         assert_eq!(
             core.advance_combat(100),
@@ -6844,7 +7161,7 @@ mod tests {
         )
         .unwrap();
         let updates = core.advance_combat(0);
-        let [CombatUpdate::SpellHeal {
+        let [CombatUpdate::CastResolved { .. }, CombatUpdate::SpellHeal {
             spell_id,
             amount,
             remaining_health,
@@ -6929,7 +7246,7 @@ mod tests {
         )
         .unwrap();
         let updates = core.advance_combat(0);
-        let [CombatUpdate::SpellImpact {
+        let [CombatUpdate::CastResolved { .. }, CombatUpdate::SpellImpact {
             spell_id,
             school,
             impact,
@@ -6969,19 +7286,28 @@ mod tests {
                 school: 1,
                 periodic: None,
                 duration_ms: 30_000,
+                mods: AuraStatMods::default(),
+                interrupt_flags: 0,
             },
         )
         .unwrap();
         let updates = core.advance_combat(0);
-        // A self buff lands in the character's aura slots, with the row's lifetime.
+        // A self buff lands in the character's aura slots, with the row's lifetime — and the
+        // cast resolves once beside it.
         assert!(
             matches!(
                 updates.as_slice(),
-                [CombatUpdate::PlayerAura {
-                    spell_id: 900_030,
-                    slot: 0,
-                    remaining_ms: Some(30_000),
-                }]
+                [
+                    CombatUpdate::CastResolved {
+                        spell_id: 900_030,
+                        target: None
+                    },
+                    CombatUpdate::PlayerAura {
+                        spell_id: 900_030,
+                        slot: 0,
+                        remaining_ms: Some(30_000),
+                    }
+                ]
             ),
             "{updates:?}"
         );
@@ -6989,6 +7315,347 @@ mod tests {
         assert_eq!(auras.len(), 1);
         assert_eq!(auras[0].spell_id, 900_030);
         assert_eq!(auras[0].remaining_ms, Some(30_000));
+    }
+
+    /// A recast of the same self buff refreshes its own slot (the ally rule) instead of landing a
+    /// second copy beside the first — "applied it twice" can never stack one buff.
+    #[test]
+    fn recasting_a_self_buff_refreshes_its_slot_instead_of_stacking() {
+        let (mut core, id, _) = practice_core_with_two();
+        {
+            let snapshot = core.snapshots.get_mut(&id).unwrap();
+            snapshot.known_spell_ids.push(900_031);
+            snapshot.known_spell_ids.sort_unstable();
+        }
+        core.enter_world().unwrap();
+        let aura = DirectSpellEffect::Aura {
+            school: 1,
+            periodic: None,
+            duration_ms: 30_000,
+            mods: AuraStatMods::default(),
+            interrupt_flags: 0,
+        };
+        core.begin_direct_spell(900_031, SpellTarget::SelfCharacter, 0, 0, 0, 0, 0.0, aura)
+            .unwrap();
+        core.advance_combat(0);
+        let first_slot = core.active_auras().expect("the buff is held")[0].slot;
+        core.begin_direct_spell(900_031, SpellTarget::SelfCharacter, 0, 0, 0, 0, 0.0, aura)
+            .unwrap();
+        core.advance_combat(0);
+        let auras = core.active_auras().expect("the buff is held");
+        assert_eq!(
+            auras.iter().filter(|aura| aura.spell_id == 900_031).count(),
+            1,
+            "a recast refreshes, never stacks: {auras:?}"
+        );
+        assert_eq!(auras[0].slot, first_slot, "the refresh keeps its own slot");
+    }
+
+    /// The live auras' `SPELL_AURA_MOD_RESISTANCE` deltas sum into the school-indexed bonuses the
+    /// wire's buff split reports (school 0 the armor total, 5 shadow).
+    #[test]
+    fn aura_stat_mods_sum_into_the_resistance_bonuses() {
+        let (mut core, _, _) = practice_core_with_two();
+        core.enter_world().unwrap();
+        let mut armor = AuraStatMods::default();
+        armor.resistances[0] = 40;
+        armor.resistances[5] = 3;
+        let mut more_armor = AuraStatMods::default();
+        more_armor.resistances[0] = 10;
+        core.set_active_aura(CharacterAura {
+            slot: 0,
+            spell_id: 1_001,
+            flags: 0x03,
+            level: 1,
+            stacks: 1,
+            remaining_ms: None,
+            interrupt_flags: 0,
+            mods: armor,
+        })
+        .unwrap();
+        core.set_active_aura(CharacterAura {
+            slot: 1,
+            spell_id: 1_002,
+            flags: 0x03,
+            level: 1,
+            stacks: 1,
+            remaining_ms: None,
+            interrupt_flags: 0,
+            mods: more_armor,
+        })
+        .unwrap();
+        assert_eq!(core.active_resistance_mods(), [50, 0, 0, 0, 0, 3, 0]);
+        // Removing one aura removes its half of the sum.
+        core.remove_active_aura(1);
+        assert_eq!(core.active_resistance_mods(), [40, 0, 0, 0, 0, 3, 0]);
+    }
+
+    /// Movement, casts and attacks drop the auras whose `AuraInterruptFlags` name the event
+    /// (Shadowmeld's `0xbc0f`), and only those: a plain buff survives all three.
+    #[test]
+    fn interrupts_drop_only_the_auras_whose_flags_name_them() {
+        let (mut core, id, _) = practice_core_with_two();
+        enter_practice_world(&mut core);
+        // Shadowmeld 20580's own mask: hostile action, damage, action (cast), moving, interacting,
+        // looting, attacking, item use, shapeshifting.
+        const SHADOWMELD_MASK: u32 = 0xbc0f;
+        let stealth = CharacterAura {
+            slot: 0,
+            spell_id: 20_580,
+            flags: 0x03,
+            level: 1,
+            stacks: 1,
+            remaining_ms: None,
+            interrupt_flags: SHADOWMELD_MASK,
+            mods: AuraStatMods::default(),
+        };
+        let plain = CharacterAura {
+            slot: 1,
+            spell_id: 1_001,
+            flags: 0x03,
+            level: 1,
+            stacks: 1,
+            remaining_ms: None,
+            interrupt_flags: 0,
+            mods: AuraStatMods::default(),
+        };
+
+        // A cast is the "any cast" action.
+        core.set_active_aura(stealth).unwrap();
+        core.set_active_aura(plain).unwrap();
+        {
+            let snapshot = core.snapshots.get_mut(&id).unwrap();
+            snapshot.known_spell_ids.push(900_032);
+            snapshot.known_spell_ids.sort_unstable();
+        }
+        core.begin_direct_spell(
+            900_032,
+            SpellTarget::SelfCharacter,
+            0,
+            0,
+            0,
+            0,
+            0.0,
+            DirectSpellEffect::Aura {
+                school: 1,
+                periodic: None,
+                duration_ms: 0,
+                mods: AuraStatMods::default(),
+                interrupt_flags: 0,
+            },
+        )
+        .unwrap();
+        let dropped = core.drain_interrupted_auras();
+        assert_eq!(
+            dropped.iter().map(|aura| aura.spell_id).collect::<Vec<_>>(),
+            vec![20_580],
+            "casting drops the stealth and nothing else: {dropped:?}"
+        );
+        assert!(
+            core.active_auras()
+                .unwrap()
+                .iter()
+                .any(|aura| aura.spell_id == 1_001),
+            "the plain buff survives a cast"
+        );
+
+        // Movement is the "any movement" event.
+        core.set_active_aura(stealth).unwrap();
+        let mut moved = core.snapshot(&id).unwrap().position;
+        moved.x += 1.0;
+        core.update_active(moved, 0).unwrap();
+        let dropped = core.drain_interrupted_auras();
+        assert_eq!(
+            dropped.iter().map(|aura| aura.spell_id).collect::<Vec<_>>(),
+            vec![20_580],
+            "moving drops the stealth: {dropped:?}"
+        );
+
+        // Taking up an attack is the "removed by attack" event; approach the target first, since
+        // the walk is itself an interrupt.
+        let target = core.hostiles.first().copied().expect("practice target");
+        core.update_active(target.position, 0).unwrap();
+        core.drain_interrupted_auras();
+        core.set_active_aura(stealth).unwrap();
+        core.start_auto_attack(target.spawn_id).unwrap();
+        let dropped = core.drain_interrupted_auras();
+        assert_eq!(
+            dropped.iter().map(|aura| aura.spell_id).collect::<Vec<_>>(),
+            vec![20_580],
+            "attacking drops the stealth: {dropped:?}"
+        );
+        assert!(
+            core.active_auras()
+                .unwrap()
+                .iter()
+                .any(|aura| aura.spell_id == 1_001),
+            "the plain buff survives an attack"
+        );
+    }
+
+    /// A hostile-area status (Arcane Torrent's silence) lands on the live enemies within its
+    /// radius of the caster, and only those; its clock expires it on game time.
+    #[test]
+    fn an_area_debuff_lands_on_the_enemies_around_the_caster_and_expires() {
+        let (mut core, id, _) = practice_core_with_two();
+        enter_practice_world(&mut core);
+        {
+            let snapshot = core.snapshots.get_mut(&id).unwrap();
+            snapshot.known_spell_ids.push(900_033);
+            snapshot.known_spell_ids.sort_unstable();
+        }
+        // The practice targets stand at 8, 10 and -10 yards of the start.
+        core.begin_direct_spell(
+            900_033,
+            SpellTarget::SelfCharacter,
+            0,
+            0,
+            0,
+            0,
+            0.0,
+            DirectSpellEffect::AreaDebuff {
+                duration_ms: 2_000,
+                radius_yards: 8.0,
+                kind: DebuffKind::Silence,
+            },
+        )
+        .unwrap();
+        let updates = core.advance_combat(0);
+        let landed: Vec<u32> = updates
+            .iter()
+            .filter_map(|update| match update {
+                CombatUpdate::HostileDebuff {
+                    spawn_id,
+                    remaining_ms: Some(_),
+                    ..
+                } => Some(*spawn_id),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            landed,
+            vec![HOSTILE_SPAWN_ID],
+            "only the in-radius enemy is silenced: {updates:?}"
+        );
+        let silenced = core
+            .hostiles()
+            .iter()
+            .find(|hostile| hostile.spawn_id == HOSTILE_SPAWN_ID)
+            .and_then(|hostile| hostile.debuff)
+            .expect("the debuff is held");
+        assert_eq!(silenced.kind, DebuffKind::Silence);
+        assert_eq!(silenced.remaining_ms, 2_000);
+
+        // The clock runs out and the expiry is reported.
+        let updates = core.advance_combat(2_000);
+        assert!(
+            updates.iter().any(|update| matches!(
+                update,
+                CombatUpdate::HostileDebuff {
+                    spawn_id,
+                    remaining_ms: None,
+                    ..
+                } if *spawn_id == HOSTILE_SPAWN_ID
+            )),
+            "the silence expires: {updates:?}"
+        );
+    }
+
+    /// Every completed cast resolves exactly once — the `SMSG_SPELL_GO` whose spell id finishes
+    /// the client's cast bar and opens the in-flight guard TryCast refuses behind — naming the
+    /// target it landed on (none beyond the caster for a self buff). The direct families land
+    /// their impact updates beside it, never instead of it.
+    #[test]
+    fn a_completed_cast_resolves_once_naming_the_target_it_landed_on() {
+        let (mut core, id, _) = practice_core_with_two();
+        enter_practice_world(&mut core);
+        {
+            let snapshot = core.snapshots.get_mut(&id).unwrap();
+            snapshot.known_spell_ids.push(900_034);
+            snapshot.known_spell_ids.push(900_035);
+            snapshot.known_spell_ids.sort_unstable();
+        }
+        // A self buff resolves on the caster itself.
+        core.begin_direct_spell(
+            900_034,
+            SpellTarget::SelfCharacter,
+            0,
+            0,
+            0,
+            0,
+            0.0,
+            DirectSpellEffect::Aura {
+                school: 1,
+                periodic: None,
+                duration_ms: 30_000,
+                mods: AuraStatMods::default(),
+                interrupt_flags: 0,
+            },
+        )
+        .unwrap();
+        let updates = core.advance_combat(0);
+        assert_eq!(
+            updates
+                .iter()
+                .filter(|update| matches!(update, CombatUpdate::CastResolved { .. }))
+                .count(),
+            1,
+            "the buff's cast resolves once: {updates:?}"
+        );
+        assert!(
+            updates.iter().any(|update| matches!(
+                update,
+                CombatUpdate::CastResolved {
+                    spell_id: 900_034,
+                    target: None
+                }
+            )),
+            "a self cast resolves on the caster: {updates:?}"
+        );
+
+        // A direct cast resolves on its enemy, once, beside the impact it lands.
+        core.begin_direct_spell(
+            900_035,
+            SpellTarget::Hostile(HOSTILE_SPAWN_ID),
+            0,
+            0,
+            0,
+            0,
+            30.0,
+            DirectSpellEffect::Damage {
+                min: 5,
+                max: 5,
+                school: 4,
+                periodic: None,
+                control: None,
+            },
+        )
+        .unwrap();
+        let updates = core.advance_combat(0);
+        assert_eq!(
+            updates
+                .iter()
+                .filter(|update| matches!(update, CombatUpdate::CastResolved { .. }))
+                .count(),
+            1,
+            "the damage cast resolves once: {updates:?}"
+        );
+        assert!(
+            updates.iter().any(|update| matches!(
+                update,
+                CombatUpdate::CastResolved {
+                    spell_id: 900_035,
+                    target: Some(HOSTILE_SPAWN_ID)
+                }
+            )),
+            "the direct cast resolves on its enemy: {updates:?}"
+        );
+        assert!(
+            updates
+                .iter()
+                .any(|update| matches!(update, CombatUpdate::SpellImpact { .. })),
+            "the damage still lands its own impact: {updates:?}"
+        );
     }
 
     #[test]
@@ -7165,8 +7832,18 @@ mod tests {
             )
             .unwrap();
             let updates = core.advance_combat(FIREBALL_CAST_MS);
+            assert!(
+                matches!(
+                    updates.first(),
+                    Some(CombatUpdate::CastResolved {
+                        spell_id: FIREBALL_SPELL_ID,
+                        ..
+                    })
+                ),
+                "the cast resolves first: {updates:?}"
+            );
             assert_eq!(
-                updates[0],
+                updates[1],
                 CombatUpdate::Impact(CastImpact {
                     spawn_id: hostile_spawn.source_guid,
                     damage: 30,
@@ -7732,10 +8409,16 @@ mod tests {
         assert!(
             matches!(
                 core.advance_combat(1).as_slice(),
-                [CombatUpdate::ChannelStart {
-                    spell_id: 900_080,
-                    duration_ms: 3_000,
-                }]
+                [
+                    CombatUpdate::CastResolved {
+                        spell_id: 900_080,
+                        ..
+                    },
+                    CombatUpdate::ChannelStart {
+                        spell_id: 900_080,
+                        duration_ms: 3_000,
+                    }
+                ]
             ),
             "a channeled cast lands no direct amount; it arms the channel"
         );
@@ -7974,9 +8657,15 @@ mod tests {
         assert!(
             matches!(
                 updates.as_slice(),
-                [CombatUpdate::Summoned {
-                    creature_entry: 416
-                }]
+                [
+                    CombatUpdate::CastResolved {
+                        spell_id: 900_090,
+                        target: None
+                    },
+                    CombatUpdate::Summoned {
+                        creature_entry: 416
+                    }
+                ]
             ),
             "the imp joins: {updates:?}"
         );
@@ -8012,6 +8701,10 @@ mod tests {
             matches!(
                 updates.as_slice(),
                 [
+                    CombatUpdate::CastResolved {
+                        spell_id: 900_091,
+                        target: None
+                    },
                     CombatUpdate::SummonDismissed {
                         creature_entry: 416
                     },
@@ -8082,11 +8775,17 @@ mod tests {
         assert!(
             matches!(
                 updates.as_slice(),
-                [CombatUpdate::TotemSummoned {
-                    spell_id: 900_092,
-                    creature_entry: 2630,
-                    buff_spell: Some(6474),
-                }]
+                [
+                    CombatUpdate::CastResolved {
+                        spell_id: 900_092,
+                        target: None
+                    },
+                    CombatUpdate::TotemSummoned {
+                        spell_id: 900_092,
+                        creature_entry: 2630,
+                        buff_spell: Some(6474),
+                    }
+                ]
             ),
             "{updates:?}"
         );
@@ -8147,10 +8846,16 @@ mod tests {
         assert!(
             matches!(
                 updates.as_slice(),
-                [CombatUpdate::TotemSummoned {
-                    creature_entry: 3902,
-                    ..
-                }]
+                [
+                    CombatUpdate::CastResolved {
+                        spell_id: 900_093,
+                        target: None
+                    },
+                    CombatUpdate::TotemSummoned {
+                        creature_entry: 3902,
+                        ..
+                    }
+                ]
             ),
             "{updates:?}"
         );
@@ -8163,6 +8868,10 @@ mod tests {
             matches!(
                 updates.as_slice(),
                 [
+                    CombatUpdate::CastResolved {
+                        spell_id: 900_093,
+                        target: None
+                    },
                     CombatUpdate::TotemDismissed {
                         creature_entry: 3902,
                         ..
@@ -8305,6 +9014,8 @@ mod tests {
                 school: 1,
                 periodic: None,
                 duration_ms: 5_000,
+                mods: AuraStatMods::default(),
+                interrupt_flags: 0,
             },
         )
         .unwrap();
@@ -8312,11 +9023,17 @@ mod tests {
         assert!(
             matches!(
                 updates.as_slice(),
-                [CombatUpdate::PlayerAura {
-                    spell_id: 900_030,
-                    remaining_ms: Some(5_000),
-                    ..
-                }]
+                [
+                    CombatUpdate::CastResolved {
+                        spell_id: 900_030,
+                        target: None
+                    },
+                    CombatUpdate::PlayerAura {
+                        spell_id: 900_030,
+                        remaining_ms: Some(5_000),
+                        ..
+                    }
+                ]
             ),
             "{updates:?}"
         );
@@ -8517,7 +9234,9 @@ mod tests {
         assert_eq!(core.begin_cast(finisher), Ok(CastOutcome::Cast));
         assert_eq!(core.combo_points(), 0, "the finisher spends every point");
         let updates = core.advance_combat(0);
-        let [CombatUpdate::SpellImpact { impact, .. }] = updates.as_slice() else {
+        let [CombatUpdate::CastResolved { .. }, CombatUpdate::SpellImpact { impact, .. }] =
+            updates.as_slice()
+        else {
             panic!("the finisher resolves: {updates:?}");
         };
         assert_eq!(
@@ -8614,6 +9333,8 @@ mod tests {
                 school: 1,
                 periodic: None,
                 duration_ms: 0,
+                mods: AuraStatMods::default(),
+                interrupt_flags: 0,
             },
         )
         .unwrap();
@@ -8874,13 +9595,19 @@ mod tests {
         .unwrap();
         assert_eq!(
             core.advance_combat(FIREBALL_CAST_MS),
-            vec![CombatUpdate::Impact(CastImpact {
-                spawn_id: HOSTILE_SPAWN_ID,
-                damage: 30,
-                remaining_health: HOSTILE_MAX_HEALTH - 30,
-                killed: false,
-            })],
-            "the direct damage lands on cast completion"
+            vec![
+                CombatUpdate::CastResolved {
+                    spell_id: FIREBALL_SPELL_ID,
+                    target: Some(HOSTILE_SPAWN_ID),
+                },
+                CombatUpdate::Impact(CastImpact {
+                    spawn_id: HOSTILE_SPAWN_ID,
+                    damage: 30,
+                    remaining_health: HOSTILE_MAX_HEALTH - 30,
+                    killed: false,
+                }),
+            ],
+            "the cast resolves and its direct damage lands together"
         );
         assert_eq!(
             core.advance_combat(FIREBALL_BURN_TICK_MS),
@@ -8932,11 +9659,17 @@ mod tests {
         .unwrap();
         assert!(matches!(
             core.advance_combat(FIREBALL_CAST_MS).as_slice(),
-            [CombatUpdate::Impact(CastImpact {
-                killed: false,
-                remaining_health: 1,
-                ..
-            })]
+            [
+                CombatUpdate::CastResolved {
+                    spell_id: FIREBALL_SPELL_ID,
+                    ..
+                },
+                CombatUpdate::Impact(CastImpact {
+                    killed: false,
+                    remaining_health: 1,
+                    ..
+                })
+            ]
         ));
 
         let updates = core.advance_combat(FIREBALL_BURN_TICK_MS);
@@ -9193,6 +9926,8 @@ mod tests {
             level: 1,
             stacks: 2,
             remaining_ms: Some(5_000),
+            interrupt_flags: 0,
+            mods: AuraStatMods::default(),
         };
         let debuff = CharacterAura {
             slot: 36,
@@ -9201,6 +9936,8 @@ mod tests {
             level: 1,
             stacks: 1,
             remaining_ms: None,
+            interrupt_flags: 0,
+            mods: AuraStatMods::default(),
         };
         core.set_active_aura(buff).unwrap();
         core.set_active_aura(debuff).unwrap();
@@ -9370,6 +10107,8 @@ mod tests {
             level: 1,
             stacks: 1,
             remaining_ms: Some(1_000),
+            interrupt_flags: 0,
+            mods: AuraStatMods::default(),
         });
         let encoded = encode_checked(SNAPSHOT_VERSION, &invalid_aura).unwrap();
         assert_eq!(decode_snapshot(&encoded), Err(SaveError::InvalidSnapshot));

@@ -141,7 +141,9 @@ def convert(source_path, spawn_pack_path):
 
     item_ids = {item for _, item, _, _, _ in vendors}
     item_columns = table_columns(source_path, "item_template", helpers.open_source)
-    missing_fields = (set(ITEM_FIELDS) | {"BuyCount"}) - set(item_columns)
+    missing_fields = (
+        set(ITEM_FIELDS) | {"BuyCount"} | set(helpers.ITEM_SPELL_COLUMNS)
+    ) - set(item_columns)
     if missing_fields:
         raise ImportError(f"unsupported item_template columns: missing {sorted(missing_fields)}")
     item_index = {name: index for index, name in enumerate(item_columns)}
@@ -152,6 +154,7 @@ def convert(source_path, spawn_pack_path):
             items[entry] = {
                 name: row[item_index[name]] for name in (*ITEM_FIELDS, "BuyCount")
             }
+            items[entry]["_spells"] = helpers.item_spell_blocks(row, item_index)
     if item_ids - items.keys():
         raise ImportError(f"source is missing item templates: {sorted(item_ids - items.keys())}")
 
@@ -202,6 +205,7 @@ def convert(source_path, spawn_pack_path):
                 output.append(f"{key} = {int(round(float(value)))}")
             else:
                 output.append(f"{key} = {int(value)}")
+        output.extend(helpers.write_item_spells(item["_spells"]))
         output.append("")
     return "\n".join(output).rstrip() + "\n", len(vendors), len(items)
 

@@ -106,6 +106,58 @@ def rows(path, table):
                     yield fields(row)
 
 
+# `item_template`'s five spell blocks (`ItemPrototype::_ItemSpell`): the ON_USE spell a "use"
+# casts, an ON_EQUIP arm and a CHANCE_ON_HIT arm.
+ITEM_SPELL_COLUMNS = tuple(
+    f"{stem}_{n}"
+    for n in range(1, 6)
+    for stem in (
+        "spellid",
+        "spelltrigger",
+        "spellcharges",
+        "spellcooldown",
+        "spellcategory",
+        "spellcategorycooldown",
+    )
+)
+
+
+def item_spell_blocks(row, item_index):
+    """The row's non-empty spell blocks, in block order, as TOML-ready dicts."""
+    blocks = []
+    for n in range(1, 6):
+        spell_id = int(row[item_index[f"spellid_{n}"]] or 0)
+        if spell_id == 0:
+            continue
+        blocks.append(
+            {
+                "index": n - 1,
+                "spell_id": spell_id,
+                "trigger": int(row[item_index[f"spelltrigger_{n}"]] or 0),
+                "charges": int(row[item_index[f"spellcharges_{n}"]] or 0),
+                "cooldown_ms": int(row[item_index[f"spellcooldown_{n}"]] or 0),
+                "category": int(row[item_index[f"spellcategory_{n}"]] or 0),
+                "category_cooldown_ms": int(
+                    row[item_index[f"spellcategorycooldown_{n}"]] or 0
+                ),
+            }
+        )
+    return blocks
+
+
+def write_item_spells(blocks):
+    """The `spells = [...]` TOML line; an item with no blocks writes nothing."""
+    if not blocks:
+        return []
+    entries = ", ".join(
+        "{{ index = {index}, spell_id = {spell_id}, trigger = {trigger}, "
+        "charges = {charges}, cooldown_ms = {cooldown_ms}, category = {category}, "
+        "category_cooldown_ms = {category_cooldown_ms} }}".format(**block)
+        for block in blocks
+    )
+    return [f"spells = [{entries}]"]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", type=pathlib.Path, help="CMaNGOS SQL dump (plain or gzip-compressed)")

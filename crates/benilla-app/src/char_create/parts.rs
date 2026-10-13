@@ -32,7 +32,7 @@ impl BodyShapeField {
             Self::Waist => "Waist",
             Self::Hips => "Hips",
             Self::Bust => "Bust",
-            Self::Seat => "Buttocks",
+            Self::Seat => "Rear",
         }
     }
 

@@ -92,12 +92,26 @@ impl Loader<'_> {
         if body.is_empty() {
             return None;
         }
-        let params = if name.eq_ignore_ascii_case("OnEvent") {
-            "self, event, ..."
-        } else if name.eq_ignore_ascii_case("OnUpdate") {
-            "self, elapsed, ..."
-        } else {
-            "self, ..."
+        // The TBC positional signatures (`invoke_with_globals` still sets `this`/`event`/`argN`,
+        // so the legacy bodies read on unchanged). A body binds its parameters POSITIONALLY: an
+        // unbound name reads a nil global, so 8606's `SecureTemplates.xml` click chain
+        // (`<OnClick>SecureUnitButton_OnClick(self, button)</OnClick>`) arrived with `button` nil
+        // and the secure dispatcher matched no arm — a portrait click targeted nobody. The names
+        // are the dispatchers' own argument lists: the click and mouse kinds carry the button
+        // (`button::click_button`, `pointer`), `OnValueChanged` its value, `OnSizeChanged` its
+        // pair, the key kinds their key, `OnChar` its text and `OnAttributeChanged` its pair.
+        let params = match name.to_ascii_lowercase().as_str() {
+            "onevent" => "self, event, ...",
+            "onupdate" => "self, elapsed, ...",
+            "onclick" | "ondblclick" | "ondoubleclick" | "onmousedown" | "onmouseup"
+            | "ondragstart" => "self, button, ...",
+            "onvaluechanged" => "self, value, ...",
+            "onsizechanged" => "self, width, height, ...",
+            "onkeydown" | "onkeyup" => "self, key, ...",
+            "onchar" => "self, text, ...",
+            "onattributechanged" => "self, name, value, ...",
+            "onhyperlinkclick" => "self, link, text, button, ...",
+            _ => "self, ...",
         };
         let source = format!("return function({params})\n{body}\nend");
         match self

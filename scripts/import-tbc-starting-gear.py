@@ -153,12 +153,34 @@ def load_items(sql_path):
     text = pathlib.Path(sql_path).read_text(encoding="utf-8", errors="replace")
     columns = load_item_columns(text)
     index = {name: i for i, name in enumerate(columns)}
+
+    def num(raw):
+        return 0 if raw in ("NULL", "") else int(raw)
+
     items = {}
     for m in re.finditer(r"INSERT INTO `item_template` VALUES (.*?);\n", text, re.S):
         for raw in split_values(m.group(1)):
             if len(raw) != len(columns):
                 continue
             entry = int(raw[index["entry"]])
+            spells = []
+            for n in range(1, 6):
+                spell_id = num(raw[index[f"spellid_{n}"]])
+                if spell_id == 0:
+                    continue
+                spells.append(
+                    {
+                        "index": n - 1,
+                        "spell_id": spell_id,
+                        "trigger": num(raw[index[f"spelltrigger_{n}"]]),
+                        "charges": num(raw[index[f"spellcharges_{n}"]]),
+                        "cooldown_ms": num(raw[index[f"spellcooldown_{n}"]]),
+                        "category": num(raw[index[f"spellcategory_{n}"]]),
+                        "category_cooldown_ms": num(
+                            raw[index[f"spellcategorycooldown_{n}"]]
+                        ),
+                    }
+                )
             items[entry] = {
                 "entry": entry,
                 "class": int(raw[index["class"]]),
@@ -180,6 +202,7 @@ def load_items(sql_path):
                 "dmg_min": int(round(float(raw[index["dmg_min1"]]))),
                 "dmg_max": int(round(float(raw[index["dmg_max1"]]))),
                 "delay": int(raw[index["delay"]]),
+                "spells": spells,
             }
     return items, index
 
@@ -241,6 +264,15 @@ def main():
         ]:
             out.append("%s = %d" % (key, item[key]))
         out.append("name = %s" % toml_string(item["name"]))
+        if item["spells"]:
+            entries = ", ".join(
+                "{ index = %(index)d, spell_id = %(spell_id)d, trigger = %(trigger)d, "
+                "charges = %(charges)d, cooldown_ms = %(cooldown_ms)d, "
+                "category = %(category)d, "
+                "category_cooldown_ms = %(category_cooldown_ms)d }" % block
+                for block in item["spells"]
+            )
+            out.append("spells = [%s]" % entries)
     for race, klass, gender, entry, slot in starting:
         out.append("")
         out.append("[[starting_item]]")

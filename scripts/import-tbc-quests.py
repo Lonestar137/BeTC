@@ -263,7 +263,9 @@ def convert(source_path):
 
     item_ids = collect_item_ids(helpers, source_path, quests)
     item_columns = table_columns(source_path, "item_template", open_source)
-    missing_fields = set(ITEM_FIELDS) - set(item_columns)
+    missing_fields = (
+        set(ITEM_FIELDS) | set(helpers.ITEM_SPELL_COLUMNS)
+    ) - set(item_columns)
     if missing_fields:
         raise ImportError(f"unsupported item_template columns: missing {sorted(missing_fields)}")
     item_index = {name: index for index, name in enumerate(item_columns)}
@@ -272,6 +274,7 @@ def convert(source_path):
         entry = int(row[item_index["entry"]])
         if entry in item_ids:
             items[entry] = {name: row[item_index[name]] for name in ITEM_FIELDS}
+            items[entry]["_spells"] = helpers.item_spell_blocks(row, item_index)
     missing_items = item_ids - items.keys()
     if missing_items:
         raise ImportError(f"source is missing item templates: {sorted(missing_items)[:5]}")
@@ -370,6 +373,7 @@ def convert(source_path):
                 output.append(f"{key} = {int(round(float(value)))}")
             else:
                 output.append(f"{key} = {int(value)}")
+        output.extend(helpers.write_item_spells(items[entry]["_spells"]))
         output.append("")
 
     output = output[:-1]

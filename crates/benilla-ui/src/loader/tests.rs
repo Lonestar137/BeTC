@@ -1204,6 +1204,46 @@ mod loader_tests {
         assert!(s.errors().is_empty(), "{:?}", s.errors());
     }
 
+    /// An XML handler body binds its parameters POSITIONALLY, like the TBC reference's call
+    /// convention: `<OnClick>`'s body reads `button` as its second parameter, and 8606's secure
+    /// templates depend on it (`SecureTemplates.xml`'s
+    /// `<OnClick>SecureUnitButton_OnClick(self, button)</OnClick>` forwards it). An unbound
+    /// parameter name read a nil global instead — the secure click dispatch then matched no arm
+    /// and a portrait click targeted nobody.
+    #[test]
+    fn an_xml_handler_body_binds_its_positional_parameters() {
+        let mut s = UiScript::new().unwrap();
+        s.set_screen_size(800.0, 600.0);
+        let doc = parse(
+            r#"<Ui>
+                <Button name="ParamBtn">
+                    <Size><AbsDimension x="100" y="30"/></Size>
+                    <Anchors>
+                        <Anchor point="BOTTOMLEFT" relativePoint="BOTTOMLEFT">
+                            <Offset><AbsDimension x="0" y="0"/></Offset>
+                        </Anchor>
+                    </Anchors>
+                    <NormalTexture file="Interface\P-Up"/>
+                    <Scripts>
+                        <OnClick>CLICKED_BUTTON = tostring(button); CLICKED_SELF = tostring(self and self:GetName())</OnClick>
+                    </Scripts>
+                </Button>
+            </Ui>"#,
+        );
+        let report = load(&s, &doc, &no_files);
+        assert!(report.errors.is_empty(), "errors: {:?}", report.errors);
+        s.resolve();
+
+        s.mouse_button(30.0, 10.0, "LeftButton", true);
+        s.mouse_button(30.0, 10.0, "LeftButton", false);
+        assert_eq!(
+            s.eval::<String>("return CLICKED_BUTTON").unwrap(),
+            "LeftButton"
+        );
+        assert_eq!(s.eval::<String>("return CLICKED_SELF").unwrap(), "ParamBtn");
+        assert!(s.errors().is_empty(), "{:?}", s.errors());
+    }
+
     #[test]
     fn button_state_texture_takes_size_and_anchors() {
         let mut s = UiScript::new().unwrap();

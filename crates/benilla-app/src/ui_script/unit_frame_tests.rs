@@ -6,7 +6,11 @@ use super::test_ui::{hover, load_ui as load_xml, unhover};
 
 /// The unit frames' load prefix, in the production order.
 fn load_unit_frames(s: &UiScript) {
-    load_unit_frames_with(s, &[]);
+    // `SecureTemplates.xml` is `FrameXML.toc:19`, ahead of the unit frames: 8606's `PlayerFrame`
+    // inherits `SecureUnitButtonTemplate` and its click handler (`SecureTemplates.xml:20-26` →
+    // `SecureUnitButton_OnClick`), so the chain that boots the frames must carry it or every
+    // portrait click arrives with no `OnClick` at all.
+    load_unit_frames_with(s, &["Interface\\FrameXML\\SecureTemplates.xml"]);
 }
 
 /// [`load_unit_frames`] with `extra` merged in.
@@ -355,8 +359,11 @@ fn unit_combat_drives_the_player_hit_indicator() {
     assert!(s.errors().is_empty(), "script errors: {:?}", s.errors());
 }
 
-/// Stock `PlayerFrame_OnClick` (`PlayerFrame.lua:156-172`) targets the player on a left click and
-/// opens the SELF popup on a right click: no menu solo, the leader's rows in a party.
+/// 8606's player frame targets the player on a left click through the secure chain it inherits
+/// (`SecureUnitButtonTemplate`'s `OnClick` → `SecureUnitButton_OnClick` → `type "target"` →
+/// `TargetUnit("player")`), and opens the SELF popup on a right click: no menu solo, the leader's
+/// rows in a party. The chain's bodies bind their parameters positionally (`self, button`), so
+/// this is also the regression hold on the loader's per-kind handler signatures.
 #[test]
 fn left_clicking_the_player_frame_targets_self() {
     benilla_formats::wow_data_or_skip!();
@@ -383,6 +390,15 @@ fn left_clicking_the_player_frame_targets_self() {
     let (cx, cy) = s
         .eval::<(f64, f64)>("return PlayerFrame:GetCenter()")
         .unwrap();
+    // The namesake law first: the left click's secure chain queues the self-target.
+    s.mouse_button(cx as f32, cy as f32, "LeftButton", true);
+    s.mouse_button(cx as f32, cy as f32, "LeftButton", false);
+    assert_eq!(
+        s.take_selection_requests(),
+        vec![SelectionRequest::Unit("player".into())],
+        "left-click queues a self-target"
+    );
+
     s.mouse_button(cx as f32, cy as f32, "RightButton", true);
     s.mouse_button(cx as f32, cy as f32, "RightButton", false);
     assert!(
@@ -393,15 +409,8 @@ fn left_clicking_the_player_frame_targets_self() {
     assert!(
         s.eval::<bool>("return not DropDownList1:IsVisible()")
             .unwrap(),
-        "no SELF menu while solo"
-    );
-
-    s.mouse_button(cx as f32, cy as f32, "LeftButton", true);
-    s.mouse_button(cx as f32, cy as f32, "LeftButton", false);
-    assert_eq!(
-        s.take_selection_requests(),
-        vec![SelectionRequest::Unit("player".into())],
-        "left-click queues a self-target"
+        "no SELF menu while solo; errors: {:?}",
+        s.errors()
     );
 
     s.set_party(benilla_ui::script::PartyState {
@@ -1737,12 +1746,11 @@ fn the_unit_frame_hover_hooks_carry_the_references_names() {
         r#"
         HOVERS = 0
         local original = UnitFrame_OnEnter
-        function UnitFrame_OnEnter()
+        function UnitFrame_OnEnter(self)
             HOVERS = HOVERS + 1
-            original()
+            original(self)
         end
-        this = PlayerFrame
-        UnitFrame_OnEnter()
+        UnitFrame_OnEnter(PlayerFrame)
     "#,
     )
     .unwrap();
