@@ -16,6 +16,8 @@ BenillaPetitionFixture = {
     -- The WIRE's requirement, deliberately not 9, so a test can tell it apart from
     -- MAX_PETITION_SIGNATURES.
     maxSignatures = 4,
+    -- Build 8606's seventh return, the number of member rows `PetitionFrame_Update` renders.
+    minSignatures = 9,
     originator = "Tigole",
     isOriginator = nil,
     canSign = 1,
@@ -37,7 +39,7 @@ local function record(call)
 end
 
 function GetPetitionInfo()
-    return F.petitionType, F.title, F.bodyText, F.maxSignatures, F.originator, F.isOriginator
+    return F.petitionType, F.title, F.bodyText, F.maxSignatures, F.originator, F.isOriginator, F.minSignatures
 end
 
 function GetNumPetitionNames() return table.getn(F.signers) end

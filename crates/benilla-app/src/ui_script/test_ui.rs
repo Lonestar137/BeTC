@@ -148,6 +148,13 @@ fn load_entry(s: &UiScript, entry: &str, strict_templates: bool, no_warnings: bo
         s.run(UIOPTIONS_STAND_INS)
             .expect("the stock options window's stand-ins");
     }
+    // `VoiceChat.lua:250`'s `VoiceChat_Toggle` runs from `UIParent_OnEvent`'s
+    // `PLAYER_ENTERING_WORLD` arm and indexes six frames from files it does not pull in. The
+    // wrapper is installed AFTER the file loads, so the stock definition cannot replace it.
+    if leaf.eq_ignore_ascii_case("VoiceChat.xml") {
+        s.run(VOICE_CHAT_STAND_INS)
+            .expect("the voice chat stand-ins");
+    }
     if no_warnings {
         assert!(
             report.warnings.is_empty(),
@@ -201,6 +208,18 @@ const FRAME_DECLARERS: &[(&str, &str)] = &[
 /// `Enable`/`Disable` on the audio tabs, which a plain Frame does not have.
 const BUTTON_DECLARERS: &[(&str, &str)] = &[
     (
+        "GameMenuButtonSoundOptions",
+        r"Interface\FrameXML\GameMenuFrame.xml",
+    ),
+    (
+        "FriendsFrameToggleTab3",
+        r"Interface\FrameXML\FriendsFrame.xml",
+    ),
+    (
+        "IgnoreFrameToggleTab3",
+        r"Interface\FrameXML\FriendsFrame.xml",
+    ),
+    (
         "AudioOptionsFrameTab1",
         r"Interface\FrameXML\AudioOptionsFrame.xml",
     ),
@@ -216,7 +235,7 @@ const BUTTON_DECLARERS: &[(&str, &str)] = &[
 
 /// Engine-created frames build 8606's FrameXML indexes but no toc row declares — the reference
 /// makes them in code (`CWorldMap::CreatePlayerArrowFrame()`), so a stand-in never shadows one.
-const ENGINE_FRAMES: &[&str] = &["PlayerArrowEffectFrame"];
+const ENGINE_FRAMES: &[&str] = &["PlayerArrowEffectFrame", "ChannelFrameAutoJoin", "VoiceChatTalkers"];
 
 /// Frames a kit needs before any file declares them, seated at every kit load. Build 8606's
 /// `WorldFrame_OnUpdate` (`WorldFrame.lua:45`) indexes `ItemTextFrame` on every tick, and a kit's
@@ -449,6 +468,12 @@ pub(super) const UIPARENT_STAND_INS: &str = r#"
     -- of; the offline game has no guild bank to repair.
     MerchantFrame_UpdateGuildBankRepair = MerchantFrame_UpdateGuildBankRepair or function() end
     MerchantFrame_UpdateCanRepairAll = MerchantFrame_UpdateCanRepairAll or function() end
+    -- Build 8606's `ChatConfigFrame.lua:1629` reads `Blizzard_CombatLog_Filters.filters`; the
+    -- table is the `Blizzard_CombatLog` addon's SavedVariable, absent until it loads. A plain
+    -- table write, so the addon's own assignment replaces this.
+    if not Blizzard_CombatLog_Filters then
+        Blizzard_CombatLog_Filters = { filters = {} }
+    end
     -- `ChatFrame.lua:5` sets it; `HelpFrame.lua:38` concatenates it.
     NUM_CHAT_WINDOWS = NUM_CHAT_WINDOWS or 7
     NUM_CONTAINER_FRAMES = NUM_CONTAINER_FRAMES or 0
@@ -511,6 +536,14 @@ pub(super) const UIPARENT_STAND_INS: &str = r#"
         end
         return real_manage()
     end
+    -- `MouseIsOver` (`UIParent.lua:2355`) tests `InterfaceOptionsFrame:IsShown()`, declared in
+    -- `UIOptionsFrame.xml` — a file a kit may stop short of. It runs from the chat windows, after
+    -- that file would have loaded, so the seat never shadows a real frame.
+    local real_mouse_is_over = MouseIsOver
+    function MouseIsOver(frame)
+        benilla_seat({ "InterfaceOptionsFrame", "UIOptionsFrame" })
+        return real_mouse_is_over(frame)
+    end
     -- The four options/menu windows `IsOptionFrameOpen` (l.997) and `ToggleGameMenu` (l.1467)
     -- index unguarded. `IsOptionFrameOpen` is on the path of every window close, so a kit that
     -- loads no options window raised on the first bag click. In the shipped manifest all four
@@ -536,6 +569,27 @@ pub(super) const UIPARENT_STAND_INS: &str = r#"
     function ToggleGameMenu(clicked)
         benilla_seat_options()
         return real_toggle_menu(clicked)
+    end
+"#;
+
+/// What a kit owes stock `VoiceChat.lua`: `VoiceChat_Toggle` (`:250`) runs from
+/// `UIParent_OnEvent`'s `PLAYER_ENTERING_WORLD` arm and indexes the audio tabs,
+/// `GameMenuButtonSoundOptions`, `ChannelFrameAutoJoin`, `VoiceChatTalkers`,
+/// `FriendsFrameToggleTab3` and `IgnoreFrameToggleTab3` unguarded. The wrapper is installed AFTER
+/// the file loads, so the stock definition cannot replace it, and it seats on the CALL, so a kit
+/// that does ship the declaring file keeps the real frame.
+pub(super) const VOICE_CHAT_STAND_INS: &str = r#"
+    local function benilla_seat()
+        for _, name in ipairs({ "AudioOptionsFrameTab1", "AudioOptionsFrameTab2",
+            "ChannelFrameAutoJoin", "VoiceChatTalkers", "GameMenuButtonSoundOptions",
+            "FriendsFrameToggleTab3", "IgnoreFrameToggleTab3" }) do
+            if not getglobal(name) then local f = CreateFrame("Button") f:Hide() setglobal(name, f) end
+        end
+    end
+    local real_toggle = VoiceChat_Toggle
+    function VoiceChat_Toggle()
+        benilla_seat()
+        return real_toggle()
     end
 "#;
 
@@ -799,6 +853,9 @@ pub(super) const SOCIAL_UI: &[&str] = &[
     "Interface\\FrameXML\\ReputationFrame.xml",
     "Interface\\FrameXML\\FriendsFrame.xml",
     "Interface\\FrameXML\\RaidFrame.xml",
+    // `FriendsFrame_ShowSubFrame` sweeps `FRIENDSFRAME_SUBFRAMES` (`FriendsFrame.lua:29`), whose
+    // `ChannelFrame` lives here; build 8606 lists it after the raid pane.
+    "Interface\\FrameXML\\ChannelFrame.xml",
     "Interface\\FrameXML\\BonusActionBarFrame.xml",
     "ScrollTemplates.xml",
     "KeyBindingsPage.xml",

@@ -1204,7 +1204,11 @@ fn a_clean_world_entry_raises_only_the_warnings_we_have_named() {
 
     // Deviation: the `OnInputLanguageChanged` script slot (`ChatFrame.xml:121`, the IME language
     // indicator) is refused, because benilla has no IME to fire it.
-    const KNOWN: [&str; 1] = ["OnInputLanguageChanged"];
+    //
+    // Build 8606's `UIOptionsFrame.xml:290` also inherits `InterfaceOptionsToggleButtonTemplate`,
+    // which nothing in the shipped UI declares — a dangling reference in 2.4.3, so the frame
+    // builds bare and warns, as it does in the reference client.
+    const KNOWN: [&str; 2] = ["OnInputLanguageChanged", "InterfaceOptionsToggleButtonTemplate"];
 
     let unexpected: Vec<String> = script
         .diagnostics()

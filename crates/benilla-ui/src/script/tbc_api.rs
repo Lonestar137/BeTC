@@ -39,6 +39,7 @@ pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
         "UnitIsInMyGuild",
         "GetMuteStatus",
         "CanSendLFGQuery",
+        "UnitClassBase",
     ] {
         g.set(
             name,
@@ -67,6 +68,8 @@ pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
         "GetUnitHealthRegenRateFromSpirit",
         "GetUnitManaRegenRateFromSpirit",
         "GetCombatRating",
+        "GetCombatRatingBonus",
+        "GetArmorPenetration",
         "GetNumGuildBankTabs",
     ] {
         g.set(name, lua.create_function(|_, _: MultiValue| Ok(0i64))?)?;

@@ -150,9 +150,11 @@ pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
     let g = lua.globals();
 
     // ── The petition window ──────────────────────────────────────────────────────────────────
-    // GetPetitionInfo() (`0x4f43d0`): six values on both legs (`0x4f4493`, `0x4f44d4`), in the
-    // order `PetitionFrame.lua:9` destructures them; with no record, `nil, nil, nil, 0, nil, nil`,
-    // the fourth the number 0 (`0x4f44b4`).
+    // GetPetitionInfo() (`0x4f43d0` in 1.12; seven values in build 8606): `PetitionFrame.lua:8`
+    // destructures `petitionType, title, bodyText, maxSignatures, originatorName, isOriginator,
+    // minSignatures`. benilla models the wire's `min_signatures` alone (the signers' requirement),
+    // so the 4th and 7th answers are the same number; with no record, `nil, nil, nil, 0, nil, nil,
+    // 0`, the two numbers 0.
     g.set(
         "GetPetitionInfo",
         lua.create_function(|lua, ()| {
@@ -165,6 +167,7 @@ pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
                     Value::Integer(0),
                     Value::Nil,
                     Value::Nil,
+                    Value::Integer(0),
                 ]));
             };
             Ok(MultiValue::from_vec(vec![
@@ -174,6 +177,7 @@ pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
                 Value::Integer(i64::from(r.max_signatures)),
                 name_value(lua, r.originator.as_ref())?,
                 binding_abi::flag(r.is_originator),
+                Value::Integer(i64::from(r.max_signatures)),
             ]))
         })?,
     )?;
@@ -357,12 +361,12 @@ mod tests {
     }
 
     #[test]
-    fn the_no_record_leg_is_six_values_with_a_numeric_zero() {
+    fn the_no_record_leg_is_seven_values_with_a_numeric_zero() {
         let s = UiScript::new().unwrap();
         assert_eq!(
             s.arity("GetPetitionInfo()").unwrap(),
-            6,
-            "six values even with nothing open"
+            7,
+            "seven values even with nothing open"
         );
         assert_eq!(
             s.eval::<i64>("local _,_,_,m = GetPetitionInfo(); return m")

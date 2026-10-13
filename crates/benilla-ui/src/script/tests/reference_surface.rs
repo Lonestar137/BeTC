@@ -152,10 +152,14 @@ const BEYOND_1_12: &[&str] = &[
     "GetUnitHealthModifier",
     "GetMuteStatus",
     "CanSendLFGQuery",
+    "UnitClassBase",
     "GetCombatRating",
+    "GetCombatRatingBonus",
+    "GetArmorPenetration",
     "GetNumGuildBankTabs",
     "InviteUnit",
     "UpdateAddOnMemoryUsage",
+    "strsplit",
 ];
 
 /// `reference/1.12-globals.tsv`'s names.

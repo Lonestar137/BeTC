@@ -1591,7 +1591,7 @@ mod tests {
 
         let mut missing: Vec<String> = wanted
             .into_iter()
-            .filter(|(n, _)| !declared.contains(n))
+            .filter(|(n, _)| !declared.contains(n) && !UNDECLARED_IN_8606.contains(&n.as_str()))
             .map(|(n, e)| format!("{n}  (inherited in {e})"))
             .collect();
         missing.sort();
@@ -1603,6 +1603,11 @@ mod tests {
             missing.join("\n  ")
         );
     }
+
+    /// Build 8606's `UIOptionsFrame.xml:290` inherits `InterfaceOptionsToggleButtonTemplate`, but
+    /// no file in the shipped UI declares it — a dangling reference in 2.4.3 (1.12 has no such
+    /// name either). The frame builds BARE, exactly as it does in the reference client.
+    const UNDECLARED_IN_8606: [&str; 1] = ["InterfaceOptionsToggleButtonTemplate"];
 
     /// One `name="…"`-style attribute out of a raw tag, matched only at a token boundary.
     fn tag_attr(tag: &str, key: &str) -> Option<String> {

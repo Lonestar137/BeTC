@@ -91,9 +91,11 @@ fn twelve() -> Vec<RaidMemberInfo> {
     raid
 }
 
-/// Opens the tab and drains the `RequestRaidInfo()` its OnShow sends (`RaidFrame.xml:350`).
+/// Opens the tab and drains the `RequestRaidInfo()` its OnShow sends (`RaidFrame.xml:324`). Build
+/// 8606's `FriendsFrame.selectedTab == 5` is the raid pane (`FriendsFrame.lua:188`); 1.12 had it
+/// at 4, and TBC's Chat tab took that slot.
 fn open_raid_tab(s: &mut UiScript) {
-    s.run("ToggleFriendsFrame(4)").unwrap();
+    s.run("ToggleFriendsFrame(5)").unwrap();
     assert_eq!(
         s.take_party_requests(),
         vec![PartyRequest::RequestRaidInfo],
@@ -104,13 +106,13 @@ fn open_raid_tab(s: &mut UiScript) {
 // ── The tab ──────────────────────────────────────────────────────────────────────────────────────
 
 #[test]
-fn the_fourth_tab_opens_the_raid_pane() {
+fn the_fifth_tab_opens_the_raid_pane() {
     let _data = benilla_formats::wow_data_or_skip!();
     let mut s = setup();
     assert_eq!(
         s.eval::<i64>("return FriendsFrame.numTabs").unwrap(),
-        4,
-        "PanelTemplates_SetNumTabs says four now — it said three while the pane did not exist"
+        5,
+        "build 8606's social window carries five tabs; 1.12 said four"
     );
     open_raid_tab(&mut s);
     assert!(visible(&s, "RaidFrame"), "the pane opens");

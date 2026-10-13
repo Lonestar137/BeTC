@@ -57,9 +57,11 @@ fn stdlib_aliases_and_helpers() {
         tremove(t, 1)
         assert(t[1] == 20)
 
-        -- and the five remaining 2.0 names that are NOT here
+        -- and the 2.0 names that are NOT here; `strsplit` IS, since build 8606's
+        -- `SecureTemplates.lua:28` captures it at load.
         assert(wipe == nil and tostringall == nil)
-        assert(strsplit == nil and strjoin == nil and strconcat == nil)
+        assert(strjoin == nil and strconcat == nil)
+        assert(strsplit(":", "a:b") == "a")
     "#,
     )
     .unwrap();

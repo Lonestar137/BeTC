@@ -508,13 +508,13 @@ fn the_world_map_cannot_open_behind_the_menu_and_gives_its_slot_back() {
     s.run("ToggleWorldMap()").unwrap();
     assert!(s.eval::<bool>("return WorldMapFrame:IsVisible()").unwrap());
     assert!(s
-        .eval::<bool>("return UIParent:GetUIPanel(\"fullscreen\"):GetName() == \"WorldMapFrame\"")
+        .eval::<bool>("return GetUIPanel(\"fullscreen\"):GetName() == \"WorldMapFrame\"")
         .unwrap());
 
     s.run("ToggleWorldMap()").unwrap();
     assert!(!s.eval::<bool>("return WorldMapFrame:IsVisible()").unwrap());
     assert!(
-        s.eval::<bool>("return UIParent:GetUIPanel(\"fullscreen\") == nil")
+        s.eval::<bool>("return GetUIPanel(\"fullscreen\") == nil")
             .unwrap(),
         "the map vacated the full-screen slot"
     );
@@ -528,7 +528,7 @@ fn the_world_map_cannot_open_behind_the_menu_and_gives_its_slot_back() {
         "the map must not open behind the game menu"
     );
     assert!(s
-        .eval::<bool>("return UIParent:GetUIPanel(\"fullscreen\") == nil")
+        .eval::<bool>("return GetUIPanel(\"fullscreen\") == nil")
         .unwrap());
 
     s.run("ToggleGameMenu(1)").unwrap();
@@ -588,7 +588,7 @@ fn nothing_opens_behind_the_world_map_and_escape_closes_it_first() {
         "…and did not also open the menu"
     );
     assert!(s
-        .eval::<bool>("return UIParent:GetUIPanel(\"fullscreen\") == nil")
+        .eval::<bool>("return GetUIPanel(\"fullscreen\") == nil")
         .unwrap());
     assert!(s.errors().is_empty(), "script errors: {:?}", s.errors());
 }

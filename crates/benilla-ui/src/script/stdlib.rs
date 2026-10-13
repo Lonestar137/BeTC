@@ -160,6 +160,24 @@ strchar = string.char
 gsub    = string.gsub
 tinsert = table.insert
 tremove = table.remove
+-- Build 8606's own `SecureTemplates.lua:28` captures it (`local strsplit = strsplit`) and splits
+-- a modifier string on `:` and `,` (`:31`, `:51`). 1.12 has no such global, so this is the 2.4.3
+-- client's helper, kept because the stock secure templates call it at load.
+function strsplit(delim, str, limit)
+    local out, n, from = {}, 0, 1
+    local pat = "[" .. delim .. "]"
+    while true do
+        local s, e = string.find(str, pat, from)
+        if not s or (limit and n == limit - 1) then
+            out[n + 1] = string.sub(str, from)
+            break
+        end
+        out[n + 1] = string.sub(str, from, s - 1)
+        n = n + 1
+        from = e + 1
+    end
+    return unpack(out, 1, n + 1)
+end
 -- `getn`, `sort`, `foreach` and `foreachi` are bound by `lua50`, which owns the
 -- 5.0 shapes of `table.getn`/`setn` and must not be shadowed by a second implementation here.
 
