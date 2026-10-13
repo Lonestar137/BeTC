@@ -556,7 +556,10 @@ pub(super) const UIPARENT_STAND_INS: &str = r#"
     -- functions about it. A KIT is a prefix of the manifest and may load none of the four, which
     -- is what these stand-ins are for.
     local function benilla_seat_options()
-        benilla_seat({ "GameMenuFrame", "OptionsFrame", "UIOptionsFrame", "SoundOptionsFrame" })
+        benilla_seat({ "GameMenuFrame", "OptionsFrame", "UIOptionsFrame", "SoundOptionsFrame",
+            -- `ToggleGameMenu` (l.2443) walks them after the menu windows: `HelpFrame` for the
+            -- help pane, `InterfaceOptionsFrame` for the blizzard options ladder.
+            "HelpFrame", "InterfaceOptionsFrame" })
         if not OptionsFrameCancel then
             OptionsFrameCancel = CreateFrame("Button")
             OptionsFrameCancel:Hide()

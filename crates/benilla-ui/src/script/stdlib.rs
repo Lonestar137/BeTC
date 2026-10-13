@@ -284,13 +284,56 @@ do
     local _format, _find, _sub, _len = string.format, string.find, string.sub, string.len
     local CONV = "diouxXeEfgGqscp"  -- Lua 5.1 conversion letters
 
+    -- Build 8606 spells the plural inline — `"%d |4hour:hours;"` — where 1.12 shipped a `_P1`
+    -- twin, and the client's own fontstring picks the form as it paints. Every benilla surface
+    -- that reads a string BACK sees the template instead (a `GetText`, the `AddMessage` argument
+    -- a chat test captures, a formatter's return), so the pick happens on the way out of
+    -- `format`. The count is the first NUMBER the call passes, which is the number these
+    -- templates are written around; with none, the plural form stands.
+    local function plural_forms(out, args)
+        if not _find(out, "|4", 1, true) then
+            return out
+        end
+        local n
+        for i = 1, args.n or 0 do
+            if type(args[i]) == "number" then
+                n = args[i]
+                break
+            end
+        end
+        local one = (n == 1)
+        local res, i, from = {}, 1, 1
+        while true do
+            local s = _find(out, "|4", from, true)
+            if not s then
+                break
+            end
+            local semi = _find(out, ";", s + 2, true)
+            if not semi then
+                break
+            end
+            local body = _sub(out, s + 2, semi - 1)
+            res[i] = _sub(out, from, s - 1); i = i + 1
+            local colon = _find(body, ":", 1, true)
+            if colon then
+                res[i] = one and _sub(body, 1, colon - 1) or _sub(body, colon + 1)
+            else
+                res[i] = body
+            end
+            i = i + 1
+            from = semi + 1
+        end
+        res[i] = _sub(out, from)
+        return table.concat(res, "", 1, i)
+    end
+
     local function reformat(fmt, ...)
         if type(fmt) ~= "string" then
-            return _format(fmt, unpack(arg, 1, arg.n))
+            return plural_forms(_format(fmt, unpack(arg, 1, arg.n)), arg)
         end
         -- fast path: no "%<digit>" at all ⇒ definitely no positional spec.
         if not _find(fmt, "%%%d") then
-            return _format(fmt, unpack(arg, 1, arg.n))
+            return plural_forms(_format(fmt, unpack(arg, 1, arg.n)), arg)
         end
 
         local args = arg
@@ -343,7 +386,7 @@ do
                 out[k] = args[idx]
             end
         end
-        return _format(table.concat(pieces, "", 1, npieces), unpack(out, 1, norder))
+        return plural_forms(_format(table.concat(pieces, "", 1, npieces), unpack(out, 1, norder)), args)
     end
 
     string.format = reformat

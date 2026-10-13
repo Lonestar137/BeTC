@@ -1084,7 +1084,8 @@ fn a_guild_invite_raises_its_dialog_without_the_window() {
     assert!(visible(&s, "StaticPopup1"));
     assert_eq!(
         text(&s, "StaticPopup1Text"),
-        "Furor invites you to join Legacy of Steel"
+        "Furor invites you to join the guild: Legacy of Steel",
+        "build 8606's GUILD_INVITATION names the guild after a colon"
     );
     assert_eq!(text(&s, "StaticPopup1Button1"), "Accept");
     assert_eq!(text(&s, "StaticPopup1Button2"), "Decline");
