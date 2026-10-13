@@ -1,6 +1,8 @@
 //! The stock questgiver window (`QuestFrame.xml`), driven engine-only through the quest events.
 
-use benilla_ui::script::{QuestPanel, QuestState, ScriptValue, SoundRequest, UiScript};
+use benilla_ui::script::{
+    QuestPanel, QuestSelect, QuestState, ScriptValue, SoundRequest, UiScript,
+};
 
 use super::test_ui::load_ui as load_xml;
 
@@ -859,4 +861,88 @@ fn reward_rows_preview_and_post_without_selecting_the_choice() {
         "the ctrl arm returns — it must NOT also select the clicked choice"
     );
     assert!(s.errors().is_empty(), "script errors: {:?}", s.errors());
+}
+
+/// The stock greeting loop reads `IsActiveQuestTrivial`/`IsAvailableQuestTrivial`
+/// (`QuestFrame.lua:227`, `:260`); with either nil the OnShow aborted before any title button got
+/// its ID, so a click could not pick a row. Drives the production load, so the QuestFrame is the
+/// installed one.
+#[test]
+fn greeting_rows_get_ids_and_a_click_selects_the_quest() {
+    benilla_formats::wow_data_or_skip!();
+    let _l = crate::local_state::test_env::ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let (mut s, failures) =
+        super::layer_tests::production_load_with("questgreet", true, "", |_| {});
+    // This install's stock load carries unrelated missing-API errors (the live app logs the same);
+    // only the quest trivia this test is about must be clean.
+    assert!(
+        !failures
+            .iter()
+            .any(|f| f.contains("IsAvailableQuestTrivial") || f.contains("IsActiveQuestTrivial")),
+        "the quest trivial globals must exist: {failures:#?}"
+    );
+    s.set_player_req_state(benilla_ui::script::PlayerReqState {
+        level: 10,
+        ..Default::default()
+    });
+    s.set_quest(Some(QuestState {
+        panel: QuestPanel::Greeting,
+        greeting: "What can I do for you?".into(),
+        active_titles: vec!["Done Deal".into()],
+        available_titles: vec!["A Threat Within".into(), "Kobold Camp Cleanup".into()],
+        active_levels: vec![9],
+        available_levels: vec![4, 5],
+        ..QuestState::default()
+    }));
+    s.set_unit(
+        "npc",
+        Some(benilla_ui::script::UnitState {
+            exists: true,
+            name: Some("Deputy Willem".into()),
+            ..Default::default()
+        }),
+    );
+    s.fire_event("QUEST_GREETING", vec![]);
+    // The show cascade drags in unrelated missing-API errors on this install (the live app logs
+    // the same); the greeting's own trivial test must not be among them.
+    assert!(
+        !s.errors()
+            .iter()
+            .any(|e| e.contains("IsAvailableQuestTrivial") || e.contains("IsActiveQuestTrivial")),
+        "script errors: {:?}",
+        s.errors()
+    );
+    // One active row then two available: buttons 2 and 3 are the available rows, 1-based within
+    // their own list.
+    assert_eq!(
+        s.eval::<i64>("return QuestTitleButton2:GetID()").unwrap(),
+        1
+    );
+    assert_eq!(
+        s.eval::<i64>("return QuestTitleButton3:GetID()").unwrap(),
+        2
+    );
+    assert!(
+        s.eval::<bool>("return QuestTitleButton2:IsShown()")
+            .unwrap(),
+        "the stock loop showed the available rows"
+    );
+    s.run("QuestTitleButton2:Click()").unwrap();
+    assert_eq!(
+        s.take_quest_selects(),
+        vec![QuestSelect {
+            active: false,
+            index: 1
+        }],
+        "clicking the first available row selects it"
+    );
+    assert!(
+        !s.errors()
+            .iter()
+            .any(|e| e.contains("IsAvailableQuestTrivial") || e.contains("IsActiveQuestTrivial")),
+        "script errors: {:?}",
+        s.errors()
+    );
 }

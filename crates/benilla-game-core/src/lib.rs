@@ -14,7 +14,8 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 const PROFILE_VERSION: u32 = 1;
-const SNAPSHOT_VERSION: u32 = 9;
+const SNAPSHOT_VERSION: u32 = 10;
+const REPUTATION_SNAPSHOT_VERSION: u32 = 9;
 const POOLS_SNAPSHOT_VERSION: u32 = 8;
 const PREVIOUS_SNAPSHOT_VERSION: u32 = 6;
 const BODY_PROPORTIONS_SNAPSHOT_VERSION: u32 = 7;
@@ -885,6 +886,10 @@ pub struct CharacterSnapshot {
     #[serde(default)]
     pub focus: u32,
     pub auras: Vec<CharacterAura>,
+    /// Quest-granted reputation standing by faction (schema 10). Additive on schema 10; older
+    /// saves migrate to an empty standing.
+    #[serde(default)]
+    pub reputation: Vec<quest::ReputationStanding>,
     /// Deterministic combat roll state, preserved across logout and process restart.
     #[serde(default)]
     pub rng_state: u64,
@@ -1134,6 +1139,8 @@ pub struct GameCore {
     combo_points: u8,
     combo_target_spawn_id: Option<u32>,
     cast_combo: ComboEffect,
+    /// Timed quests that expired while active, drained by the presentation adapter.
+    failed_quests: Vec<u32>,
 }
 
 impl Default for Profile {
@@ -1422,10 +1429,45 @@ impl GameCore {
             .map(|snapshot| &snapshot.quest_journal)
     }
 
-    /// The eligible quest rows a gossip/questgiver NPC may show to the active character.
+    /// The item view a quest evaluation counts: backpack plus worn equipment, as CMaNGOS
+    /// `GetItemCount(entry, false)` counts quest items.
+    fn quest_items(snapshot: &CharacterSnapshot) -> Vec<quest::InventoryItem> {
+        snapshot
+            .inventory
+            .iter()
+            .chain(&snapshot.equipment)
+            .copied()
+            .collect()
+    }
+
+    fn quest_aura_spells(snapshot: &CharacterSnapshot) -> Vec<u32> {
+        snapshot.auras.iter().map(|aura| aura.spell_id).collect()
+    }
+
+    fn quest_evaluation<'a>(
+        snapshot: &'a CharacterSnapshot,
+        items: &'a [quest::InventoryItem],
+        aura_spell_ids: &'a [u32],
+    ) -> quest::QuestEvaluation<'a> {
+        quest::QuestEvaluation {
+            race: snapshot.appearance.race,
+            class: snapshot.appearance.class,
+            gender: snapshot.appearance.gender,
+            level: snapshot.level,
+            journal: &snapshot.quest_journal,
+            inventory: items,
+            money_copper: snapshot.money_copper,
+            known_spell_ids: &snapshot.known_spell_ids,
+            aura_spell_ids,
+            reputation: &snapshot.reputation,
+            game_time_minutes: snapshot.game_time_minutes,
+        }
+    }
+
+    /// The eligible quest rows a gossip/questgiver creature or gameobject may show.
     pub fn quest_gossip_rows(
         &self,
-        npc_entry: u32,
+        source: quest::QuestSource,
     ) -> Result<Vec<quest::QuestGossipRow>, quest::QuestError> {
         let id = self
             .active
@@ -1435,44 +1477,18 @@ impl GameCore {
             .snapshots
             .get(id)
             .ok_or(quest::QuestError::NoActiveCharacter)?;
-        let mut rows = Vec::new();
-        for definition in &quest::quest_pack().quest {
-            let is_giver = definition.giver_creature_entries.contains(&npc_entry);
-            let is_turnin = definition.turnin_creature_entries.contains(&npc_entry);
-            if !is_giver && !is_turnin {
-                continue;
-            }
-            let state = match snapshot.quest_journal.progress(definition.id) {
-                Some(progress) if progress.reward_choice.is_some() => continue,
-                Some(_) if snapshot.quest_journal.is_complete(definition.id) => {
-                    quest::QuestOfferState::Rewardable
-                }
-                Some(_) => quest::QuestOfferState::Incomplete,
-                None if is_giver
-                    && quest::race_allowed(definition, snapshot.appearance.race)
-                    && quest::class_allowed(definition, snapshot.appearance.class)
-                    && quest::level_allowed(definition, snapshot.level) =>
-                {
-                    quest::QuestOfferState::Available
-                }
-                None => continue,
-            };
-            rows.push(quest::QuestGossipRow {
-                quest_id: definition.id,
-                icon: state,
-                level: definition.quest_level.max(0) as u32,
-                title: definition.title.clone(),
-            });
-        }
-        Ok(rows)
+        let items = Self::quest_items(snapshot);
+        let auras = Self::quest_aura_spells(snapshot);
+        let evaluation = Self::quest_evaluation(snapshot, &items, &auras);
+        Ok(quest::gossip_rows(source, &evaluation))
     }
 
     /// Current overhead-marker state for one quest NPC, or `None` when there is no visible quest.
     pub fn quest_dialog_status(
         &self,
-        npc_entry: u32,
+        source: quest::QuestSource,
     ) -> Result<Option<quest::QuestOfferState>, quest::QuestError> {
-        let rows = self.quest_gossip_rows(npc_entry)?;
+        let rows = self.quest_gossip_rows(source)?;
         Ok(rows
             .iter()
             .map(|row| row.icon)
@@ -1483,10 +1499,22 @@ impl GameCore {
             }))
     }
 
-    pub fn accept_quest(&mut self, npc_entry: u32, quest_id: u32) -> Result<(), quest::QuestError> {
+    pub fn accept_quest(
+        &mut self,
+        source: quest::QuestSource,
+        quest_id: u32,
+    ) -> Result<(), quest::QuestError> {
         let definition =
             quest::quest_definition(quest_id).ok_or(quest::QuestError::UnknownQuest)?;
-        if !definition.giver_creature_entries.contains(&npc_entry) {
+        let offered = match source {
+            quest::QuestSource::Creature(entry) => {
+                definition.giver_creature_entries.contains(&entry)
+            }
+            quest::QuestSource::GameObject(entry) => {
+                definition.giver_gameobject_entries.contains(&entry)
+            }
+        };
+        if !offered {
             return Err(quest::QuestError::WrongNpc);
         }
         let id = self
@@ -1498,33 +1526,34 @@ impl GameCore {
             .snapshots
             .get_mut(&id)
             .ok_or(quest::QuestError::NoActiveCharacter)?;
-        if !quest::race_allowed(definition, snapshot.appearance.race) {
-            return Err(quest::QuestError::WrongRace);
-        }
-        if !quest::class_allowed(definition, snapshot.appearance.class) {
-            return Err(quest::QuestError::WrongClass);
-        }
-        if snapshot.level < definition.min_level {
-            return Err(quest::QuestError::LevelTooLow);
-        }
-        if !quest::level_allowed(definition, snapshot.level) {
-            return Err(quest::QuestError::LevelTooHigh);
-        }
-        if let Some(progress) = snapshot.quest_journal.progress(quest_id) {
-            return Err(if progress.reward_choice.is_some() {
-                quest::QuestError::AlreadyRewarded
-            } else {
-                quest::QuestError::AlreadyAccepted
-            });
+        {
+            let items = Self::quest_items(snapshot);
+            let auras = Self::quest_aura_spells(snapshot);
+            let evaluation = Self::quest_evaluation(snapshot, &items, &auras);
+            quest::can_accept(definition, &evaluation)?;
         }
         if snapshot.quest_journal.entries.len() >= quest::QUEST_LOG_SLOTS {
             return Err(quest::QuestError::QuestLogFull);
         }
-        snapshot.quest_journal.entries.push(quest::QuestProgress {
+        let mut progress = quest::QuestProgress {
             quest_id,
             objective_counts: vec![0; definition.objective.len()],
             reward_choice: None,
-        });
+            deadline_minutes: None,
+        };
+        if definition.is_timed() {
+            progress.deadline_minutes = Some(
+                snapshot.game_time_minutes + u64::from(definition.limit_time_secs).div_ceil(60),
+            );
+        }
+        if definition.is_auto_complete() {
+            for (index, objective) in definition.objective.iter().enumerate() {
+                if objective.kind != quest::QuestObjectiveKind::Item {
+                    progress.objective_counts[index] = objective.count;
+                }
+            }
+        }
+        snapshot.quest_journal.entries.push(progress);
         snapshot
             .quest_journal
             .entries
@@ -1551,39 +1580,12 @@ impl GameCore {
                 updates.push(update);
             }
         }
-        let Some(id) = self.active.clone() else {
-            return updates;
-        };
-        let Some(snapshot) = self.snapshots.get_mut(&id) else {
-            return updates;
-        };
-        let mut objectives = Vec::new();
-        for progress in &mut snapshot.quest_journal.entries {
-            if progress.reward_choice.is_some() {
-                continue;
-            }
-            let Some(definition) = quest::quest_definition(progress.quest_id) else {
-                continue;
-            };
-            for (index, objective) in definition.objective.iter().enumerate() {
-                if objective.kind != "creature_kill"
-                    || objective.creature_entry != creature_entry
-                    || progress.objective_counts[index] >= objective.count
-                {
-                    continue;
-                }
-                progress.objective_counts[index] += 1;
-                let count = progress.objective_counts[index];
-                objectives.push(quest::QuestObjectiveUpdate {
-                    quest_id: progress.quest_id,
-                    creature_entry,
-                    count,
-                    required: objective.count,
-                    complete: count == objective.count,
-                });
-            }
-        }
-        updates.extend(objectives.into_iter().map(CombatUpdate::QuestObjective));
+        updates.extend(self.credit_objective(
+            quest::QuestObjectiveKind::CreatureKill,
+            creature_entry,
+            0,
+            1,
+        ));
         updates
     }
 
@@ -1592,7 +1594,27 @@ impl GameCore {
         let hostile = self.hostile(spawn_id)?;
         let remaining_ms = hostile.respawn_remaining_ms?;
         let snapshot = self.snapshots.get_mut(&id)?;
-        let rolled = loot::roll(creature_entry, || next_random(snapshot), |_| false)?;
+        let items: Vec<quest::InventoryItem> = snapshot
+            .inventory
+            .iter()
+            .chain(&snapshot.equipment)
+            .copied()
+            .collect();
+        let needed: Vec<u32> = snapshot
+            .quest_journal
+            .entries
+            .iter()
+            .filter_map(|progress| quest::quest_definition(progress.quest_id))
+            .flat_map(|definition| definition.objective.iter())
+            .filter(|objective| objective.kind == quest::QuestObjectiveKind::Item)
+            .filter(|objective| quest::inventory_count(&items, objective.entry) < objective.count)
+            .map(|objective| objective.entry)
+            .collect();
+        let rolled = loot::roll(
+            creature_entry,
+            || next_random(snapshot),
+            |entry| needed.contains(&entry),
+        )?;
         let has_loot = rolled.gold > 0 || !rolled.items.is_empty();
         let corpse = loot::CorpseLoot {
             spawn_id,
@@ -1648,21 +1670,204 @@ impl GameCore {
         })
     }
 
+    /// Credit one objective family across the active character's quests. Presentation never
+    /// submits counts; kill, interaction, gameobject-use and spell-cast credit all land here.
+    fn credit_objective(
+        &mut self,
+        kind: quest::QuestObjectiveKind,
+        entry: u32,
+        spell_id: u32,
+        amount: u32,
+    ) -> Vec<CombatUpdate> {
+        let Some(id) = self.active.clone() else {
+            return Vec::new();
+        };
+        let Some(snapshot) = self.snapshots.get_mut(&id) else {
+            return Vec::new();
+        };
+        let mut updates = Vec::new();
+        for progress in &mut snapshot.quest_journal.entries {
+            let Some(definition) = quest::quest_definition(progress.quest_id) else {
+                continue;
+            };
+            for (index, objective) in definition.objective.iter().enumerate() {
+                if objective.kind != kind
+                    || objective.entry != entry
+                    || objective.spell_id != spell_id
+                {
+                    continue;
+                }
+                let Some(count) = progress.objective_counts.get_mut(index) else {
+                    continue;
+                };
+                if *count >= objective.count {
+                    continue;
+                }
+                *count = (*count + amount).min(objective.count);
+                updates.push(CombatUpdate::QuestObjective(quest::QuestObjectiveUpdate {
+                    quest_id: progress.quest_id,
+                    creature_entry: entry,
+                    count: *count,
+                    required: objective.count,
+                    complete: *count == objective.count,
+                }));
+            }
+        }
+        updates
+    }
+
+    /// Credit a talk-to (or kill-credit) creature objective on interaction.
+    pub fn record_creature_interaction(&mut self, creature_entry: u32) -> Vec<CombatUpdate> {
+        self.credit_objective(
+            quest::QuestObjectiveKind::CreatureKill,
+            creature_entry,
+            0,
+            1,
+        )
+    }
+
+    /// Credit a gameobject-use objective.
+    pub fn record_gameobject_use(&mut self, gameobject_entry: u32) -> Vec<CombatUpdate> {
+        self.credit_objective(
+            quest::QuestObjectiveKind::GameobjectUse,
+            gameobject_entry,
+            0,
+            1,
+        )
+    }
+
+    /// Credit a spell-cast-on-target objective (creature or gameobject).
+    pub fn record_spell_cast_on(
+        &mut self,
+        spell_id: u32,
+        target: quest::QuestSource,
+    ) -> Vec<CombatUpdate> {
+        match target {
+            quest::QuestSource::Creature(entry) => self.credit_objective(
+                quest::QuestObjectiveKind::CreatureSpellcast,
+                entry,
+                spell_id,
+                1,
+            ),
+            quest::QuestSource::GameObject(entry) => self.credit_objective(
+                quest::QuestObjectiveKind::GameobjectSpellcast,
+                entry,
+                spell_id,
+                1,
+            ),
+        }
+    }
+
+    /// Consume `count` of `entry` from the backpack and worn equipment, the way a quest turn-in
+    /// removes its required items.
+    fn consume_item(snapshot: &mut CharacterSnapshot, entry: u32, count: u32) {
+        let mut remaining = count;
+        for item in &mut snapshot.inventory {
+            if remaining == 0 {
+                break;
+            }
+            if item.entry == entry {
+                let taken = item.count.min(remaining);
+                item.count -= taken;
+                remaining -= taken;
+            }
+        }
+        snapshot.inventory.retain(|item| item.count > 0);
+        for item in &mut snapshot.equipment {
+            if remaining == 0 {
+                break;
+            }
+            if item.entry == entry {
+                let taken = item.count.min(remaining);
+                item.count -= taken;
+                remaining -= taken;
+            }
+        }
+        snapshot.equipment.retain(|item| item.count > 0);
+    }
+
+    /// Apply a quest's reputation rewards with the source's low-level quest decline (20% per level
+    /// beyond `quest_level + 5`, floored at 20%) and `RewMaxRepValue` cap. Returns the deltas.
+    fn apply_quest_reputation(
+        snapshot: &mut CharacterSnapshot,
+        definition: &quest::QuestDefinition,
+    ) -> Vec<(u32, i32)> {
+        let mut applied = Vec::new();
+        let quest_level = definition.quest_level.max(0) as u32;
+        let player_level = u32::from(snapshot.level);
+        for reward in &definition.reward_rep {
+            if reward.faction == 0 || reward.value == 0 {
+                continue;
+            }
+            let mut gain = reward.value;
+            if gain > 0 && player_level > quest_level + 5 {
+                let steps = f64::from(player_level - (quest_level + 5));
+                let scale = (1.0 - 0.2 * steps).max(0.2);
+                gain = (f64::from(gain) * scale).round() as i32;
+            }
+            if gain == 0 {
+                continue;
+            }
+            let current = quest::reputation_standing(&snapshot.reputation, reward.faction);
+            if gain > 0 {
+                if current >= reward.max_value {
+                    continue;
+                }
+                let diff = reward.max_value - current;
+                if gain > diff {
+                    gain = diff;
+                }
+            }
+            let value = current + gain;
+            match snapshot
+                .reputation
+                .iter_mut()
+                .find(|standing| standing.faction == reward.faction)
+            {
+                Some(standing) => standing.value = value,
+                None => snapshot.reputation.push(quest::ReputationStanding {
+                    faction: reward.faction,
+                    value,
+                }),
+            }
+            snapshot.reputation.sort_by_key(|standing| standing.faction);
+            applied.push((reward.faction, gain));
+        }
+        applied
+    }
+
     pub fn turn_in_quest(
         &mut self,
-        npc_entry: u32,
+        source: quest::QuestSource,
         quest_id: u32,
         choice: u32,
     ) -> Result<quest::QuestReward, quest::QuestError> {
         let definition =
             quest::quest_definition(quest_id).ok_or(quest::QuestError::UnknownQuest)?;
-        if !definition.turnin_creature_entries.contains(&npc_entry) {
+        let completes = match source {
+            quest::QuestSource::Creature(entry) => {
+                definition.turnin_creature_entries.contains(&entry)
+            }
+            quest::QuestSource::GameObject(entry) => {
+                definition.turnin_gameobject_entries.contains(&entry)
+            }
+        };
+        if !completes {
             return Err(quest::QuestError::WrongNpc);
         }
-        let selected_reward = definition
-            .reward_choice
-            .get(choice as usize)
-            .ok_or(quest::QuestError::InvalidRewardChoice)?;
+        let selected = if definition.reward_choice.is_empty() {
+            if choice != 0 {
+                return Err(quest::QuestError::InvalidRewardChoice);
+            }
+            None
+        } else {
+            Some(
+                definition
+                    .reward_choice
+                    .get(choice as usize)
+                    .ok_or(quest::QuestError::InvalidRewardChoice)?,
+            )
+        };
         let id = self
             .active
             .as_ref()
@@ -1674,79 +1879,129 @@ impl GameCore {
             .snapshots
             .get_mut(&id)
             .ok_or(quest::QuestError::NoActiveCharacter)?;
-        let progress_index = snapshot
+        if !snapshot
             .quest_journal
             .entries
             .iter()
-            .position(|progress| progress.quest_id == quest_id)
-            .ok_or(quest::QuestError::Incomplete)?;
-        let progress = &snapshot.quest_journal.entries[progress_index];
-        if progress.reward_choice.is_some() {
-            return Err(quest::QuestError::AlreadyRewarded);
+            .any(|progress| progress.quest_id == quest_id)
+        {
+            return Err(if snapshot.quest_journal.is_rewarded(quest_id) {
+                quest::QuestError::AlreadyRewarded
+            } else {
+                quest::QuestError::Incomplete
+            });
         }
-        if !snapshot.quest_journal.is_complete(quest_id) {
-            return Err(quest::QuestError::Incomplete);
+        {
+            let items = Self::quest_items(snapshot);
+            if !snapshot.quest_journal.is_complete_with(definition, &items) {
+                return Err(quest::QuestError::Incomplete);
+            }
+            for objective in &definition.objective {
+                if objective.kind == quest::QuestObjectiveKind::Item
+                    && quest::inventory_count(&items, objective.entry) < objective.count
+                {
+                    return Err(quest::QuestError::TurnInRequirement);
+                }
+            }
         }
-        let reward_money = if snapshot.level >= 70 && definition.reward_money_max_level > 0 {
+        let required_money = (-definition.reward_money_copper).max(0) as u32;
+        if snapshot.money_copper < required_money {
+            return Err(quest::QuestError::TurnInRequirement);
+        }
+        for objective in &definition.objective {
+            if objective.kind == quest::QuestObjectiveKind::Item {
+                Self::consume_item(snapshot, objective.entry, objective.count);
+            }
+        }
+        let mut reward_entries: Vec<(u32, u32)> = Vec::new();
+        if let Some(selected) = selected {
+            reward_entries.push((selected.item_entry, selected.count));
+        }
+        for reward in &definition.reward_item {
+            reward_entries.push((reward.item_entry, reward.count));
+        }
+        let free_slots = usize::from(quest::BACKPACK_SLOTS).saturating_sub(
+            snapshot
+                .inventory
+                .iter()
+                .filter(|item| item.slot < quest::BACKPACK_SLOTS)
+                .count(),
+        );
+        if reward_entries.len() > free_slots {
+            return Err(quest::QuestError::InventoryFull);
+        }
+        let max_level = snapshot.level >= MAX_PLAYER_LEVEL;
+        let max_level_money = if max_level {
             definition.reward_money_max_level
         } else {
-            definition.reward_money_copper
+            0
         };
-        let money_copper = snapshot
-            .money_copper
-            .checked_add(reward_money)
-            .ok_or(quest::QuestError::MoneyOverflow)?;
+        let money_delta = i64::from(definition.reward_money_copper).max(0)
+            + i64::from(max_level_money)
+            - i64::from(required_money);
+        let money_copper = i64::from(snapshot.money_copper) + money_delta;
+        if !(0..=i64::from(u32::MAX)).contains(&money_copper) {
+            return Err(quest::QuestError::MoneyOverflow);
+        }
+        let experience_gained = if max_level {
+            0
+        } else {
+            quest::quest_reward_xp(definition, snapshot.level)
+        };
         let experience = snapshot
             .experience
-            .checked_add(definition.project_reward_xp)
+            .checked_add(experience_gained)
             .ok_or(quest::QuestError::ExperienceOverflow)?;
         let old_level = snapshot.level;
-        let (level, experience) = apply_experience(snapshot.level, experience);
-        let Some(slot) = (0..quest::BACKPACK_SLOTS)
-            .find(|slot| !snapshot.inventory.iter().any(|item| item.slot == *slot))
-        else {
-            return Err(quest::QuestError::InventoryFull);
-        };
-        let instance_id = next_instance_id(snapshot).ok_or(quest::QuestError::InventoryFull)?;
-        let item = quest::InventoryItem {
-            instance_id,
-            entry: selected_reward.item_entry,
-            count: selected_reward.count,
-            slot,
-        };
-        if snapshot
-            .inventory
-            .iter()
-            .any(|existing| existing.instance_id == item.instance_id)
-        {
-            return Err(quest::QuestError::AlreadyRewarded);
+        let (level, experience_in_level) = apply_experience(snapshot.level, experience);
+        let mut granted = Vec::new();
+        for (entry, count) in reward_entries {
+            let slot = (0..quest::BACKPACK_SLOTS)
+                .find(|slot| !snapshot.inventory.iter().any(|item| item.slot == *slot))
+                .ok_or(quest::QuestError::InventoryFull)?;
+            let instance_id = next_instance_id(snapshot).ok_or(quest::QuestError::InventoryFull)?;
+            let item = quest::InventoryItem {
+                instance_id,
+                entry,
+                count,
+                slot,
+            };
+            snapshot.inventory.push(item);
+            snapshot.inventory.sort_by_key(|item| item.slot);
+            granted.push(item);
         }
-
+        let reputation = Self::apply_quest_reputation(snapshot, definition);
         let (health_gained, mana_gained) = if level > old_level {
             refill_level_vitals(snapshot, previous_health, previous_mana)
         } else {
             (0, 0)
         };
-        snapshot.money_copper = money_copper;
+        snapshot.money_copper = money_copper as u32;
         snapshot.level = level;
-        snapshot.experience = experience;
-        snapshot.inventory.push(item);
-        snapshot.inventory.sort_by_key(|item| item.slot);
-        snapshot.quest_journal.entries[progress_index].reward_choice = Some(choice);
+        snapshot.experience = experience_in_level;
+        snapshot
+            .quest_journal
+            .record_reward(definition, snapshot.game_time_minutes);
         self.active_health = snapshot.health;
         self.active_mana = snapshot.mana;
         self.active_energy = snapshot.energy;
+        let learned_spells = [definition.reward_spell_cast, definition.reward_spell]
+            .into_iter()
+            .filter(|spell_id| *spell_id != 0)
+            .collect();
         Ok(quest::QuestReward {
             quest_id,
-            experience: definition.project_reward_xp,
+            experience: experience_gained,
             level,
             levels_gained: level - old_level,
-            experience_in_level: experience,
+            experience_in_level,
             health_gained,
             mana_gained,
-            money_copper: reward_money,
+            money_copper: money_delta,
             choice_index: choice,
-            item,
+            items: granted,
+            reputation,
+            learned_spells,
         })
     }
 
@@ -2048,6 +2303,7 @@ impl GameCore {
                 energy: maximum_energy(appearance.class),
                 focus: 0,
                 auras: Vec::new(),
+                reputation: Vec::new(),
                 rng_state: initial_rng_state(&id),
                 position: start,
                 play_time_ms: 0,
@@ -3064,10 +3320,7 @@ impl GameCore {
             _ => 0,
         };
         let (amount, periodic, channel) = {
-            let weapon = self
-                .snapshots
-                .get(&id)
-                .and_then(equipped_weapon);
+            let weapon = self.snapshots.get(&id).and_then(equipped_weapon);
             let snapshot = self
                 .snapshots
                 .get_mut(&id)
@@ -3345,14 +3598,14 @@ impl GameCore {
             self.cast_school = 0;
             self.cast_combo = ComboEffect::None;
             self.cast_periodic = None;
-        self.cast_channel = None;
-        self.cast_control = None;
-        self.cast_summon = None;
-        self.cast_totem = None;
-        self.cast_aura_ms = None;
-        self.active_channel = None;
-        self.summon = None;
-        self.totems.clear();
+            self.cast_channel = None;
+            self.cast_control = None;
+            self.cast_summon = None;
+            self.cast_totem = None;
+            self.cast_aura_ms = None;
+            self.active_channel = None;
+            self.summon = None;
+            self.totems.clear();
             self.queued_melee = None;
             self.combo_points = 0;
             self.combo_target_spawn_id = None;
@@ -3384,10 +3637,32 @@ impl GameCore {
                 self.cast_school = 0;
                 let target = self.cast_target_spawn_id.take();
                 let ally_target = self.cast_ally_spawn_id.take();
+                if let Some(spawn_id) = target {
+                    let entry = self
+                        .hostiles
+                        .iter()
+                        .find(|hostile| hostile.spawn_id == spawn_id)
+                        .map(|hostile| hostile.creature_entry)
+                        .or_else(|| {
+                            self.allies
+                                .iter()
+                                .find(|ally| ally.spawn_id == spawn_id)
+                                .map(|ally| ally.creature_entry)
+                        });
+                    if let Some(entry) = entry {
+                        updates.extend(self.credit_objective(
+                            quest::QuestObjectiveKind::CreatureSpellcast,
+                            entry,
+                            spell_id,
+                            1,
+                        ));
+                    }
+                }
                 if let Some((entry, behavior)) = self.cast_totem.take() {
                     // A recast of the same totem (any rank) replaces the standing one; different
                     // totems stand together.
-                    let name = summon::summon_template(entry).map(|template| template.name.as_str());
+                    let name =
+                        summon::summon_template(entry).map(|template| template.name.as_str());
                     if let Some(index) = self.totems.iter().position(|totem| {
                         summon::summon_template(totem.creature_entry)
                             .map(|template| totem_family(template.name.as_str()))
@@ -3610,10 +3885,7 @@ impl GameCore {
                 self.stop_auto_attack();
                 break;
             };
-            let weapon = self
-                .snapshots
-                .get(&id)
-                .and_then(equipped_weapon);
+            let weapon = self.snapshots.get(&id).and_then(equipped_weapon);
             let caster_level = self.snapshots.get(&id).map_or(1, |snapshot| snapshot.level);
             let queued = self.queued_melee.take();
             let (ability, damage, queued_periodic) = match queued {
@@ -3881,7 +4153,8 @@ impl GameCore {
                 totem.pulse_remaining_ms = totem.pulse_ms;
                 match pulse {
                     TotemPulse::Damage { min, max, school } => {
-                        let Some(spawn_id) = self.melee_target_spawn_id.or(self.ranged_target_spawn_id)
+                        let Some(spawn_id) =
+                            self.melee_target_spawn_id.or(self.ranged_target_spawn_id)
                         else {
                             break;
                         };
@@ -3978,8 +4251,9 @@ impl GameCore {
                 }
             }
         }
-        let (expired, standing): (Vec<_>, Vec<_>) =
-            totems.into_iter().partition(|totem| totem.remaining_ms == 0);
+        let (expired, standing): (Vec<_>, Vec<_>) = totems
+            .into_iter()
+            .partition(|totem| totem.remaining_ms == 0);
         for totem in expired {
             updates.push(CombatUpdate::TotemDismissed {
                 spell_id: totem.spell_id,
@@ -4003,8 +4277,10 @@ impl GameCore {
                 let spell_id = channel.spell_id;
                 let spawn_id = channel.spawn_id;
                 if let Some(control) = channel.control.take() {
-                    if let Some(hostile) =
-                        self.hostiles.iter_mut().find(|hostile| hostile.spawn_id == spawn_id)
+                    if let Some(hostile) = self
+                        .hostiles
+                        .iter_mut()
+                        .find(|hostile| hostile.spawn_id == spawn_id)
                     {
                         hostile.control = Some(control);
                         hostile.control_remaining_ms = control.duration_ms;
@@ -4229,7 +4505,13 @@ impl GameCore {
 
             if hostile.evading {
                 if !rooted {
-                    append_creature_move(hostile, hostile.spawn_position, 0.25, move_ms, &mut updates);
+                    append_creature_move(
+                        hostile,
+                        hostile.spawn_position,
+                        0.25,
+                        move_ms,
+                        &mut updates,
+                    );
                 }
                 if horizontal_distance_squared(hostile.position, hostile.spawn_position)
                     <= 0.25 * 0.25
@@ -4366,7 +4648,26 @@ impl GameCore {
         let elapsed = self.minute_remainder_ms.saturating_add(elapsed_ms);
         snapshot.game_time_minutes = snapshot.game_time_minutes.saturating_add(elapsed / 60_000);
         self.minute_remainder_ms = elapsed % 60_000;
+        let now = snapshot.game_time_minutes;
+        for progress in &snapshot.quest_journal.entries {
+            if progress
+                .deadline_minutes
+                .is_some_and(|deadline| now >= deadline)
+            {
+                self.failed_quests.push(progress.quest_id);
+            }
+        }
+        snapshot.quest_journal.entries.retain(|progress| {
+            progress
+                .deadline_minutes
+                .is_none_or(|deadline| now < deadline)
+        });
         Ok(())
+    }
+
+    /// Timed quests that expired since the last call, oldest first.
+    pub fn drain_failed_quests(&mut self) -> Vec<u32> {
+        std::mem::take(&mut self.failed_quests)
     }
 
     pub fn leave_world(&mut self) -> Result<CharacterSnapshot, CoreError> {
@@ -4400,6 +4701,7 @@ impl GameCore {
         self.combo_points = 0;
         self.combo_target_spawn_id = None;
         self.cast_combo = ComboEffect::None;
+        self.failed_quests.clear();
         self.snapshots
             .get(&id)
             .cloned()
@@ -4518,6 +4820,7 @@ impl GameCore {
             combo_points: 0,
             combo_target_spawn_id: None,
             cast_combo: ComboEffect::None,
+            failed_quests: Vec::new(),
         })
     }
 }
@@ -4961,7 +5264,11 @@ fn totem_family(name: &str) -> &str {
         return name;
     };
     let roman = !suffix.is_empty() && suffix.chars().all(|c| matches!(c, 'I' | 'V' | 'X'));
-    if roman { base } else { name }
+    if roman {
+        base
+    } else {
+        name
+    }
 }
 
 fn clear_hostile_burn(hostile: &mut HostileState) {
@@ -5268,6 +5575,7 @@ pub fn decode_snapshot(source: &str) -> Result<CharacterSnapshot, SaveError> {
             | PREVIOUS_SNAPSHOT_VERSION
             | BODY_PROPORTIONS_SNAPSHOT_VERSION
             | POOLS_SNAPSHOT_VERSION
+            | REPUTATION_SNAPSHOT_VERSION
             | SNAPSHOT_VERSION
     ) {
         return Err(SaveError::UnsupportedVersion(document.schema_version));
@@ -5301,6 +5609,7 @@ pub fn decode_snapshot(source: &str) -> Result<CharacterSnapshot, SaveError> {
                 energy: maximum_energy(legacy.appearance.class),
                 focus: 0,
                 auras: Vec::new(),
+                reputation: Vec::new(),
                 rng_state,
                 id: legacy.id,
                 name: legacy.name,
@@ -5339,6 +5648,7 @@ pub fn decode_snapshot(source: &str) -> Result<CharacterSnapshot, SaveError> {
                 energy: maximum_energy(legacy.appearance.class),
                 focus: 0,
                 auras: Vec::new(),
+                reputation: Vec::new(),
                 rng_state,
                 position: legacy.position,
                 play_time_ms: legacy.play_time_ms,
@@ -5372,6 +5682,7 @@ pub fn decode_snapshot(source: &str) -> Result<CharacterSnapshot, SaveError> {
                 energy: maximum_energy(legacy.appearance.class),
                 focus: 0,
                 auras: Vec::new(),
+                reputation: Vec::new(),
                 rng_state,
                 position: legacy.position,
                 play_time_ms: legacy.play_time_ms,
@@ -5429,6 +5740,17 @@ pub fn decode_snapshot(source: &str) -> Result<CharacterSnapshot, SaveError> {
             snapshot.schema_version = SNAPSHOT_VERSION;
             snapshot
         }
+        REPUTATION_SNAPSHOT_VERSION => {
+            // Schema 10 adds the quest-granted reputation standing and quest reset cooldowns; the
+            // serde defaults seed them empty for a schema-9 save.
+            let mut snapshot: CharacterSnapshot = toml::from_str(&document.payload)
+                .map_err(|error| SaveError::InvalidToml(error.to_string()))?;
+            if snapshot.schema_version != REPUTATION_SNAPSHOT_VERSION {
+                return Err(SaveError::InvalidSnapshot);
+            }
+            snapshot.schema_version = SNAPSHOT_VERSION;
+            snapshot
+        }
         SNAPSHOT_VERSION => {
             let snapshot: CharacterSnapshot = toml::from_str(&document.payload)
                 .map_err(|error| SaveError::InvalidToml(error.to_string()))?;
@@ -5440,6 +5762,9 @@ pub fn decode_snapshot(source: &str) -> Result<CharacterSnapshot, SaveError> {
         _ => unreachable!("snapshot version was checked above"),
     };
     let mut snapshot = snapshot;
+    // Schema 9 and older kept a rewarded quest in the log with `reward_choice` set; move those
+    // entries into the rewarded set before validation.
+    quest::normalize_journal(&mut snapshot.quest_journal);
     if document.schema_version < EQUIPMENT_SNAPSHOT_VERSION {
         grant_starting_equipment(&mut snapshot);
     }
@@ -6944,16 +7269,21 @@ mod tests {
         let (mut core, id) = core_for(10, 8);
         core.enter_world().unwrap();
         assert_eq!(
-            core.quest_gossip_rows(15278).unwrap()[0].icon,
+            core.quest_gossip_rows(quest::QuestSource::Creature(15278))
+                .unwrap()[0]
+                .icon,
             quest::QuestOfferState::Available
         );
-        core.accept_quest(15278, 8325).unwrap();
+        core.accept_quest(quest::QuestSource::Creature(15278), 8325)
+            .unwrap();
         assert_eq!(
-            core.quest_gossip_rows(15278).unwrap()[0].icon,
+            core.quest_gossip_rows(quest::QuestSource::Creature(15278))
+                .unwrap()[0]
+                .icon,
             quest::QuestOfferState::Incomplete
         );
         assert_eq!(
-            core.turn_in_quest(15278, 8325, 0),
+            core.turn_in_quest(quest::QuestSource::Creature(15278), 8325, 0),
             Err(quest::QuestError::Incomplete)
         );
 
@@ -7002,40 +7332,53 @@ mod tests {
             }
         }
         assert_eq!(
-            core.quest_gossip_rows(15278).unwrap()[0].icon,
+            core.quest_gossip_rows(quest::QuestSource::Creature(15278))
+                .unwrap()[0]
+                .icon,
             quest::QuestOfferState::Rewardable
         );
         assert_eq!(
-            core.turn_in_quest(15274, 8325, 0),
+            core.turn_in_quest(quest::QuestSource::Creature(15274), 8325, 0),
             Err(quest::QuestError::WrongNpc)
         );
         assert_eq!(
-            core.turn_in_quest(15278, 8325, 2),
+            core.turn_in_quest(quest::QuestSource::Creature(15278), 8325, 2),
             Err(quest::QuestError::InvalidRewardChoice)
         );
 
-        let reward = core.turn_in_quest(15278, 8325, 1).unwrap();
-        assert_eq!(reward.experience, 50);
+        let reward = core
+            .turn_in_quest(quest::QuestSource::Creature(15278), 8325, 1)
+            .unwrap();
+        assert_eq!(reward.experience, 100);
         assert_eq!(reward.money_copper, 30);
-        assert_eq!(reward.item.entry, 20998);
-        assert_eq!(reward.item.count, 1);
+        assert_eq!(reward.items[0].entry, 20998);
+        assert_eq!(reward.items[0].count, 1);
+        assert_eq!(reward.reputation, [(911, 250)]);
         let snapshot = core.snapshot(&id).unwrap();
+        assert_eq!(
+            snapshot.reputation,
+            [quest::ReputationStanding {
+                faction: 911,
+                value: 250
+            }]
+        );
         assert_eq!(snapshot.level, 2, "kill XP plus the quest reward levels up");
-        assert_eq!(snapshot.experience, 50);
+        assert_eq!(snapshot.experience, 100);
         assert_eq!(snapshot.health, PLAYER_MAX_HEALTH);
         assert_eq!(snapshot.mana, PLAYER_MAX_MANA);
         assert_eq!(snapshot.money_copper, 30);
-        assert_eq!(snapshot.inventory, [reward.item]);
+        assert_eq!(snapshot.inventory, reward.items);
+        assert!(snapshot.quest_journal.is_rewarded(8325));
+        // The reward opens the next chain link at the same NPC; 8325 itself is gone.
+        let rows = core
+            .quest_gossip_rows(quest::QuestSource::Creature(15278))
+            .unwrap();
+        assert!(!rows.iter().any(|row| row.quest_id == 8325));
+        assert!(rows
+            .iter()
+            .any(|row| { row.quest_id == 8326 && row.icon == quest::QuestOfferState::Available }));
         assert_eq!(
-            snapshot.quest_journal.progress(8325).unwrap().reward_choice,
-            Some(1)
-        );
-        assert_eq!(
-            core.quest_gossip_rows(15278).unwrap(),
-            Vec::<quest::QuestGossipRow>::new()
-        );
-        assert_eq!(
-            core.turn_in_quest(15278, 8325, 1),
+            core.turn_in_quest(quest::QuestSource::Creature(15278), 8325, 1),
             Err(quest::QuestError::AlreadyRewarded)
         );
 
@@ -7044,20 +7387,18 @@ mod tests {
         let saved = decode_snapshot(&core.encode_snapshot(&id).unwrap()).unwrap();
         let restored = GameCore::restore(profile, [saved]).unwrap();
         let restored = restored.snapshot(&id).unwrap();
-        assert_eq!(restored.experience, 50);
+        assert_eq!(restored.experience, 100);
         assert_eq!(restored.money_copper, 30);
-        assert_eq!(restored.inventory, [reward.item]);
-        assert_eq!(
-            restored.quest_journal.progress(8325).unwrap().reward_choice,
-            Some(1)
-        );
+        assert_eq!(restored.inventory, reward.items);
+        assert!(restored.quest_journal.is_rewarded(8325));
     }
 
     #[test]
     fn quest_xp_crossing_a_source_threshold_advances_character_level() {
         let (mut core, id) = core_for(10, 8);
         core.enter_world().unwrap();
-        core.accept_quest(15278, 8325).unwrap();
+        core.accept_quest(quest::QuestSource::Creature(15278), 8325)
+            .unwrap();
         let mana_wyrm = core
             .hostiles()
             .iter()
@@ -7078,12 +7419,14 @@ mod tests {
         core.active_health = 40;
         core.active_mana = 25;
 
-        let reward = core.turn_in_quest(15278, 8325, 0).unwrap();
+        let reward = core
+            .turn_in_quest(quest::QuestSource::Creature(15278), 8325, 0)
+            .unwrap();
         assert_eq!((reward.level, reward.levels_gained), (2, 1));
-        assert_eq!(reward.experience_in_level, 0);
+        assert_eq!(reward.experience_in_level, 50);
         assert_eq!((reward.health_gained, reward.mana_gained), (60, 75));
         assert_eq!(core.snapshot(&id).unwrap().level, 2);
-        assert_eq!(core.snapshot(&id).unwrap().experience, 0);
+        assert_eq!(core.snapshot(&id).unwrap().experience, 50);
         assert_eq!(core.active_health(), PLAYER_MAX_HEALTH);
         assert_eq!(core.active_mana(), PLAYER_MAX_MANA);
     }
@@ -7093,7 +7436,8 @@ mod tests {
         let (mut core, id) = core_for(10, 8);
         core.enter_world().unwrap();
         core.snapshots.get_mut(&id).unwrap().level = 70;
-        core.accept_quest(15278, 8325).unwrap();
+        core.accept_quest(quest::QuestSource::Creature(15278), 8325)
+            .unwrap();
         let mana_wyrm = core
             .hostiles()
             .iter()
@@ -7107,9 +7451,11 @@ mod tests {
             }
         }
 
-        let reward = core.turn_in_quest(15278, 8325, 0).unwrap();
-        assert_eq!(reward.money_copper, 60);
-        assert_eq!(core.snapshot(&id).unwrap().money_copper, 60);
+        let reward = core
+            .turn_in_quest(quest::QuestSource::Creature(15278), 8325, 0)
+            .unwrap();
+        assert_eq!(reward.money_copper, 90);
+        assert_eq!(core.snapshot(&id).unwrap().money_copper, 90);
     }
 
     #[test]
@@ -7117,19 +7463,20 @@ mod tests {
         let (mut human, _) = core_for(1, 8);
         human.enter_world().unwrap();
         assert_eq!(
-            human.accept_quest(15278, 8325),
+            human.accept_quest(quest::QuestSource::Creature(15278), 8325),
             Err(quest::QuestError::WrongRace)
         );
 
         let (mut core, id) = core_for(10, 8);
         core.enter_world().unwrap();
         assert_eq!(
-            core.accept_quest(15274, 8325),
+            core.accept_quest(quest::QuestSource::Creature(15274), 8325),
             Err(quest::QuestError::WrongNpc)
         );
-        core.accept_quest(15278, 8325).unwrap();
+        core.accept_quest(quest::QuestSource::Creature(15278), 8325)
+            .unwrap();
         assert_eq!(
-            core.accept_quest(15278, 8325),
+            core.accept_quest(quest::QuestSource::Creature(15278), 8325),
             Err(quest::QuestError::AlreadyAccepted)
         );
         let mana_wyrm = core
@@ -7156,18 +7503,13 @@ mod tests {
         assert_eq!(snapshot.money_copper, 0);
         assert_eq!((snapshot.level, snapshot.experience), (2, 0));
         assert_eq!(
-            core.turn_in_quest(15278, 8325, 0),
+            core.turn_in_quest(quest::QuestSource::Creature(15278), 8325, 0),
             Err(quest::QuestError::InventoryFull)
         );
         let snapshot = core.snapshot(&id).unwrap();
         assert_eq!(snapshot.money_copper, 0);
         assert_eq!((snapshot.level, snapshot.experience), (2, 0));
-        assert!(snapshot
-            .quest_journal
-            .progress(8325)
-            .unwrap()
-            .reward_choice
-            .is_none());
+        assert!(snapshot.quest_journal.progress(8325).is_some());
     }
 
     #[test]
@@ -7290,13 +7632,15 @@ mod tests {
             "the converted bow range, got {}",
             impact.damage
         );
-        assert!(core.hostile(spawn_id).unwrap().health < core.hostile(spawn_id).unwrap().max_health);
+        assert!(
+            core.hostile(spawn_id).unwrap().health < core.hostile(spawn_id).unwrap().max_health
+        );
 
         // The shot repeats on its own timer until it is stopped.
-        assert!(core.advance_combat(2_300).iter().any(|update| matches!(
-            update,
-            CombatUpdate::RangedImpact { spell_id: 75, .. }
-        )));
+        assert!(core
+            .advance_combat(2_300)
+            .iter()
+            .any(|update| matches!(update, CombatUpdate::RangedImpact { spell_id: 75, .. })));
         assert_eq!(core.stop_auto_shot(), Some(spawn_id));
         assert!(
             core.advance_combat(10_000).is_empty(),
@@ -7424,7 +7768,11 @@ mod tests {
                 duration_ms: 4_000,
             })
         );
-        assert_eq!(core.active_health(), 55, "the drain heals the caster per tick");
+        assert_eq!(
+            core.active_health(),
+            55,
+            "the drain heals the caster per tick"
+        );
 
         // The last two ticks land on the cadence and the channel ends.
         let updates = core.advance_combat(2_000);
@@ -7436,7 +7784,10 @@ mod tests {
             2
         );
         assert!(
-            matches!(updates.last(), Some(CombatUpdate::ChannelEnd { spell_id: 900_080 })),
+            matches!(
+                updates.last(),
+                Some(CombatUpdate::ChannelEnd { spell_id: 900_080 })
+            ),
             "the channel ends after its last tick: {updates:?}"
         );
         assert_eq!(core.active_channel_spell(), None);
@@ -7494,7 +7845,9 @@ mod tests {
             .provoked = true;
         let updates = core.advance_creature_ai(CREATURE_SWING_MS);
         assert!(
-            updates.iter().any(|update| matches!(update, CreatureAiUpdate::Move { .. })),
+            updates
+                .iter()
+                .any(|update| matches!(update, CreatureAiUpdate::Move { .. })),
             "the provoked creature chases: {updates:?}"
         );
 
@@ -7650,7 +8003,10 @@ mod tests {
         );
 
         // A second summon replaces the first, and a dismissal empties the slot.
-        assert_eq!(core.begin_cast(summon(900_091, 1860)), Ok(CastOutcome::Cast));
+        assert_eq!(
+            core.begin_cast(summon(900_091, 1860)),
+            Ok(CastOutcome::Cast)
+        );
         let updates = core.advance_combat(1);
         assert!(
             matches!(
@@ -7681,9 +8037,7 @@ mod tests {
         let (mut core, id) = core_for(1, 8);
         {
             let snapshot = core.snapshots.get_mut(&id).unwrap();
-            snapshot
-                .known_spell_ids
-                .extend([900_092, 900_093, 900_094]);
+            snapshot.known_spell_ids.extend([900_092, 900_093, 900_094]);
             snapshot.known_spell_ids.sort_unstable();
         }
         enter_practice_world(&mut core);
@@ -7836,10 +8190,7 @@ mod tests {
             })
             .expect("the bolt lands");
         assert!((6..=8).contains(&impact.damage), "{impact:?}");
-        assert_eq!(
-            impact.remaining_health,
-            HOSTILE_MAX_HEALTH - impact.damage
-        );
+        assert_eq!(impact.remaining_health, HOSTILE_MAX_HEALTH - impact.damage);
 
         // A heal tick overheals nothing at full health, and different totems stand together.
         let heal = TotemBehavior {
@@ -7904,7 +8255,10 @@ mod tests {
             "{updates:?}"
         );
         // Each landed hit pays its own per-hit floor.
-        assert_eq!(core.active_rage(), rage_from_damage(CREATURE_DAMAGE, 1, true));
+        assert_eq!(
+            core.active_rage(),
+            rage_from_damage(CREATURE_DAMAGE, 1, true)
+        );
     }
 
     #[test]

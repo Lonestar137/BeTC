@@ -330,11 +330,15 @@ fn snapshot(
         QuestView::Greeting(l) => {
             let mut active_titles = Vec::new();
             let mut available_titles = Vec::new();
+            let mut active_levels = Vec::new();
+            let mut available_levels = Vec::new();
             for q in &l.quests {
                 if row_is_active(q.icon) {
                     active_titles.push(q.title.clone());
+                    active_levels.push(q.level);
                 } else {
                     available_titles.push(q.title.clone());
+                    available_levels.push(q.level);
                 }
             }
             QuestState {
@@ -342,6 +346,8 @@ fn snapshot(
                 greeting: sub(&l.greeting),
                 active_titles,
                 available_titles,
+                active_levels,
+                available_levels,
                 ..Default::default()
             }
         }
@@ -800,6 +806,55 @@ mod tests {
         // No template yet: no name, and white.
         assert!(snap.rewards[0].name.is_none());
         assert_eq!(snap.rewards[0].quality, 1);
+    }
+
+    #[test]
+    fn greeting_snapshot_keeps_each_rows_level_beside_its_title() {
+        use benilla_protocol::messages::{QuestGiverList, QuestListEntry};
+        let mut giver = QuestGiver::default();
+        giver.open(
+            0x42,
+            QuestView::Greeting(QuestGiverList {
+                npc: 0x42,
+                greeting: "Hello.".into(),
+                emote_delay: 0,
+                emote: 0,
+                quests: vec![
+                    QuestListEntry {
+                        quest_id: 1,
+                        icon: 3,
+                        level: 9,
+                        title: "Done Deal".into(),
+                    },
+                    QuestListEntry {
+                        quest_id: 2,
+                        icon: 5,
+                        level: 4,
+                        title: "A Threat Within".into(),
+                    },
+                ],
+            }),
+        );
+        let items = Items::default();
+        let (tx, _rx) = crossbeam_channel::unbounded();
+        let commands = NetCommands(tx);
+        let snap = snapshot(
+            &giver,
+            &items,
+            None,
+            &commands,
+            &crate::npc_text::MacroContext {
+                subject: None,
+                states: &crate::world_state::WorldStates::default(),
+            },
+            None,
+        )
+        .expect("open");
+        assert_eq!(snap.panel, QuestPanel::Greeting);
+        assert_eq!(snap.active_titles, ["Done Deal"]);
+        assert_eq!(snap.active_levels, [9], "the level rides the same index");
+        assert_eq!(snap.available_titles, ["A Threat Within"]);
+        assert_eq!(snap.available_levels, [4], "…for both lists");
     }
 
     #[test]

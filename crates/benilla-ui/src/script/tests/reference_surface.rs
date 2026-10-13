@@ -53,6 +53,25 @@ const BEYOND_1_12: &[&str] = &[
     "UnitChannelInfo",
     "hooksecurefunc",
     "securecall",
+    // Build-8606 `QuestFrame.lua`'s greeting loop reads both per-row predicates (`:227`, `:260`);
+    // 1.12 folded the grey-title test into `GetDifficultyColor`, so neither name exists there.
+    // Without them the OnShow aborts before the title buttons get their IDs and no quest row can
+    // be picked.
+    "IsActiveQuestTrivial",
+    "IsAvailableQuestTrivial",
+    // Build-8606 quest windows read these TBC-only counters and reward lines. `QuestLogUpdateQuestCount`
+    // calls `GetDailyQuestsCompleted` at the top of `QuestLog_Update` (`QuestLogFrame.lua:714`), so a
+    // nil there aborts the whole refresh and the log shows neither its quests nor their objectives;
+    // the rest are compared with `> 0` or folded into a reward total (`QuestLogFrame.lua:423`,
+    // `:461`; `QuestFrame.lua:357`, `:587`). 1.12 folded all of them away, so none exists there.
+    "GetDailyQuestsCompleted",
+    "GetMaxDailyQuests",
+    "GetQuestLogGroupNum",
+    "GetQuestLogRewardHonor",
+    "GetQuestLogRewardTitle",
+    "GetRewardHonor",
+    "GetRewardTitle",
+    "GetSuggestedGroupNum",
     // TBC's account-expansion tier. The offline game is 2.4.3, so it answers 1 (The Burning
     // Crusade) and `ReputationFrame.lua:17` resolves `MAX_PLAYER_LEVEL` to 70; 1.12 has no such
     // global. Without it the OnLoad raises and `MAX_PLAYER_LEVEL` stays 0, hiding the XP bar.

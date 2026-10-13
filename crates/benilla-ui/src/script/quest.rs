@@ -60,6 +60,10 @@ pub struct QuestState {
     pub greeting: String,
     pub active_titles: Vec<String>,
     pub available_titles: Vec<String>,
+    /// The wire quest levels behind [`Self::active_titles`] and [`Self::available_titles`], for
+    /// `IsActiveQuestTrivial`/`IsAvailableQuestTrivial`; 0 when the row carried no level.
+    pub active_levels: Vec<u32>,
+    pub available_levels: Vec<u32>,
     // Detail, progress and reward panels.
     pub title: String,
     /// The text of whichever panel is live: quest, progress or reward.
@@ -89,6 +93,8 @@ impl Default for QuestState {
             greeting: String::new(),
             active_titles: Vec::new(),
             available_titles: Vec::new(),
+            active_levels: Vec::new(),
+            available_levels: Vec::new(),
             title: String::new(),
             body: String::new(),
             objectives: String::new(),
@@ -234,6 +240,18 @@ pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
     install_count(lua, "GetNumQuestItems", |q| q.required.len() as i64)?;
     install_count(lua, "GetRewardMoney", |q| i64::from(q.reward_money))?;
     install_count(lua, "GetQuestMoneyToGet", |q| i64::from(q.required_money))?;
+    // Honor and title rewards are not modeled. The stock reward pane folds both into its reward
+    // total, so honor answers 0 — a nil would compare against 0 and never show the pane — and the
+    // title stays a truthy-check nil (`QuestFrame.lua:357`, `:358`).
+    install_count(lua, "GetRewardHonor", |_| 0)?;
+    g.set(
+        "GetRewardTitle",
+        lua.create_function(|_, ()| Ok(Value::Nil))?,
+    )?;
+    // The suggested group size, 0 while unmodeled: the detail pane only adds its line when the
+    // count is positive, and a nil aborts the whole `QuestFrameDetailPanel_OnShow` before the
+    // reward rows fill (`QuestFrame.lua:587`).
+    install_count(lua, "GetSuggestedGroupNum", |_| 0)?;
 
     g.set(
         "IsQuestCompletable",
@@ -264,6 +282,36 @@ pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
     }
     install_title(lua, "GetActiveTitle", true)?;
     install_title(lua, "GetAvailableTitle", false)?;
+
+    // IsActiveQuestTrivial / IsAvailableQuestTrivial: whether the row's quest level sits past the
+    // grey band, the same test `QuestLogFrame.lua`'s `GetDifficultyColor` buckets with
+    // (`playerLevel - level > GetQuestGreenRange()`). Stock reads both in the greeting panel's
+    // title loop (`QuestFrame.lua:227` and `:260`); the missing global aborted the whole OnShow
+    // and left every title button without its ID, so no row could be picked.
+    fn install_trivial(lua: &Lua, name: &str, active: bool) -> mlua::Result<()> {
+        lua.globals().set(
+            name,
+            lua.create_function(move |lua, i: usize| {
+                let model = lua.app_data_ref::<Model>().expect("model app_data");
+                let player_level = model.player_req.level;
+                let level = model.quest.as_ref().and_then(|q| {
+                    let levels = if active {
+                        &q.active_levels
+                    } else {
+                        &q.available_levels
+                    };
+                    i.checked_sub(1).and_then(|n| levels.get(n)).copied()
+                });
+                Ok(flag(level.is_some_and(|level| {
+                    level != 0
+                        && player_level > level
+                        && player_level - level > super::unit::grey_band(player_level)
+                })))
+            })?,
+        )
+    }
+    install_trivial(lua, "IsActiveQuestTrivial", true)?;
+    install_trivial(lua, "IsAvailableQuestTrivial", false)?;
 
     // GetQuestItemInfo(type, index) → name, texture, numItems, quality, isUsable (`0x501f80`): five
     // values, `isUsable` 1 or nil. A type other than `"reward"`, `"choice"` or `"required"` (any
@@ -541,6 +589,18 @@ mod tests {
         );
     }
 
+    /// Honor, title and suggested-group rewards are unmodeled, but their types matter: the stock
+    /// detail pane compares the group count with `> 0` and folds honor into the reward total, so a
+    /// nil aborts `QuestFrameDetailPanel_OnShow` before the reward rows fill (`QuestFrame.lua:587`,
+    /// `:357`).
+    #[test]
+    fn unmodeled_honor_title_and_group_answer_numbers_never_nil() {
+        let s = UiScript::new().unwrap();
+        assert_eq!(s.eval::<i64>("return GetRewardHonor()").unwrap(), 0);
+        assert_eq!(s.eval::<i64>("return GetSuggestedGroupNum()").unwrap(), 0);
+        assert!(s.eval::<bool>("return GetRewardTitle() == nil").unwrap());
+    }
+
     #[test]
     fn detail_panel_getters_read() {
         let mut s = UiScript::new().unwrap();
@@ -662,6 +722,40 @@ mod tests {
             ]
         );
         assert!(s.take_quest_selects().is_empty(), "drained");
+    }
+
+    /// `QuestFrame.lua:227`/`:260` read both; a missing global aborted the greeting OnShow before
+    /// the title buttons got their ID, so no quest row could be picked.
+    #[test]
+    fn trivial_quests_read_the_grey_band() {
+        let mut s = UiScript::new().unwrap();
+        s.set_player_req_state(crate::script::PlayerReqState {
+            level: 10,
+            ..Default::default()
+        });
+        s.set_quest(Some(QuestState {
+            panel: QuestPanel::Greeting,
+            active_titles: vec!["Done Deal".into(), "Report to Goldshire".into()],
+            available_titles: vec![
+                "A Threat Within".into(),
+                "Kobold Camp Cleanup".into(),
+                "No Level".into(),
+            ],
+            active_levels: vec![4, 5],
+            available_levels: vec![4, 5, 0],
+            ..Default::default()
+        }));
+        // Level 10 reads band 5 (the table's `10/5` slot): a gap over 5 is grey, a gap of exactly
+        // 5 is still green, and a row without a level is never trivial.
+        assert!(s.eval::<bool>("return IsAvailableQuestTrivial(1)").unwrap());
+        assert!(!s.eval::<bool>("return IsAvailableQuestTrivial(2)").unwrap());
+        assert!(!s.eval::<bool>("return IsAvailableQuestTrivial(3)").unwrap());
+        assert!(s.eval::<bool>("return IsActiveQuestTrivial(1)").unwrap());
+        assert!(!s.eval::<bool>("return IsActiveQuestTrivial(2)").unwrap());
+        assert!(
+            !s.eval::<bool>("return IsAvailableQuestTrivial(9)").unwrap(),
+            "an index past the list reads false, not an error"
+        );
     }
 
     #[test]

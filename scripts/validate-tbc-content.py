@@ -335,6 +335,95 @@ def validate_vendor_document(document):
     return errors, summary
 
 
+def validate_quest_document(document):
+    errors = []
+    if not isinstance(document, dict):
+        return ["document: expected a TOML table"], {}
+
+    required = {
+        "schema_version",
+        "source",
+        "revision",
+        "license",
+        "conversion_version",
+        "client_build",
+        "extraction_command",
+        "quest",
+    }
+    optional = {"gossip", "greeting", "condition", "game_event", "item_template"}
+    for key in sorted(required - document.keys()):
+        errors.append(f"{key}: missing required root field")
+    for key in sorted(document.keys() - required - optional):
+        errors.append(f"{key}: unknown root field")
+    if document.get("schema_version") != 2:
+        errors.append(f"schema_version: expected 2, got {document.get('schema_version')!r}")
+    if document.get("client_build") != 8606:
+        errors.append(f"client_build: expected 8606, got {document.get('client_build')!r}")
+    revision = document.get("revision")
+    if isinstance(revision, str) and re.fullmatch(r"[0-9a-f]{40}", revision) is None:
+        errors.append("revision: expected a 40-character lowercase hexadecimal commit hash")
+
+    quests = document.get("quest")
+    if not isinstance(quests, list):
+        return errors + ["quest: expected an array of tables"], {}
+
+    item_entries = set()
+    for row in document.get("item_template", []):
+        entry = row.get("entry")
+        if type(entry) is int:
+            if entry in item_entries:
+                errors.append(f"item_template: duplicate entry {entry}")
+            item_entries.add(entry)
+    event_entries = {row.get("entry") for row in document.get("game_event", [])}
+    condition_entries = {row.get("id") for row in document.get("condition", [])}
+
+    previous_id = 0
+    for index, quest in enumerate(quests):
+        label = f"quest[{index}]"
+        quest_id = quest.get("id")
+        if type(quest_id) is not int or quest_id <= 0:
+            errors.append(f"{label}.id: expected a positive quest id")
+        elif quest_id <= previous_id:
+            errors.append(f"{label}.id: quest ids must be unique and ascending")
+        else:
+            previous_id = quest_id
+        if not quest.get("title"):
+            errors.append(f"{label}.title: expected a non-empty title")
+        for objective in quest.get("objective", []):
+            if objective.get("kind") not in {
+                "creature_kill",
+                "creature_spellcast",
+                "gameobject_use",
+                "gameobject_spellcast",
+                "item",
+                "spell",
+            }:
+                errors.append(f"{label}.objective: unknown kind {objective.get('kind')!r}")
+            if not 0 <= objective.get("slot", 0) <= 3:
+                errors.append(f"{label}.objective: slot must be 0..3")
+            if objective.get("kind") == "item" and objective.get("entry") not in item_entries:
+                errors.append(f"{label}.objective: no item_template for {objective.get('entry')}")
+        for choice in quest.get("reward_choice", []) + quest.get("reward_item", []):
+            if choice.get("item_entry") not in item_entries:
+                errors.append(f"{label}.reward: no item_template for {choice.get('item_entry')}")
+        for event_id in quest.get("event_ids", []):
+            if event_id not in event_entries:
+                errors.append(f"{label}.event_ids: no game_event for {event_id}")
+        condition_id = quest.get("required_condition", 0)
+        if condition_id and condition_id not in condition_entries:
+            errors.append(f"{label}.required_condition: no condition for {condition_id}")
+
+    summary = {
+        "quest": len(quests),
+        "game_event": len(document.get("game_event", [])),
+        "condition": len(document.get("condition", [])),
+        "gossip": len(document.get("gossip", [])),
+        "greeting": len(document.get("greeting", [])),
+        "item_template": len(document.get("item_template", [])),
+    }
+    return errors, summary
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("pack", type=Path, help="TOML content pack to validate")
@@ -347,7 +436,10 @@ def main():
         print(f"content pack error: {error}", file=sys.stderr)
         return 1
 
-    if isinstance(document, dict) and "vendor" in document:
+    if isinstance(document, dict) and "quest" in document:
+        errors, summary = validate_quest_document(document)
+        label = "quest pack"
+    elif isinstance(document, dict) and "vendor" in document:
         errors, summary = validate_vendor_document(document)
         label = "vendor pack"
     else:
@@ -359,7 +451,14 @@ def main():
             print(f"  {error}", file=sys.stderr)
         return 1
 
-    if label == "vendor pack":
+    if label == "quest pack":
+        print(
+            f"valid TBC quest pack: {summary['quest']} quests, "
+            f"{summary['game_event']} game events, {summary['condition']} conditions, "
+            f"{summary['gossip']} gossip rows, {summary['greeting']} greetings, "
+            f"{summary['item_template']} item templates"
+        )
+    elif label == "vendor pack":
         print(
             f"valid TBC vendor pack: {summary['vendor']} stock rows, "
             f"{summary['item_template']} item templates"

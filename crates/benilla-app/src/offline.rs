@@ -825,13 +825,10 @@ fn emit_imported_spawn(
             fields.push((164, u32::from(addon.sheath_state)));
         }
     }
-    if let Some(gender) = benilla_game_core::quest::quest_pack()
-        .quest
-        .iter()
-        .find(|quest| quest.giver_creature_entries.contains(&template.entry))
-        .map(|quest| quest.gossip_npc_gender)
+    if let Some((_, sex)) =
+        creatures.and_then(|creatures| creatures.display_race_sex(template.display_id))
     {
-        fields.push((36, u32::from(gender) << 16));
+        fields.push((36, u32::from(sex) << 16));
     }
     let fields = ObjectFields::from_pairs(&fields)
         .into_created(benilla_protocol::messages::ObjectType::Unit);
@@ -1271,11 +1268,13 @@ fn publish_offline_inventory(
     let Some(snapshot) = core.active().and_then(|id| core.snapshot(id)) else {
         return;
     };
+    let mut pairs = player_item_field_pairs(snapshot);
+    pairs.extend(quest_log_field_pairs(snapshot));
     send_gameplay_events(
         channels,
         [SessionEvent::ObjectValues {
             guid: snapshot.id.presentation_guid(),
-            fields: ObjectFields::from_pairs(&player_item_field_pairs(snapshot)),
+            fields: ObjectFields::from_pairs(&pairs),
         }],
     );
     save_after_command(core, persistence);
@@ -1392,16 +1391,14 @@ fn offline_destroy_item(
 fn quest_log_slot_fields(
     slot: usize,
     progress: &benilla_game_core::quest::QuestProgress,
+    definition: &benilla_game_core::quest::QuestDefinition,
+    inventory: &[benilla_game_core::quest::InventoryItem],
     complete: bool,
 ) -> [(u16, u32); 3] {
     let base = 198 + 3 * slot as u16;
-    if progress.reward_choice.is_some() {
-        return [(base, 0), (base + 1, 0), (base + 2, 0)];
-    }
     let count_state = progress
-        .objective_counts
+        .slot_counts(definition, inventory)
         .iter()
-        .take(4)
         .enumerate()
         .fold(0u32, |word, (index, &count)| {
             word | (count.min(0x3f) << (index * 6))
@@ -1415,19 +1412,36 @@ fn quest_log_slot_fields(
 }
 
 fn quest_log_field_pairs(snapshot: &benilla_game_core::CharacterSnapshot) -> Vec<(u16, u32)> {
-    snapshot
-        .quest_journal
-        .entries
+    let items: Vec<_> = snapshot
+        .inventory
         .iter()
-        .enumerate()
-        .flat_map(|(slot, progress)| {
-            quest_log_slot_fields(
-                slot,
-                progress,
-                snapshot.quest_journal.is_complete(progress.quest_id),
-            )
-        })
-        .collect()
+        .chain(&snapshot.equipment)
+        .copied()
+        .collect();
+    let mut pairs = Vec::new();
+    for (slot, progress) in snapshot.quest_journal.entries.iter().enumerate() {
+        let Some(definition) = benilla_game_core::quest::quest_definition(progress.quest_id) else {
+            continue;
+        };
+        pairs.extend(quest_log_slot_fields(
+            slot,
+            progress,
+            definition,
+            &items,
+            snapshot.quest_journal.is_complete_with(definition, &items),
+        ));
+    }
+    // Zero the log's empty tail. A turn-in or abandon frees a slot, and the client keeps whatever
+    // the server last told it; a slot it is never told to zero stays occupied, so the quest (and
+    // its objective lines) would sit in the quest log forever. `PLAYER_QUEST_LOG_<n>_1 == 0` is the
+    // wire's "empty" (`player_quest_log`), and the id, count-state and timer are written together.
+    for slot in snapshot.quest_journal.entries.len()
+        ..usize::from(benilla_protocol::messages::PLAYER_QUEST_LOG_SLOTS)
+    {
+        let base = 198 + 3 * slot as u16;
+        pairs.extend([(base, 0), (base + 1, 0), (base + 2, 0)]);
+    }
+    pairs
 }
 
 fn item_info(entry: u32) -> Option<benilla_protocol::ItemInfo> {
@@ -1966,7 +1980,7 @@ fn drive_offline_gameplay(
                 continue;
             }
             crate::net::ClientCommand::GossipHello { guid } => {
-                send_offline_gossip_menu(&core.0, &channels, buyback.as_deref_mut(), *guid);
+                send_offline_gossip_menu(&mut core.0, &channels, buyback.as_deref_mut(), *guid);
                 continue;
             }
             crate::net::ClientCommand::ListInventory { guid } => {
@@ -3980,6 +3994,7 @@ fn stream_offline_spawns(
 fn update_local_player(
     time: Res<Time>,
     player: Res<crate::player::Player>,
+    channels: Option<Res<OfflineChannels>>,
     mut core: ResMut<OfflineGameCore>,
     mut persistence: ResMut<OfflinePersistence>,
     mut save_elapsed: Local<f32>,
@@ -4004,6 +4019,17 @@ fn update_local_player(
         if let Err(error) = core.0.update_active(position, elapsed_ms) {
             warn!("offline simulation rejected player state: {error}");
             return;
+        }
+        for quest_id in core.0.drain_failed_quests() {
+            if let Some(channels) = channels.as_deref() {
+                send_gameplay_events(
+                    channels,
+                    [SessionEvent::QuestFailed {
+                        quest_id,
+                        timed: true,
+                    }],
+                );
+            }
         }
         *save_elapsed += time.delta_secs();
     }
@@ -5067,6 +5093,155 @@ mod tests {
     }
 
     #[test]
+    fn a_gossip_questgiver_with_no_gossip_text_opens_its_quest_list() {
+        // Conservator Ilthalaine (2079) carries `UNIT_NPC_FLAG_GOSSIP` but has no converted gossip
+        // menu, so her map to a level-1 night elf is a textless `SMSG_GOSSIP_MESSAGE` (`text_id`
+        // 0) whose only content is the quest list. The right-click routes through the gossip arm
+        // (GOSSIP precedes QUESTGIVER), so the client must open that menu instead of stalling on
+        // the absent NPC text: that stall left her marker drawn and every click unanswered.
+        let id = CharacterId::parse("0000000000000000000000000000000e").unwrap();
+        let mut core = GameCore::default();
+        core.create_character(
+            id,
+            "Anaya",
+            Appearance {
+                race: 4,
+                class: 4,
+                gender: 1,
+                skin: 0,
+                face: 0,
+                hair_style: 0,
+                hair_color: 0,
+                facial_hair: 0,
+            },
+            starting_position(4).unwrap(),
+        )
+        .unwrap();
+        enter_test_world(&mut core, 4);
+
+        let spawn = benilla_game_core::content::creature_content()
+            .spawn
+            .iter()
+            .find(|spawn| spawn.map_id == 1 && spawn.entry == 2079)
+            .expect("converted Conservator Ilthalaine spawn");
+        let guid = imported_guid(spawn.entry, spawn.source_guid);
+
+        let (_pick_tx, picks) = crossbeam_channel::unbounded();
+        let (events, received) = crossbeam_channel::unbounded();
+        let (_command_tx, commands) = crossbeam_channel::unbounded();
+        let channels = OfflineChannels {
+            picks,
+            events,
+            commands,
+        };
+
+        assert!(
+            benilla_game_core::quest::gossip_for(2079).is_none(),
+            "Ilthalaine has no converted gossip text"
+        );
+        send_offline_gossip_menu(&mut core, &channels, None, guid);
+        assert!(matches!(
+            received.try_recv().unwrap(),
+            SessionEvent::GossipMenu { npc, text_id: 0, quests, .. }
+                if npc == guid
+                    && quests.iter().any(|(quest, icon, _, title)| {
+                        *quest == 456
+                            && *icon == benilla_protocol::messages::dialog_status::AVAILABLE
+                            && title == "The Balance of Nature"
+                    })
+        ));
+    }
+
+    #[test]
+    fn a_completed_turn_in_row_is_active_in_the_gossip_menu() {
+        // The reported Durotar flow: Kaltunk (10176) starts 4641 and Gornek (3143) turns it in.
+        // Gornek has `UNIT_NPC_FLAG_GOSSIP` and no gossip text, so his menu is `text_id` 0, and
+        // the completed row must carry `REWARD_REP` (4) — which the client's `{3,4}` test reads as
+        // active — not the overhead marker's `REWARD2` (7), which reads as an available quest and
+        // answers the click with a detail query the server refuses.
+        let id = CharacterId::parse("0000000000000000000000000000000f").unwrap();
+        let mut core = GameCore::default();
+        core.create_character(
+            id,
+            "Sdaaaz",
+            Appearance {
+                race: 2,
+                class: 1,
+                gender: 0,
+                skin: 0,
+                face: 0,
+                hair_style: 0,
+                hair_color: 0,
+                facial_hair: 0,
+            },
+            starting_position(2).unwrap(),
+        )
+        .unwrap();
+        enter_test_world(&mut core, 2);
+
+        let content = benilla_game_core::content::creature_content();
+        let spawn = |entry: u32| {
+            content
+                .spawn
+                .iter()
+                .find(|spawn| spawn.map_id == 1 && spawn.entry == entry)
+                .unwrap_or_else(|| panic!("converted spawn for entry {entry}"))
+        };
+        let kaltunk = spawn(10176);
+        let gornek = spawn(3143);
+        let kaltunk_guid = imported_guid(kaltunk.entry, kaltunk.source_guid);
+        let gornek_guid = imported_guid(gornek.entry, gornek.source_guid);
+
+        core.update_active(
+            WorldPosition {
+                map_id: 1,
+                x: kaltunk.x,
+                y: kaltunk.y,
+                z: kaltunk.z,
+                orientation: kaltunk.orientation,
+            },
+            0,
+        )
+        .unwrap();
+        let (_pick_tx, picks) = crossbeam_channel::unbounded();
+        let (events, received) = crossbeam_channel::unbounded();
+        let (_command_tx, commands) = crossbeam_channel::unbounded();
+        let channels = OfflineChannels {
+            picks,
+            events,
+            commands,
+        };
+        let mut persistence = OfflinePersistence::new(false);
+        accept_offline_quest(&mut core, &mut persistence, &channels, kaltunk_guid, 4641);
+        assert!(
+            core.active_quest_journal()
+                .unwrap()
+                .progress(4641)
+                .is_some(),
+            "Kaltunk offers 4641 to a level-1 orc"
+        );
+        let _ = received.try_iter().count();
+
+        send_offline_gossip_menu(&mut core, &channels, None, gornek_guid);
+        let menu = received
+            .try_iter()
+            .find_map(|event| match event {
+                SessionEvent::GossipMenu {
+                    npc,
+                    text_id,
+                    quests,
+                    ..
+                } if npc == gornek_guid => Some((text_id, quests)),
+                _ => None,
+            })
+            .expect("Gornek opens a gossip menu");
+        assert_eq!(menu.0, 0, "no converted gossip text");
+        assert!(menu.1.iter().any(|(quest, icon, _, _)| {
+            *quest == 4641 && *icon == benilla_protocol::messages::dialog_status::REWARD_REP
+        }));
+    }
+
+    #[test]
     fn offline_gossip_hello_on_a_trainer_opens_its_trainer_list() {
         let content = benilla_game_core::content::creature_content();
         let spawn = content
@@ -5190,7 +5365,7 @@ mod tests {
                 if npc == erona_guid
                     && status == benilla_protocol::messages::dialog_status::AVAILABLE
         ));
-        send_offline_gossip_menu(&core, &channels, None, erona_guid);
+        send_offline_gossip_menu(&mut core, &channels, None, erona_guid);
         assert!(matches!(
             received.try_recv().unwrap(),
             SessionEvent::GossipMenu { npc, text_id: 7_781, quests, .. }
@@ -5303,7 +5478,7 @@ mod tests {
         assert!(reward_events.iter().any(|event| matches!(
             event,
             SessionEvent::QuestComplete(complete)
-                if complete.quest_id == 8_325 && complete.xp == 50 && complete.money == 30
+                if complete.quest_id == 8_325 && complete.xp == 100 && complete.money == 30
         )));
         assert!(reward_events
             .iter()
@@ -5313,8 +5488,16 @@ mod tests {
             SessionEvent::ItemPushResult(result)
                 if result.item_entry == 20_997 && result.count == 1
         )));
+        // The turn-in frees log slot 0; the update must zero its fields, or the client's log keeps
+        // showing the completed quest (and its objectives) as if it were still taken.
+        assert!(reward_events.iter().any(|event| matches!(
+            event,
+            SessionEvent::ObjectValues { guid, fields }
+                if *guid == id.presentation_guid()
+                    && fields.player_quest_log(0).is_some_and(|slot| slot.quest_id == 0)
+        )));
         let snapshot = core.snapshot(&id).unwrap();
-        assert_eq!(snapshot.experience, 50);
+        assert_eq!(snapshot.experience, 100);
         assert_eq!(snapshot.money_copper, 30);
         assert_eq!(snapshot.inventory.len(), 1);
     }

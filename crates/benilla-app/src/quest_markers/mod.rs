@@ -523,7 +523,11 @@ impl Plugin for QuestMarkersPlugin {
                 pose_markers,
                 bake_seat_scale,
             )
-                .chain(),
+                .chain()
+                // The sweep's per-unit ask keys on `Ref<ObjectStore>::is_changed`, so it must see
+                // the units the net drain just created; an undeclared order lets it run first and
+                // miss every create's change tick for good, and no query ever goes out.
+                .after(benilla_world::schedule::WorldStage::Net),
         )
         .add_systems(
             PostUpdate,

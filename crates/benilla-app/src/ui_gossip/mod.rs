@@ -45,14 +45,15 @@ impl GossipState {
         select_greeting(blocks, npc_gender, greeting_roll()).map(str::to_string)
     }
 
-    /// The reference's text-pending latch (`[0xbbb670]`): a menu whose text query is out, or was
-    /// never sent (`text_id` 0). While it holds, nothing fires and every select is refused.
+    /// The reference's text-pending latch (`[0xbbb670]`): a menu whose `CMSG_NPC_TEXT_QUERY` is
+    /// still out. A `text_id` of 0 owes no query — the reference's `DBCache::Get` never asks for id
+    /// 0 — so a textless menu is open, not pending, and its selects are allowed.
     pub(crate) fn text_pending(&self) -> bool {
-        self.npc.is_some() && self.greeting.is_none()
+        self.npc.is_some() && self.text_id != 0 && self.greeting.is_none()
     }
 
     /// Latch a `SMSG_GOSSIP_MESSAGE` menu; `true` when the caller owes the `CMSG_NPC_TEXT_QUERY`.
-    /// A `text_id` of 0 stays pending: the reference's `DBCache::Get` never queries id 0.
+    /// A `text_id` of 0 owes no query; the menu opens with an empty greeting.
     pub(crate) fn open_menu(
         &mut self,
         npc: u64,
@@ -194,8 +195,15 @@ const GOSSIP_ICON_TYPES: [&str; 14] = [
 /// is pending, so its `None` never means pending.
 fn snapshot(state: &GossipState) -> Option<GossipMenu> {
     state.npc?;
+    // A textless menu (`text_id` 0) opens with an empty greeting; any other id is still waiting on
+    // its `CMSG_NPC_TEXT_QUERY`, so it has no snapshot yet.
+    let greeting = match state.greeting.clone() {
+        Some(line) => line,
+        None if state.text_id == 0 => String::new(),
+        None => return None,
+    };
     Some(GossipMenu {
-        greeting: state.greeting.clone()?,
+        greeting,
         // Active or available by the wire icon: the reference's `{3,4}` test in `0x4e2430` and
         // `0x4e2580`, behind `GetGossipAvailableQuests` and `GetGossipActiveQuests`.
         quests: state
@@ -738,7 +746,7 @@ mod tests {
     /// The reference's missing-text path (`0x4e216e`) ends the interaction, and its
     /// `DBCache::Get` never queries id 0.
     #[test]
-    fn missing_text_ends_the_interaction_and_id_zero_never_queries() {
+    fn missing_text_ends_the_interaction() {
         // The record's male column is empty, so a male NPC has no line.
         let mut state = GossipState::default();
         assert!(state.open_menu(0x42, 60, Vec::new(), Vec::new(), 0));
@@ -753,11 +761,31 @@ mod tests {
         );
         assert_eq!(state.npc, None, "missing gossip text — interaction ended");
         assert!(snapshot(&state).is_none());
+    }
 
-        // Id 0: no query wanted, and the menu never opens.
+    /// A textless menu (`text_id` 0) owes no `CMSG_NPC_TEXT_QUERY`, so it must open at once with
+    /// an empty greeting and still list its quests. The TBC server answers a gossip hello for a
+    /// quest giver with no converted gossip text this way, and stalling on the absent record made
+    /// every such NPC unclickable: the marker drew, the frame never did.
+    #[test]
+    fn a_textless_menu_opens_at_once_with_its_quest_rows() {
         let mut state = GossipState::default();
-        assert!(!state.open_menu(0x42, 0, Vec::new(), Vec::new(), 0));
-        assert!(snapshot(&state).is_none());
+        let wants_query = state.open_menu(
+            0x42,
+            0,
+            Vec::new(),
+            vec![(4641, 7, 1, "Your Place In The World".into())],
+            0,
+        );
+        assert!(!wants_query, "id 0 owes no text query");
+        assert!(
+            !state.text_pending(),
+            "a textless menu is open, not pending"
+        );
+        let menu = snapshot(&state).expect("opens with no greeting");
+        assert_eq!(menu.greeting, "");
+        assert_eq!(menu.quests.len(), 1);
+        assert_eq!(menu.quests[0].title, "Your Place In The World");
     }
 
     #[test]

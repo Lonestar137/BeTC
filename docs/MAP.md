@@ -594,6 +594,7 @@
 - `import-tbc-loot.py` — Convert the pinned TBC creature loot tables used by the checked-in world spawn pack.
 - `import-tbc-player-levels.py` — Convert the pinned CMaNGOS TBC player XP thresholds to the local progression pack.
 - `import-tbc-progression.py` — Convert CMaNGOS TBC starter spells and trainer requirements to local TOML.
+- `import-tbc-quests.py` — Convert the pinned CMaNGOS TBC quest templates into the offline runtime quest pack.
 - `import-tbc-spell-conditions.py` — Convert trainer-referenced conditions from the pinned CMaNGOS TBC SQL dump to TOML.
 - `import-tbc-starting-gear.py` — Convert TBC starting outfits to the local starting-gear content pack.
 - `import-tbc-summons.py` — Convert the summonable-pet creature rows into the offline runtime's summon content pack.

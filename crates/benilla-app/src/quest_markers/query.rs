@@ -264,6 +264,23 @@ pub(super) struct QueryState {
 mod tests {
     use super::*;
 
+    /// The ask key reads `Ref<ObjectStore>::is_changed`, which a unit carries only in the frame
+    /// the net drain creates it in. An undeclared order lets the sweep run first and miss every
+    /// create's change tick for good, so no questgiver is ever asked: the offline marker outage
+    /// where no status query left the client.
+    #[test]
+    fn the_sweep_runs_after_the_net_drain_that_creates_its_units() {
+        let mut app = crate::game_plugins::schedule_tests::headless_client();
+        assert!(
+            crate::test_support::runs_before(
+                &mut app,
+                crate::net::apply_net_updates,
+                query_statuses
+            ),
+            "the status sweep must see the net drain's fresh ObjectStores"
+        );
+    }
+
     #[test]
     fn leaving_the_world_drops_the_statuses_the_previous_character_was_told() {
         const NPC: u64 = 0xdead_beef;

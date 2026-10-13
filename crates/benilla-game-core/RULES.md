@@ -257,22 +257,73 @@ effect works.
   non-waypoint movement types, waypoint ScriptId actions, and addon auras/mounts are not implemented
   yet; they are not substituted with invented behaviors.
 
-Combat-target health, encounter placement, respawn time, creature kill XP, and quest-8325 XP award
+Combat-target health, encounter placement, respawn time, creature kill XP, and quest XP awards
 are project decisions. Solo kill XP uses `(creature level * 5 + 45)` at equal or lower levels, scaled
 linearly toward zero at the player's gray-level threshold; creatures above the player grant an
 additional 5% per level above the player. Fractions truncate. Group and rested bonuses are not
 modeled. Creature levels and the current-level XP thresholds come from the pinned CMaNGOS TBC
 content source. XP is awarded once on the killing blow, including a periodic-damage killing blow,
 and stops at level 70. Spell effect base points and dice come from build-8606 `Spell.dbc`; the seeded
-cast roll is deterministic. Quest 8325, “Reclaiming Sunstrider Isle,” is offered and turned in at
-Magistrix Erona (creature 15278); killing eight Mana Wyrms (creature 15274) completes it. The reward
-is 30 copper, 50 project XP, and a choice of one item (20997 or 20998). The source quest template has
-no XP amount, so the value is recorded in the checked-in quest content. A level-1 Mana Wyrm awards
-50 XP; its eight kills plus the quest reward reach level 2 with 50 XP remaining. CMaNGOS's pinned XP
+cast roll is deterministic. CMaNGOS's pinned XP
 thresholds are converted through level 70. Level-ups update level, remaining XP, and talent points;
 each gained level restores current health and the class's modeled mana pool to maximum. The current
 maximum pools remain project-sized constants; class health, mana, and primary-stat growth are not
 yet the source's full stat curves.
+
+## Quests
+
+- Every pinned CMaNGOS TBC `quest_template` row (6,599 at the converted revision) is converted into
+  `content/tbc-quests.toml` (schema 2) with its texts, chain links, prerequisites, four objective
+  slots, reward slots, reputation rewards, creature and gameobject quest relations, seasonal event
+  associations, gossip menus, questgiver greetings, referenced conditions, and every referenced
+  item template. Provenance is pinned in the pack header; the runtime never reads SQL.
+- Quest XP is the source `Quest::XPValue` rule rather than an invented per-quest value: derived from
+  `RewMoneyMaxLevel` by quest level (divided by 0.6 at levels 1–60, then 1.2 through 6.0 at levels
+  61–65+), with a falloff of 20% per player level more than five above the quest (floor 10%). At
+  level 70 the quest pays `RewMoneyMaxLevel` in copper instead of XP. Quest 8325's 60 max-level
+  copper is 100 XP at level 1.
+- Availability follows CMaNGOS `Player::CanTakeQuest`: race/class masks (0 means any), min/max
+  level, previous-quest sign semantics (positive requires rewarded, negative requires active),
+  `NextQuestId` reverse links, `NextQuestInChain` and its reverse chain, breadcrumbs and dependent
+  breadcrumbs, positive exclusive groups, the converted condition table (AND/OR/NOT, item, team,
+  quest rewarded/taken/none/available, race/class, level, has-spell, active event/holiday, and
+  reputation rank), min/max reputation, and seasonal event activity.
+- Overhead markers and the gossip quest list follow CMaNGOS `Player::getDialogStatus` and
+  `Player::PrepareQuestMenu`: the *involved* (turn-in) relations contribute only a quest already in
+  the log — incomplete or ready to turn in — while the quest-giver relations contribute only a quest
+  the character does not yet have. A giver who merely started a quest ended elsewhere therefore
+  drops its `!`/`?` on accept, and the turn-in takes the marker; the adapter re-asks the marker for
+  every creature on the chain after an accept, an objective completion and a turn-in.
+- Unsupported source requirements stay explicit blockers: a nonzero `RequiredSkill` and condition
+  kinds the runtime does not model (aura, area, skill, instance script, world script) evaluate
+  unmet rather than silently opening the quest.
+- Objectives: a positive `ReqCreatureOrGOId` credits on kill or interaction, or on the
+  `ReqSpellCast` spell landing on that creature; a negative `ReqCreatureOrGOId` credits on gameobject
+  use, or on that spell landing on the object; `ReqItemId` counts live inventory (backpack plus worn
+  equipment), so destroying an item un-completes the objective. A targetless `ReqSpellCast`
+  (`SPELL_EFFECT_QUEST_COMPLETE`) is converted but not credited.
+- Rewards: choice items (up to 6) and fixed items (up to 4) each need a free backpack slot; money is
+  `RewOrReqMoney` (positive reward, negative required); at level 70 `RewMoneyMaxLevel` is paid
+  instead of XP; reputation applies `RewRepFaction`/`RewRepValue` capped by `RewMaxRepValue` with the
+  source's 20%-per-level decline past `quest_level + 5` (floored at 20%); `RewSpell`/`RewSpellCast`
+  are reported to the adapter, which resolves and teaches learn-spell wrappers through build-8606
+  `Spell.dbc`. Title, mail and honor rewards are converted but not applied.
+- A turn-in clears the quest log slot. A non-repeatable quest joins the rewarded set and can never
+  be taken again; a repeatable quest can be taken again; a daily, weekly or monthly quest stamps a
+  cooldown that resets on the project calendar's next day, week or month. A timed quest
+  (`LimitTime`) carries a game-time deadline and fails when the deadline passes.
+- Quest-only creature loot rows (negative chance) roll only when an active item objective still
+  needs that item; the quest-need predicate is the live inventory, not a stored count.
+- Seasonal events convert `game_event` and `game_event_time`. Event activity is a project rule over
+  the game clock: the calendar epoch is 2007-01-01 00:00 with a fixed 365-day year, a server-side
+  event with a nonzero length is active, a date or yearly event recurs from its converted
+  month/day/minute window, and an event with no window or no length is inactive. A quest with no
+  event association is always active. The converted dates are source data; the epoch, year length
+  and activity rule are project-owned.
+- Known limitations: gameobject spawns are not converted, so quests whose only giver or turn-in is a
+  gameobject are not yet reachable in the world (their data and the runtime relations are present);
+  escort and scripted quests, and quests gated on unmodeled condition kinds, stay unavailable rather
+  than being invented.
 
 ## Creature Loot Data
 
@@ -283,8 +334,9 @@ yet the source's full stat curves.
   preserved by the deterministic loot roller. Rolls consume the character's persisted RNG stream.
 - Rows with source conditions are preserved but not rolled until those conditions are modeled.
   Negative quest-item chances are preserved and require an explicit quest-need predicate; the
-  runtime does not silently treat them as ordinary drops. The current quest pack has no item
-  objectives, so those rows remain unavailable.
+  runtime does not silently treat them as ordinary drops. The predicate now reads the active quest
+  journal's item objectives against the live inventory, so a quest-only row rolls exactly while its
+  quest still needs the item.
 
 ## Class Progression
 
@@ -307,7 +359,8 @@ yet the source's full stat curves.
   state and zero XP. Snapshot schema 4 adds health, mana, and active aura state; schema 5 adds worn
   equipment; schema 6 adds persisted deterministic RNG state; schema 7 adds project-only body
   proportions; schema 8 adds pending creature corpse loot and respawn timers; schema 9 adds the
-  rage, energy and focus pools. Older snapshots
+  rage, energy and focus pools; schema 10 adds quest-granted reputation standing, the rewarded-quest
+  set, and the repeatable-quest reset clock. Older snapshots
   migrate explicitly, seeding RNG from the stable character ID. Client Spell.dbc supplies spell
   metadata, including effect base points and dice, to the offline simulation adapter.
 - The runtime consumes only the checked-in, versioned local content pack; conversion may read the

@@ -711,6 +711,33 @@ pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
         })?,
     )?;
 
+    // ── TBC-only quest-log counters and reward lines ────────────────────────────────────────────
+    // No daily quests are modeled, so none are complete and the stock 25 cap stands; the frame's
+    // daily count row hides while the completed count is 0 (`QuestLogFrame.lua:714`, `:718`). The
+    // count is compared with `> 0`, so it must be a number, never nil.
+    g.set(
+        "GetDailyQuestsCompleted",
+        lua.create_function(|_, ()| Ok(0i64))?,
+    )?;
+    g.set("GetMaxDailyQuests", lua.create_function(|_, ()| Ok(25i64))?)?;
+    // The selected quest's suggested group size, 0 while unmodeled: the pane only shows its line
+    // when positive (`QuestLogFrame.lua:423`), and a nil would abort the whole update.
+    g.set(
+        "GetQuestLogGroupNum",
+        lua.create_function(|_, ()| Ok(0i64))?,
+    )?;
+    // Honor and title rewards are not modeled. Honor folds into the reward total, so it answers 0
+    // — a nil would compare against 0 and read as a reward — and the title stays a nil truthy check
+    // (`QuestLogFrame.lua:461`, `:462`).
+    g.set(
+        "GetQuestLogRewardHonor",
+        lua.create_function(|_, ()| Ok(0i64))?,
+    )?;
+    g.set(
+        "GetQuestLogRewardTitle",
+        lua.create_function(|_, ()| Ok(Value::Nil))?,
+    )?;
+
     Ok(())
 }
 
@@ -780,6 +807,25 @@ mod tests {
                 },
             ],
         }
+    }
+
+    /// The TBC-only counters and reward lines the stock `QuestLogFrame.lua` reads. A nil here is
+    /// not a cosmetic gap: `QuestLogUpdateQuestCount` calls `GetDailyQuestsCompleted` at the top of
+    /// `QuestLog_Update` (`:714`), so a missing global aborts the whole refresh and the log shows
+    /// neither its quests nor their objectives.
+    #[test]
+    fn tbc_daily_counters_and_reward_lines_answer_the_stock_frame() {
+        let s = UiScript::new().unwrap();
+        assert_eq!(
+            s.eval::<i64>("return GetDailyQuestsCompleted()").unwrap(),
+            0
+        );
+        assert_eq!(s.eval::<i64>("return GetMaxDailyQuests()").unwrap(), 25);
+        assert_eq!(s.eval::<i64>("return GetQuestLogGroupNum()").unwrap(), 0);
+        assert_eq!(s.eval::<i64>("return GetQuestLogRewardHonor()").unwrap(), 0);
+        assert!(s
+            .eval::<bool>("return GetQuestLogRewardTitle() == nil")
+            .unwrap());
     }
 
     #[test]
