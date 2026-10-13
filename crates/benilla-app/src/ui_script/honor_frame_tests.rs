@@ -361,6 +361,9 @@ fn shown_inspect_honor_page() -> UiScript {
         // Before the inspect addon, as `inherits=` resolves at load: its slot buttons inherit
         // `ItemButtonTemplate`, its honor rows `HonorFrame.xml`'s row templates.
         "Interface\\FrameXML\\HonorFrame.xml",
+        // `Blizzard_InspectUI`'s talent page reads the core talent constants and `TalentFrame_Load`
+        // (`InspectTalentFrame.lua:33`, `:69`), which build 8606 ships as a plain core row.
+        r"Interface\FrameXML\TalentFrameBase.lua",
         "ScrollTemplates.xml",
     ] {
         load_xml(&s, file);

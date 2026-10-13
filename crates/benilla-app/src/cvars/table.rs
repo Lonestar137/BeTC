@@ -1126,4 +1126,12 @@ pub(crate) const REGISTERED: &[Registered] = &[
         "1",
         "build 8606 world-PvP objective display — the offline world has none",
     ),
+    // `rotateMinimap` (`0x63db90` register): build 8606's `Minimap.lua:218` reads it as `"1"`, its
+    // option row lives in `UIOptionsPanels.lua:227`, and `GetCVar` warns on an unregistered name.
+    // 1.12's minimap never rotates.
+    ours(
+        "rotateMinimap",
+        "0",
+        "build 8606 minimap rotation — 1.12's minimap never rotates",
+    ),
 ];

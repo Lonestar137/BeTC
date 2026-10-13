@@ -18,14 +18,16 @@ pub struct ZoneTexts {
     pub subzone: String,
     /// `GetMinimapZoneText`: the subzone, else the zone.
     pub minimap: String,
-    /// `GetZonePVPInfo`'s type, `"friendly"`, `"hostile"` or `"contested"`; `None` when the
-    /// player, the zone or its faction template is missing.
+    /// `GetZonePVPInfo`'s type, `"friendly"`, `"hostile"`, `"contested"`, `"sanctuary"` or
+    /// `"arena"`; `None` when the player, the zone or its faction template is missing.
     pub pvp_type: Option<String>,
+    /// `GetZonePVPInfo`'s `isSubZonePvP`, the second value in build 8606: the leaf area's PvP
+    /// flag `0x80`, the free-for-all pit. It picks which of the two PvP lines the reference
+    /// writes, so it is 1 or nil, never a boolean.
+    pub is_subzone_pvp: bool,
     /// `GetZonePVPInfo`'s faction, `FactionGroup.dbc`'s name for the zone's mask bit; `None` for
     /// none.
     pub pvp_faction: Option<String>,
-    /// `GetZonePVPInfo`'s isArena: the leaf area's flag `0x80`, the free-for-all pit.
-    pub is_arena: bool,
 }
 
 impl super::UiScript {
@@ -56,8 +58,11 @@ pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
         "GetMinimapZoneText",
         lua.create_function(text(|z| &z.minimap))?,
     )?;
-    // GetZonePVPInfo() (`0x48d540`): always three values, `pvpType, factionName, isArena`; the
-    // type is never `"arena"`, and isArena is 1 or nil, never a boolean.
+    // GetZonePVPInfo() (`0x48d540`): always three values, and build 8606's order is
+    // `pvpType, isSubZonePvP, factionName` — every caller in the shipped FrameXML destructures it
+    // that way (`ZoneText.lua:8`, `Minimap.lua:27`). 1.12 answered `pvpType, factionName, isArena`
+    // instead; the second value became the subzone-PvP switch and the faction moved to the third.
+    // Either way the type is never a boolean, and the switch is 1 or nil.
     g.set(
         "GetZonePVPInfo",
         lua.create_function(|lua, ()| {
@@ -69,12 +74,12 @@ pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
             };
             Ok(MultiValue::from_vec(vec![
                 string(&z.pvp_type)?,
-                string(&z.pvp_faction)?,
-                if z.is_arena {
+                if z.is_subzone_pvp {
                     Value::Number(1.0)
                 } else {
                     Value::Nil
                 },
+                string(&z.pvp_faction)?,
             ]))
         })?,
     )?;

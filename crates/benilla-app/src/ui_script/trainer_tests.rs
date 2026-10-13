@@ -464,12 +464,14 @@ fn wheel_over_a_row_scrolls_the_list() {
     s.fire_event("TRAINER_SHOW", vec![ScriptValue::Str("Sana".into())]);
     assert!(s.errors().is_empty(), "script errors: {:?}", s.errors());
 
+    // The window opens scrolled to its own selection — the first learnable row, Service 01, at
+    // offset 1 (`ClassTrainer_SelectFirstLearnableSkill`, Blizzard_TrainerUI.lua:229).
     let row1 = "return ClassTrainerSkill1Text:GetText()";
-    assert_eq!(s.eval::<String>(row1).unwrap(), "Arms");
+    assert_eq!(s.eval::<String>(row1).unwrap(), "  Service 01");
     assert_eq!(
         s.eval::<String>("return ClassTrainerSkill2Text:GetText()")
             .unwrap(),
-        "  Service 01"
+        "  Service 02"
     );
 
     // Aim over a row's text: the spin must reach the list from a row.
@@ -631,8 +633,10 @@ fn the_scrollbar_arrows_step_the_list_the_way_they_point() {
         ))
         .unwrap();
     };
-    // Pixels round to rows as `floor(v/itemHeight + 0.5)` (`UIPanelTemplates.lua:231`).
-    assert_eq!(offset(&mut s), 0, "opens at the top");
+    // Pixels round to rows as `floor(v/itemHeight + 0.5)` (`UIPanelTemplates.lua:231`). The window
+    // opens scrolled to its own selection: build 8606's `ClassTrainer_SelectFirstLearnableSkill`
+    // (`Blizzard_TrainerUI.lua:229`) walks the bar to the first learnable row, row 2 here.
+    assert_eq!(offset(&mut s), 1, "opens on the first learnable row");
     click(&mut s, "Down");
     let step = offset(&mut s);
     assert!(

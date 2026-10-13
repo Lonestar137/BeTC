@@ -132,6 +132,32 @@ pub(super) fn silenced_ui_load<S: std::borrow::Borrow<UiScript>, R>(
     out
 }
 
+/// Seat the local player's race/class shape for a world with no character pick, so stock FrameXML
+/// that reads `UnitRace`/`UnitClass` at `OnLoad` (`DressUpTexturePath`, `DressUpFrame.lua:12`)
+/// has one — the reference's UI only ever loads in-world, where a character exists. Never a name,
+/// so `UnitName("player")` still answers nil; a pick already made stands (`set_unit` never blanks).
+fn seat_default_player_shape(script: &UiScript) {
+    // The FILE token is what `DressUpTexturePath` reads (`local race, fileName = UnitRace(...)`),
+    // so ask for the second value, not the first.
+    if !script
+        .eval::<bool>("local _, f = UnitRace('player'); return f == nil")
+        .unwrap_or(false)
+    {
+        return;
+    }
+    script.set_unit(
+        "player",
+        Some(benilla_ui::script::UnitState {
+            race: Some("Human".into()),
+            race_file: Some("Human".into()),
+            class: Some("Warrior".into()),
+            class_file: Some("WARRIOR".into()),
+            sex: 2,
+            ..Default::default()
+        }),
+    );
+}
+
 /// Seat the engine-created frames build 8606's FrameXML indexes but no toc row declares. The
 /// reference makes them in code (`CWorldMap::CreatePlayerArrowFrame()`), so a stand-in can never
 /// shadow a real frame; the manifest loads every row, so a rank-based seat would.
@@ -162,19 +188,7 @@ pub(crate) fn load_default_ui(script: &UiScript) -> Vec<String> {
     // (`DressUpFrame.lua:12`) reads `UnitRace("player")` unguarded and raises on a nil file token.
     // A test world has no pick, so seat the shape — never a name, so `UnitName("player")` still
     // answers nil — unless the caller already did.
-    if script.eval::<bool>("return UnitRace('player') == nil").unwrap_or(false) {
-        script.set_unit(
-            "player",
-            Some(benilla_ui::script::UnitState {
-                race: Some("Human".into()),
-                race_file: Some("Human".into()),
-                class: Some("Warrior".into()),
-                class_file: Some("WARRIOR".into()),
-                sex: 2,
-                ..Default::default()
-            }),
-        );
-    }
+    seat_default_player_shape(script);
     let mut failures = silenced_ui_load(&mut &*script, |script| {
         let mut failures = load_core(script);
         if layer_enabled() {
@@ -424,6 +438,7 @@ pub(super) fn load_ingame_ui_with(
     // Bounded, addons included: a chunk that never returns fails as a load error instead of
     // freezing the loading screen. The caller disarms the budget once the edge is done.
     script.set_instruction_budget(super::addons::LOAD_INSTRUCTION_BUDGET);
+    seat_default_player_shape(script);
     let mut failures = load_core(script);
     if layer {
         failures.extend(load_layer(script));

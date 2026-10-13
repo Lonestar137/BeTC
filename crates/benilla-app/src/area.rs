@@ -193,11 +193,14 @@ fn feed_zone_events(
         return;
     }
 
-    // GetZonePVPInfo (`0x48d540`): isArena is the leaf's Flags `0x80`; the type is the zone's
-    // FactionGroupMask against the player template's friend then enemy masks, "contested" when
-    // neither; never "arena"; nil only on structural failure. factionName is FactionGroup.dbc's
-    // Name for the zone's mask bit; the realm type never enters.
-    let is_arena = leaf_row.flags & 0x80 != 0;
+    // GetZonePVPInfo (`0x48d540` in 1.12; build 8606 returns `pvpType, isSubZonePvP,
+    // factionName`): the leaf's Flags `0x80` marks a free-for-all pit, which 8606 reports as the
+    // type `"arena"` — the branch that paints `FREE_FOR_ALL_TERRITORY` (`ZoneText.lua:19`) — with
+    // the subzone-PvP switch set. Otherwise the type is the zone's FactionGroupMask against the
+    // player template's friend then enemy masks, "contested" when neither; nil only on structural
+    // failure. factionName is FactionGroup.dbc's Name for the zone's mask bit; the realm type
+    // never enters.
+    let is_subzone_pvp = leaf_row.flags & 0x80 != 0;
     let zone_mask = areas.0.get(zone).map_or(0, |r| r.faction_group_mask);
     let pvp = factions
         .as_ref()
@@ -213,19 +216,23 @@ fn feed_zone_events(
             };
             Some((ty, f.catalog().faction_group_name(zone_mask).unwrap_or("")))
         });
-    let pvp_type = pvp.map_or("", |(ty, _)| ty);
+    let pvp_type = if is_subzone_pvp {
+        "arena"
+    } else {
+        pvp.map_or("", |(ty, _)| ty)
+    };
 
     script.set_zone_texts(benilla_ui::script::ZoneTexts {
         zone: signal.zone_text.clone(),
         real_zone: real_zone_text,
         subzone: signal.subzone_text.clone(),
         minimap: minimap_text.clone(),
-        pvp_type: pvp.map(|(ty, _)| ty.to_string()),
+        pvp_type: (!pvp_type.is_empty()).then(|| pvp_type.to_string()),
+        is_subzone_pvp,
         pvp_faction: pvp
             .map(|(_, faction)| faction)
             .filter(|f| !f.is_empty())
             .map(str::to_string),
-        is_arena,
     });
 
     if let Some(event) = event {

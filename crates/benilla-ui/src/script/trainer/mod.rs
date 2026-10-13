@@ -170,6 +170,14 @@ impl super::UiScript {
                 let live: std::collections::HashSet<u32> = s.groups.iter().map(|g| g.key).collect();
                 model.trainer_collapsed.retain(|sl| live.contains(sl));
                 model.trainer = Some(s);
+                // A list push lands the client's own selection on the first learnable service.
+                // Build 8606's `ClassTrainer_SelectFirstLearnableSkill`
+                // (`Blizzard_TrainerUI.lua:222`) reads `GetTrainerSelectionIndex` back and
+                // re-selects it on show, so without one the window opens with an empty detail
+                // pane; the reference sets it in its list handler, not in Lua.
+                if model.trainer_selection.is_none() {
+                    model.trainer_selection = first_learnable(&model);
+                }
             }
         }
     }
@@ -376,6 +384,23 @@ fn selected_row(model: &Model) -> Option<usize> {
         .checked_add(1)
 }
 
+/// The first service row the client would land on when a list arrives: the topmost one the player
+/// can learn, which in `GetTrainerServiceInfo`'s terms is category `available`. Affordability is
+/// the window's business (`ClassTrainerFrame_Update` greys the cost and gates the button), and the
+/// VM keeps no purse, so it does not enter — a service the player cannot pay for is still the one
+/// the window opens on.
+fn first_learnable(model: &Model) -> Option<u32> {
+    let t = model.trainer.as_ref()?;
+    rows(model).0.iter().find_map(|r| match r {
+        Row::Service(si) => t
+            .services
+            .get(*si)
+            .filter(|s| s.category == TrainerServiceCategory::Available)
+            .map(|s| s.spell_id),
+        Row::Header(_) => None,
+    })
+}
+
 /// Queue `TRAINER_UPDATE`, which the reference fires from its mask commits, not from Lua:
 /// `0x4d8c90` writes the filter mask, re-runs the finalizer and fires event `0x136`, and the
 /// skill-line and expand-mask commits (`0x4d8cb0`, `0x4d8cd0`, the collapse verbs') do the same.
@@ -465,9 +490,13 @@ pub(super) fn install(lua: &Lua) -> mlua::Result<()> {
                 }
                 Row::Service(si) => {
                     let s = &t.services[si];
+                    // The sub-text is a string even when the service has none: `PARENS_TEMPLATE`
+                    // is `"(%s)"` and `string.format`'s `%s` refuses a nil in this VM (as it does
+                    // in the reference's), so a nil raised `ClassTrainer_SetSelection` on every
+                    // service row without a rank.
                     Ok(MultiValue::from_vec(vec![
                         opt_str(lua, s.name.as_ref())?,
-                        opt_str(lua, s.subtext.as_ref())?,
+                        Value::String(lua.create_string(s.subtext.as_deref().unwrap_or(""))?),
                         Value::String(lua.create_string(s.category.era_str())?),
                         Value::Nil,
                     ]))

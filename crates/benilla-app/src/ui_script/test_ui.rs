@@ -248,8 +248,10 @@ const KIT_ALWAYS_SEAT: &[&str] = &["ItemTextFrame"];
 /// test world has no pick, so seat the shape — never a name, so `UnitName("player")` still answers
 /// nil — unless the test already did.
 fn seat_player_shape(s: &UiScript) {
+    // The FILE token is what `DressUpTexturePath` reads (`local race, fileName = UnitRace(...)`),
+    // so ask for the second value, not the first.
     if !s
-        .eval::<bool>("return UnitRace('player') == nil")
+        .eval::<bool>("local _, f = UnitRace('player'); return f == nil")
         .unwrap_or(false)
     {
         return;

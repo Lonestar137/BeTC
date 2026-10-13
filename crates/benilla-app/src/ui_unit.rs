@@ -552,10 +552,11 @@ pub(crate) fn race_faction_group(race: u8) -> Option<&'static str> {
 /// (`0x4aa200`). A frozen copy of the shipped nine rows; race 9 (Goblin) answers Alliance.
 pub(crate) fn race_pvp_team(race: u8) -> i8 {
     match race {
-        // Group mask 3, Player|Alliance: `& 4` clear, `& 2` set.
-        1 | 3 | 4 | 7 | 9 => 1,
-        // Group mask 5, Player|Horde: `& 4` set, tested first.
-        2 | 5 | 6 | 8 => 0,
+        // Group mask 3, Player|Alliance: `& 4` clear, `& 2` set. Build 8606 adds the Blood Elf
+        // side's opposite — the Draenei (11) — and the NPC-only rows 12-15 and 18.
+        1 | 3 | 4 | 7 | 9 | 11 | 12 | 13 | 14 | 15 | 18 => 1,
+        // Group mask 5, Player|Horde: `& 4` set, tested first. Build 8606 adds the Blood Elf (10).
+        2 | 5 | 6 | 8 | 10 => 0,
         // No `ChrRaces` row: the engine's bounds-failure `-1`, which names no GlobalString.
         _ => -1,
     }
@@ -2507,14 +2508,15 @@ mod tests {
         let data = benilla_formats::wow_data_or_skip!();
         let mut chain = benilla_formats::open_chain(&data).expect("open chain");
         let want = benilla_formats::load_race_pvp_teams(&mut chain).expect("ChrRaces walk");
-        // 1.12 ships nine rows; a truncated map would pass by asserting nothing.
-        assert_eq!(want.len(), 9, "ChrRaces.dbc row count");
+        // Build 8606 ships sixteen rows (1-15 and 18); a truncated map would pass by asserting
+        // nothing.
+        assert_eq!(want.len(), 16, "ChrRaces.dbc row count");
         for (&race, &team) in &want {
             assert_eq!(race_pvp_team(race), team, "race {race}");
         }
         assert!(want.values().any(|&t| t == 0), "some race is Horde");
         assert!(want.values().any(|&t| t == 1), "some race is Alliance");
-        for race in [0u8, 10, 255] {
+        for race in [0u8, 16, 17, 19, 255] {
             assert!(!want.contains_key(&race));
             assert_eq!(race_pvp_team(race), -1, "race {race} has no ChrRaces row");
         }

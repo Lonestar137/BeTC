@@ -141,8 +141,9 @@ fn rewinding_the_old_clock_name_leaves_the_session_clock_running() {
 }
 
 /// The getters answer what the host pushed, in the reference's shapes: the four zone texts one
-/// string each, never nil (`0x48a0a0`..`0x48a100`); `GetZonePVPInfo` three values, isArena 1 or
-/// nil (`0x48d540`); `GetGameTime` two numbers (`0x515ee0`); `GetTime` one (`0x515ea0`).
+/// string each, never nil (`0x48a0a0`..`0x48a100`); `GetZonePVPInfo` three values,
+/// `pvpType, isSubZonePvP, factionName`, the switch 1 or nil (`0x48d540`); `GetGameTime` two
+/// numbers (`0x515ee0`); `GetTime` one (`0x515ea0`).
 #[test]
 fn the_getters_answer_the_pushed_state_in_their_1_12_shapes() {
     let mut s = script();
@@ -179,7 +180,7 @@ fn the_getters_answer_the_pushed_state_in_their_1_12_shapes() {
         minimap: "Stormwind City".into(),
         pvp_type: Some("friendly".into()),
         pvp_faction: Some("Alliance".into()),
-        is_arena: true,
+        is_subzone_pvp: true,
     });
     s.set_game_time(21, 7);
     assert_eq!(
@@ -195,9 +196,9 @@ fn the_getters_answer_the_pushed_state_in_their_1_12_shapes() {
         )
     );
     assert_eq!(
-        s.eval::<(String, String, f64)>("return GetZonePVPInfo()")
+        s.eval::<(String, f64, String)>("return GetZonePVPInfo()")
             .unwrap(),
-        ("friendly".into(), "Alliance".into(), 1.0)
+        ("friendly".into(), 1.0, "Alliance".into())
     );
     assert_eq!(
         s.eval::<(f64, f64)>("return GetGameTime()").unwrap(),

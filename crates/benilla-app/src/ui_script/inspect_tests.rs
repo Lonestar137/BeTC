@@ -123,6 +123,9 @@ fn armed() -> UiScript {
     // Before the window, as `inherits=` resolves at load: the slot buttons inherit
     // `ItemButtonTemplate`, the honor page the honor row templates `HonorFrame.xml` brings.
     load_xml(&s, "Interface\\FrameXML\\HonorFrame.xml");
+    // `Blizzard_InspectUI`'s talent page reads the core talent constants and `TalentFrame_Load`
+    // (`InspectTalentFrame.lua:33`, `:69`), which build 8606 ships as a plain core row.
+    load_xml(&s, r"Interface\FrameXML\TalentFrameBase.lua");
     // Our scroll kit.
     load_xml(&s, "ScrollTemplates.xml");
     // A LoadOnDemand addon, seated off the chain as a registry row and loaded by the stock
