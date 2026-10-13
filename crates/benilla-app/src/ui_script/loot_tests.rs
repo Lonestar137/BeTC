@@ -565,7 +565,6 @@ fn ctrl_and_shift_on_a_loot_row_preview_and_post_without_looting() {
         &[
             "Interface\\FrameXML\\GlobalStrings.lua",
             "Interface\\FrameXML\\BasicControls.xml",
-            "Interface\\FrameXML\\LocaleProperties.lua",
             r"Interface\FrameXML\UIParent.xml", // UIParent and UIParent.lua
             "Interface\\FrameXML\\UIMenu.xml", // the kit ChatMenu/EmoteMenu/VoiceMacroMenu build from
             "Interface\\FrameXML\\UIDropDownMenu.xml",

@@ -64,7 +64,6 @@ fn harness_with(player: &str) -> UiScript {
         r"Interface\FrameXML\GlobalStrings.lua",
         "Interface\\FrameXML\\Fonts.xml",
         "Interface\\FrameXML\\BasicControls.xml", // `TEXT`
-        "Interface\\FrameXML\\LocaleProperties.lua",
         r"Interface\FrameXML\UIParent.xml",
         r"Interface\FrameXML\MoneyFrame.lua",
         r"Interface\FrameXML\MoneyFrame.xml",

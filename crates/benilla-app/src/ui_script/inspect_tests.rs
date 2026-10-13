@@ -108,19 +108,18 @@ fn armed() -> UiScript {
     load_xml(&s, "Interface\\FrameXML\\Fonts.xml");
     // `TEXT`, which the stock `InspectPaperDollFrame_SetLevel` formats its level line through.
     load_xml(&s, "Interface\\FrameXML\\BasicControls.xml");
-    load_xml(&s, r"Interface\FrameXML\LocaleProperties.lua");
     load_xml(&s, r"Interface\FrameXML\UIParent.xml");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.lua");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.xml");
     load_xml(&s, "Interface\\FrameXML\\GameTooltip.xml");
     load_xml(&s, r"Interface\FrameXML\UIPanelTemplates.lua");
     load_xml(&s, r"Interface\FrameXML\UIPanelTemplates.xml");
+    load_xml(&s, "Interface\\FrameXML\\ItemButtonTemplate.xml");
     // The inspect window's tabs inherit its tab template.
     load_xml(&s, r"Interface\FrameXML\CharacterFrameTemplates.xml");
     load_xml(&s, r"Interface\FrameXML\StaticPopup.xml");
     // Before the window, as `inherits=` resolves at load: the slot buttons inherit
     // `ItemButtonTemplate`, the honor page the honor row templates `HonorFrame.xml` brings.
-    load_xml(&s, "Interface\\FrameXML\\ItemButtonTemplate.xml");
     load_xml(&s, "Interface\\FrameXML\\HonorFrame.xml");
     // Our scroll kit.
     load_xml(&s, "ScrollTemplates.xml");
@@ -145,16 +144,15 @@ fn shipped_inspect_frame_loads_clean() {
     load_xml(&s, "Interface\\FrameXML\\GlobalStrings.lua");
     load_xml(&s, "Interface\\FrameXML\\Fonts.xml");
     load_xml(&s, "Interface\\FrameXML\\BasicControls.xml");
-    load_xml(&s, r"Interface\FrameXML\LocaleProperties.lua");
     load_xml(&s, r"Interface\FrameXML\UIParent.xml");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.lua");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.xml");
     load_xml(&s, "Interface\\FrameXML\\GameTooltip.xml");
     load_xml(&s, r"Interface\FrameXML\UIPanelTemplates.lua");
     load_xml(&s, r"Interface\FrameXML\UIPanelTemplates.xml");
+    load_xml(&s, "Interface\\FrameXML\\ItemButtonTemplate.xml");
     load_xml(&s, r"Interface\FrameXML\CharacterFrameTemplates.xml");
     load_xml(&s, r"Interface\FrameXML\StaticPopup.xml");
-    load_xml(&s, "Interface\\FrameXML\\ItemButtonTemplate.xml");
     load_xml(&s, "Interface\\FrameXML\\HonorFrame.xml");
     load_xml(&s, "ScrollTemplates.xml");
     super::test_ui::seat_chain_addon(&mut s, "Blizzard_InspectUI");

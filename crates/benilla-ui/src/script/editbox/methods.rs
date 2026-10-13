@@ -97,6 +97,16 @@ pub(in crate::script) fn install(lua: &Lua) -> mlua::Result<()> {
             Ok(())
         })?,
     )?;
+    // SetCursorPosition(pos) (build 8606): the caret's byte offset, clamped to `[0, len]`. The
+    // 1.12 EditBox table has no such setter.
+    m.set(
+        "SetCursorPosition",
+        lua.create_function(|lua, (this, pos): (Table, i64)| {
+            with_editbox(lua, &this, |eb| {
+                eb.cursor = (pos.max(0) as usize).min(eb.text.len());
+            })
+        })?,
+    )?;
     // No `HasFocus`: 1.12's EditBox table has these two setters and no getter, and addons keep
     // their own flag.
 

@@ -90,6 +90,51 @@ const BEYOND_1_12: &[&str] = &[
     // addon reaches the globals with `getfenv(0)`); ours does, as our `getglobal`/`setglobal` are
     // written over it.
     "_G",
+    // Build-8606 engine verbs with no 1.12 analogue, answered by the offline game (`script::tbc_api`):
+    // the battleground, arena, voice-chat, LFG, tracking, title and difficulty queries and the
+    // secure-template helpers the stock action bar, unit frames and chat windows call. Each answers
+    // the reference's "no such state" arm, since the offline game has none of these systems.
+    "UnitInBattleground",
+    "GetReadyCheckStatus",
+    "UnitIsPossessed",
+    "UnitIsTalking",
+    "IsVoiceChatEnabled",
+    "GetMirrorTimerInfo",
+    "GetArenaTeam",
+    "GetTotemInfo",
+    "GetCurrentTitle",
+    "GetNumTrackingTypes",
+    "IsReferAFriendLinked",
+    "GetVoiceCurrentSessionID",
+    "GetVoiceSessionInfo",
+    "IsVoiceChatAllowedByServer",
+    "IsActiveBattlefieldArena",
+    "CanGuildBankRepair",
+    "IsFalling",
+    "GetNumVoiceSessions",
+    "GetSelectedDisplayChannel",
+    "GetNumLanguages",
+    "Sound_GameSystem_GetNumOutputDrivers",
+    "Sound_ChatSystem_GetNumInputDrivers",
+    "Sound_ChatSystem_GetNumOutputDrivers",
+    "Sound_GameSystem_GetOutputDriverNameByIndex",
+    "VoiceEnumerateOutputDevices",
+    "VoiceEnumerateCaptureDevices",
+    "GetNumDisplayChannels",
+    "GetNumTitles",
+    "GetHonorCurrency",
+    "GetCritChanceFromAgility",
+    "InitWorldMapPing",
+    "SecureUnitButton_OnLoad",
+    "SetAutoLootDefault",
+    "ClearLFMAutofill",
+    "ClearLFGAutojoin",
+    "CancelSummon",
+    "GetCurrentDungeonDifficulty",
+    "SecureButton_GetEffectiveButton",
+    "SecureButton_GetModifiedAttribute",
+    "GetExistingLocales",
+    "GetAttackPowerForStat",
 ];
 
 /// `reference/1.12-globals.tsv`'s names.

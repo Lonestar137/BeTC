@@ -22,7 +22,6 @@ fn harness_with(mut s: UiScript, definers: &[&str]) -> UiScript {
         "Interface\\FrameXML\\GlobalStrings.lua",
         "Interface\\FrameXML\\Fonts.xml",
         "Interface\\FrameXML\\BasicControls.xml",
-        "Interface\\FrameXML\\LocaleProperties.lua",
         // Before every window that names `parent="UIParent"`, which resolves at load.
         r"Interface\FrameXML\UIParent.xml",
         r"Interface\FrameXML\MoneyFrame.lua",
@@ -642,7 +641,6 @@ fn interface_harness() -> UiScript {
             "Interface\\FrameXML\\GlobalStrings.lua",
             "Interface\\FrameXML\\Fonts.xml",
             "Interface\\FrameXML\\BasicControls.xml", // `TEXT`, which UnitPopup.lua calls at load
-            "Interface\\FrameXML\\LocaleProperties.lua",
             r"Interface\FrameXML\UIParent.xml",
             r"Interface\FrameXML\MoneyFrame.lua",
             r"Interface\FrameXML\MoneyFrame.xml",
@@ -652,6 +650,7 @@ fn interface_harness() -> UiScript {
             "Interface\\FrameXML\\UIDropDownMenu.xml",
             r"Interface\FrameXML\UIPanelTemplates.lua",
             r"Interface\FrameXML\UIPanelTemplates.xml",
+            "Interface\\FrameXML\\ItemButtonTemplate.xml",
             r"Interface\FrameXML\OptionsFrameTemplates.xml",
             "Interface\\FrameXML\\CharacterFrameTemplates.xml",
             "Interface\\FrameXML\\StaticPopup.xml",
@@ -670,7 +669,6 @@ fn interface_harness() -> UiScript {
             "Interface\\FrameXML\\PartyFrame.xml",
             "Interface\\FrameXML\\TargetFrame.xml",
             "Interface\\FrameXML\\PetFrame.xml",
-            "Interface\\FrameXML\\ItemButtonTemplate.xml",
             // `ExhaustionTick_Update` reads `ReputationWatchBar`, which `ReputationFrame.xml`
             // declares, after the templates its check boxes inherit.
             r"Interface\FrameXML\ReputationFrame.xml",
@@ -699,7 +697,6 @@ fn chat_harness() -> UiScript {
             "Interface\\FrameXML\\GlobalStrings.lua",
             "Interface\\FrameXML\\Fonts.xml",
             "Interface\\FrameXML\\BasicControls.xml",
-            "Interface\\FrameXML\\LocaleProperties.lua",
             r"Interface\FrameXML\UIParent.xml",
             r"Interface\FrameXML\MoneyFrame.lua",
             r"Interface\FrameXML\MoneyFrame.xml",
@@ -726,7 +723,6 @@ fn actionbars_harness() -> UiScript {
             "Interface\\FrameXML\\GlobalStrings.lua",
             "Interface\\FrameXML\\Fonts.xml",
             "Interface\\FrameXML\\BasicControls.xml",
-            "Interface\\FrameXML\\LocaleProperties.lua",
             r"Interface\FrameXML\UIParent.xml",
             r"Interface\FrameXML\MoneyFrame.lua",
             r"Interface\FrameXML\MoneyFrame.xml",

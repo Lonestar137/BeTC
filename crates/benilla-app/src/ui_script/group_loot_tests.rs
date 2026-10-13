@@ -48,7 +48,6 @@ const BARS: &[&str] = &[
     r"Interface\FrameXML\GlobalStrings.lua",
     "Interface\\FrameXML\\Fonts.xml",
     r"Interface\FrameXML\BasicControls.xml",
-    r"Interface\FrameXML\LocaleProperties.lua",
     r"Interface\FrameXML\UIParent.xml",
     r"Interface\FrameXML\MoneyFrame.lua",
     r"Interface\FrameXML\MoneyFrame.xml",
@@ -56,6 +55,7 @@ const BARS: &[&str] = &[
     // `UIPanelCloseButton`, which each popup's pass button inherits (`LootFrame.xml:364`).
     r"Interface\FrameXML\UIPanelTemplates.lua",
     r"Interface\FrameXML\UIPanelTemplates.xml",
+    r"Interface\FrameXML\ItemButtonTemplate.xml",
     r"Interface\FrameXML\StaticPopup.xml",
     "Interface\\FrameXML\\TextStatusBar.lua",
     "Interface\\FrameXML\\TextStatusBar.xml",
@@ -63,7 +63,6 @@ const BARS: &[&str] = &[
     "Interface\\FrameXML\\Cooldown.xml",
     "Interface\\FrameXML\\ActionButtonTemplate.xml",
     "Interface\\FrameXML\\ActionBarFrame.xml",
-    r"Interface\FrameXML\ItemButtonTemplate.xml",
     "Interface\\FrameXML\\BonusActionBarFrame.xml",
 ];
 
@@ -453,7 +452,6 @@ fn managed_positions_engage_for_the_bare_frame_name() {
             r"Interface\FrameXML\GlobalStrings.lua",
             "Interface\\FrameXML\\Fonts.xml",
             r"Interface\FrameXML\BasicControls.xml",
-            r"Interface\FrameXML\LocaleProperties.lua",
             r"Interface\FrameXML\UIParent.xml",
             r"Interface\FrameXML\MoneyFrame.lua",
             r"Interface\FrameXML\MoneyFrame.xml",

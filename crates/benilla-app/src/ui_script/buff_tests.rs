@@ -12,7 +12,6 @@ fn harness() -> UiScript {
     load_xml(&s, "Interface\\FrameXML\\GlobalStrings.lua");
     load_xml(&s, "Interface\\FrameXML\\Fonts.xml");
     load_xml(&s, r"Interface\FrameXML\BasicControls.xml");
-    load_xml(&s, r"Interface\FrameXML\LocaleProperties.lua");
     // `SecondsToTimeAbbrev` comes with `UIParent.xml` (`UIParent.lua:1034`).
     load_xml(&s, r"Interface\FrameXML\UIParent.xml");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.lua");

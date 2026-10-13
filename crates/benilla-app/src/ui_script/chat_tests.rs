@@ -11,7 +11,6 @@ pub(crate) fn chat_frame() -> UiScript {
     load_xml(&s, "Interface\\FrameXML\\GlobalStrings.lua");
     load_xml(&s, "Interface\\FrameXML\\Fonts.xml");
     load_xml(&s, "Interface\\FrameXML\\BasicControls.xml");
-    load_xml(&s, r"Interface\FrameXML\LocaleProperties.lua");
     // UIParent's OnUpdate runs `FCF_OnUpdate`, the dock's driver, as in the reference.
     load_xml(&s, r"Interface\FrameXML\UIParent.xml");
     // `FCF_Tab_OnClick` uses the dropdown kit, whose backdrop reads GameTooltip.lua's colour.
@@ -928,7 +927,6 @@ fn the_chat_menu_builds_its_rows_on_the_references_kit() {
         "Interface\\FrameXML\\GlobalStrings.lua",
         "Interface\\FrameXML\\Fonts.xml",
         "Interface\\FrameXML\\BasicControls.xml",
-        "Interface\\FrameXML\\LocaleProperties.lua",
         r"Interface\FrameXML\UIParent.xml",
         r"Interface\FrameXML\MoneyFrame.lua",
         r"Interface\FrameXML\MoneyFrame.xml",

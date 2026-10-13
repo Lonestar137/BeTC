@@ -346,19 +346,18 @@ fn shown_inspect_honor_page() -> UiScript {
         "Interface\\FrameXML\\Fonts.xml",
         // `TEXT`, the stock level line's formatter.
         "Interface\\FrameXML\\BasicControls.xml",
-        "Interface\\FrameXML\\LocaleProperties.lua",
         r"Interface\FrameXML\UIParent.xml",
         r"Interface\FrameXML\MoneyFrame.lua",
         r"Interface\FrameXML\MoneyFrame.xml",
         "Interface\\FrameXML\\GameTooltip.xml",
         r"Interface\FrameXML\UIPanelTemplates.lua",
         r"Interface\FrameXML\UIPanelTemplates.xml",
+        "Interface\\FrameXML\\ItemButtonTemplate.xml",
         // The inspect window's tabs inherit its tab template.
         r"Interface\FrameXML\CharacterFrameTemplates.xml",
         "Interface\\FrameXML\\StaticPopup.xml",
         // Before the inspect addon, as `inherits=` resolves at load: its slot buttons inherit
         // `ItemButtonTemplate`, its honor rows `HonorFrame.xml`'s row templates.
-        "Interface\\FrameXML\\ItemButtonTemplate.xml",
         "Interface\\FrameXML\\HonorFrame.xml",
         "ScrollTemplates.xml",
     ] {

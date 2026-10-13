@@ -570,13 +570,12 @@ fn shipped_target_frame_runs_the_level_law() {
     load_unit_frames_with(
         &s,
         &[
-            r"Interface\FrameXML\LocaleProperties.lua",
             r"Interface\FrameXML\UIPanelTemplates.lua",
             r"Interface\FrameXML\UIPanelTemplates.xml",
+            "Interface\\FrameXML\\ItemButtonTemplate.xml",
             r"Interface\FrameXML\CharacterFrameTemplates.xml", // the window tab
             r"Interface\FrameXML\StaticPopup.xml",
             r"Interface\FrameXML\MainMenuBarMicroButtons.xml",
-            "Interface\\FrameXML\\ItemButtonTemplate.xml",
             "Interface\\FrameXML\\QuestFrame.xml",
             "Interface\\FrameXML\\QuestLogFrame.xml",
             "Interface\\FrameXML\\MerchantFrame.xml",
@@ -1150,7 +1149,6 @@ fn the_party_art_paints_over_the_bars() {
     load_xml(&s, r"Interface\FrameXML\BasicControls.xml");
     // Before UnitPopup, which reads `TEXT` and `ITEM_QUALITY_COLORS` (`UIParent.lua:65`) at load.
     load_xml(&s, "Interface\\FrameXML\\BasicControls.xml");
-    load_xml(&s, r"Interface\FrameXML\LocaleProperties.lua");
     load_xml(&s, r"Interface\FrameXML\UIParent.xml");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.lua");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.xml");

@@ -133,7 +133,6 @@ fn escape_is_consumed_by_a_focused_editbox_and_leaves_windows_open() {
         &[
             "Interface\\FrameXML\\GlobalStrings.lua",
             "Interface\\FrameXML\\BasicControls.xml",
-            r"Interface\FrameXML\LocaleProperties.lua",
             r"Interface\FrameXML\UIParent.xml",
             "Interface\\FrameXML\\UIMenu.xml", // the kit the chat menus build from
             "Interface\\FrameXML\\UIDropDownMenu.xml",
@@ -176,7 +175,6 @@ fn escape_closes_the_options_window_before_opening_the_menu() {
     load_xml(&s, r"Interface\FrameXML\GlobalStrings.lua");
     load_xml(&s, "Interface\\FrameXML\\Fonts.xml");
     load_xml(&s, r"Interface\FrameXML\BasicControls.xml");
-    load_xml(&s, r"Interface\FrameXML\LocaleProperties.lua");
     load_xml(&s, r"Interface\FrameXML\UIParent.xml");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.lua");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.xml");
@@ -231,7 +229,6 @@ fn escape_closes_an_open_stack_split_frame() {
         &[
             "Interface\\FrameXML\\GlobalStrings.lua",
             "Interface\\FrameXML\\BasicControls.xml",
-            r"Interface\FrameXML\LocaleProperties.lua",
             r"Interface\FrameXML\UIParent.xml",
             "Interface\\FrameXML\\UIMenu.xml",
             "Interface\\FrameXML\\UIPanelTemplates.lua",
@@ -480,7 +477,6 @@ fn an_addon_frame_registered_in_uispecialframes_closes_on_escape() {
     load_xml(&s, r"Interface\FrameXML\GlobalStrings.lua");
     load_xml(&s, "Interface\\FrameXML\\Fonts.xml");
     load_xml(&s, r"Interface\FrameXML\BasicControls.xml");
-    load_xml(&s, r"Interface\FrameXML\LocaleProperties.lua");
     load_xml(&s, r"Interface\FrameXML\UIParent.xml");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.lua");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.xml");

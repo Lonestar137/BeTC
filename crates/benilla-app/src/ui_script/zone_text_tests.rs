@@ -43,7 +43,6 @@ fn harness() -> UiScript {
     load_xml(&s, "Interface\\FrameXML\\Fonts.xml");
     // `TEXT()`, which AutoFollowStatus_OnEvent puts its message through.
     load_xml(&s, "Interface\\FrameXML\\BasicControls.xml");
-    load_xml(&s, r"Interface\FrameXML\LocaleProperties.lua");
     load_xml(&s, r"Interface\FrameXML\UIParent.xml");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.lua");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.xml");

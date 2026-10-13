@@ -50,7 +50,6 @@ fn setup() -> UiScript {
             r"Interface\FrameXML\GlobalStrings.lua",
             "Interface\\FrameXML\\Fonts.xml",
             r"Interface\FrameXML\BasicControls.xml",
-            r"Interface\FrameXML\LocaleProperties.lua",
             r"Interface\FrameXML\UIParent.xml",
             r"Interface\FrameXML\MoneyFrame.lua",
             r"Interface\FrameXML\MoneyFrame.xml",

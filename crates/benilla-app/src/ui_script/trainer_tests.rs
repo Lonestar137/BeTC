@@ -31,7 +31,6 @@ fn trainer_script_base() -> UiScript {
         "Interface\\FrameXML\\GlobalStrings.lua",
         "Interface\\FrameXML\\Fonts.xml",
         "Interface\\FrameXML\\BasicControls.xml",
-        "Interface\\FrameXML\\LocaleProperties.lua",
         r"Interface\FrameXML\UIParent.xml",
         r"Interface\FrameXML\MoneyFrame.lua",
         r"Interface\FrameXML\MoneyFrame.xml",

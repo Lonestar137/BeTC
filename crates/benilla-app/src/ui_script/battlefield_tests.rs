@@ -27,7 +27,6 @@ fn session() -> UiScript {
         "Interface\\FrameXML\\Fonts.xml",
         "Interface\\FrameXML\\Localization.xml",
         "Interface\\FrameXML\\BasicControls.xml",
-        "Interface\\FrameXML\\LocaleProperties.lua",
         r"Interface\FrameXML\UIParent.xml",
         r"Interface\FrameXML\MoneyFrame.lua",
         r"Interface\FrameXML\MoneyFrame.xml",

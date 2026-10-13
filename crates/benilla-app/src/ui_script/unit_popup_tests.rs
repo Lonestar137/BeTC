@@ -13,7 +13,6 @@ fn load_popup_frames(s: &UiScript) {
         "Interface\\FrameXML\\GlobalStrings.lua",
         "Interface\\FrameXML\\Fonts.xml",
         "Interface\\FrameXML\\BasicControls.xml", // `TEXT`, read at file scope below
-        "Interface\\FrameXML\\LocaleProperties.lua",
         r"Interface\FrameXML\UIParent.xml",
         // `SmallMoneyFrame_OnLoad`, which the chain's StaticPopup money rows call at load.
         r"Interface\FrameXML\MoneyFrame.lua",
@@ -454,7 +453,6 @@ fn load_pet_menu_frames(s: &UiScript) {
         "Interface\\FrameXML\\GlobalStrings.lua",
         "Interface\\FrameXML\\Fonts.xml",
         "Interface\\FrameXML\\BasicControls.xml", // `TEXT`, read at file scope below
-        "Interface\\FrameXML\\LocaleProperties.lua",
         r"Interface\FrameXML\UIParent.xml",
         r"Interface\FrameXML\MoneyFrame.lua",
         r"Interface\FrameXML\MoneyFrame.xml",

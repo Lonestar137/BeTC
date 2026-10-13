@@ -124,6 +124,7 @@ mod stdlib;
 mod summon;
 mod talent;
 mod taxi;
+mod tbc_api;
 mod tick;
 mod tooltip;
 mod tooltip_item;
@@ -595,6 +596,7 @@ impl UiScript {
         worldmap::install(&lua)?;
         worldstate::install(&lua)?;
         net_stats::install(&lua)?;
+        tbc_api::install(&lua)?;
 
         let s = UiScript {
             lua,

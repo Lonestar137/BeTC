@@ -88,7 +88,6 @@ pub(super) fn spellbook_ui_with(w: f32, h: f32, extra: &[&str]) -> UiScript {
             "Interface\\FrameXML\\GlobalStrings.lua",
             "Interface\\FrameXML\\Fonts.xml",
             "Interface\\FrameXML\\BasicControls.xml",
-            "Interface\\FrameXML\\LocaleProperties.lua",
             r"Interface\FrameXML\UIParent.xml",
             r"Interface\FrameXML\MoneyFrame.lua",
             r"Interface\FrameXML\MoneyFrame.xml",
@@ -128,7 +127,6 @@ fn shipped_spellbook_loads_clean() {
     load_xml(&s, r"Interface\FrameXML\GlobalStrings.lua");
     load_xml(&s, "Interface\\FrameXML\\Fonts.xml");
     load_xml(&s, r"Interface\FrameXML\BasicControls.xml");
-    load_xml(&s, r"Interface\FrameXML\LocaleProperties.lua");
     load_xml(&s, r"Interface\FrameXML\UIParent.xml");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.lua");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.xml");
@@ -633,7 +631,6 @@ fn the_macro_editor_takes_a_shift_click_and_only_a_shift_click() {
         r"Interface\FrameXML\GlobalStrings.lua",
         "Interface\\FrameXML\\Fonts.xml",
         "Interface\\FrameXML\\BasicControls.xml", // `TEXT`
-        "Interface\\FrameXML\\LocaleProperties.lua",
         r"Interface\FrameXML\UIParent.xml",
         r"Interface\FrameXML\MoneyFrame.lua",
         r"Interface\FrameXML\MoneyFrame.xml",

@@ -12,7 +12,6 @@ fn a_started_fade_ramps_off_uiparents_tick_and_completes() {
     s.set_screen_size(1024.0, 768.0);
     load_xml(&s, r"Interface\FrameXML\GlobalStrings.lua");
     load_xml(&s, r"Interface\FrameXML\BasicControls.xml");
-    load_xml(&s, r"Interface\FrameXML\LocaleProperties.lua");
     load_xml(&s, r"Interface\FrameXML\UIParent.xml");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.lua");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.xml");
@@ -64,7 +63,6 @@ fn a_flash_alternates_then_stops() {
     s.set_screen_size(1024.0, 768.0);
     load_xml(&s, r"Interface\FrameXML\GlobalStrings.lua");
     load_xml(&s, r"Interface\FrameXML\BasicControls.xml");
-    load_xml(&s, r"Interface\FrameXML\LocaleProperties.lua");
     load_xml(&s, r"Interface\FrameXML\UIParent.xml");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.lua");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.xml");

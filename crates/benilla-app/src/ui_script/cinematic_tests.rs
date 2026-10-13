@@ -15,7 +15,6 @@ fn ui_with_the_cinematic_frame() -> UiScript {
     load_xml(&s, r"Interface\FrameXML\BasicControls.xml");
     // `TakeScreenshot` (`WorldFrame.lua:46`), which the SCREENSHOT binding's body calls.
     load_xml(&s, r"Interface\FrameXML\WorldFrame.xml");
-    load_xml(&s, r"Interface\FrameXML\LocaleProperties.lua");
     load_xml(&s, r"Interface\FrameXML\UIParent.xml");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.lua"); // StaticPopup's money row
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.xml");

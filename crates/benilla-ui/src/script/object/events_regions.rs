@@ -109,6 +109,18 @@ pub(super) fn install(lua: &Lua, m: &Table) -> mlua::Result<()> {
             Ok(())
         })?,
     )?;
+    // `IsEventRegistered(event)` (build 8606): whether the frame holds the event.
+    m.set(
+        "IsEventRegistered",
+        lua.create_function(|lua, (this, event): (Table, String)| {
+            let h = frame_handle_of(lua, &this)?;
+            let model = lua.app_data_ref::<Model>().expect("model");
+            Ok(model
+                .frame_events
+                .get(&h)
+                .is_some_and(|s| s.contains(&event)))
+        })?,
+    )?;
     // `RegisterAllEvents()` (`0x774c20`): the frame's `OnEvent` receives every event until
     // `UnregisterAllEvents`, the only way out. A flag (`Model::all_event_frames`), not a name list.
     m.set(

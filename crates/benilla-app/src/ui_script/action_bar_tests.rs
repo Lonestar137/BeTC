@@ -172,7 +172,6 @@ fn load_action_bar(s: &UiScript) {
     super::test_ui::load_ui(s, "Interface\\FrameXML\\GlobalStrings.lua");
     super::test_ui::load_ui(s, "Interface\\FrameXML\\Fonts.xml");
     super::test_ui::load_ui(s, r"Interface\FrameXML\BasicControls.xml"); // `TEXT`
-    super::test_ui::load_ui(s, r"Interface\FrameXML\LocaleProperties.lua"); // `GetText`
     super::test_ui::load_ui(s, r"Interface\FrameXML\UIParent.xml");
     super::test_ui::load_ui(s, r"Interface\FrameXML\MoneyFrame.lua");
     super::test_ui::load_ui(s, r"Interface\FrameXML\MoneyFrame.xml");
@@ -1471,7 +1470,6 @@ fn the_main_bar_pages_and_a_bonus_page_still_outranks_it() {
         // Fonts first: the reputation pane's check boxes read `RED_FONT_COLOR` in their OnLoad.
         "Interface\\FrameXML\\Fonts.xml",
         "Interface\\FrameXML\\BasicControls.xml",
-        "Interface\\FrameXML\\LocaleProperties.lua",
         r"Interface\FrameXML\UIParent.xml",
         r"Interface\FrameXML\MoneyFrame.lua",
         r"Interface\FrameXML\MoneyFrame.xml",

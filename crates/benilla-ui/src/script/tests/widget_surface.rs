@@ -160,6 +160,18 @@ const NOT_YET_ANSWERED: &[(&str, &str, &str)] = &[
 
 /// Methods answered here that 1.12 does not register on that class, each with why it stays.
 const ALLOWED_BEYOND: &[(&str, &str, &str)] = &[
+    // Build-8606 FrameXML uses this EditBox setter; 1.12's EditBox table has no such method.
+    (
+        "SetCursorPosition",
+        "EditBox",
+        "TBC EditBox caret setter used by the stock LFG comment box",
+    ),
+    // Build-8606 FrameXML queries a frame's registrations; 1.12's Frame table has no such method.
+    (
+        "IsEventRegistered",
+        "Button CheckButton ColorSelect DressUpModel EditBox Frame GameTooltip LootButton MessageFrame Minimap Model MovieFrame PlayerModel ScrollFrame ScrollingMessageFrame SimpleHTML Slider StatusBar TabardModel WorldFrame",
+        "TBC frame event-registration query used by the stock UI",
+    ),
     // Build-8606 FrameXML uses these on tooltips and cooldown-bearing action buttons.
     (
         "GetOwner",

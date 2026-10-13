@@ -96,19 +96,18 @@ fn an_error_toast_draws_over_an_open_panel_window() {
     load_xml(&s, r"Interface\FrameXML\BasicControls.xml");
     // A missing template only warns at load, so an under-loaded list fails at its first update.
     load_xml(&s, "Interface\\FrameXML\\BasicControls.xml");
-    load_xml(&s, r"Interface\FrameXML\LocaleProperties.lua");
     load_xml(&s, r"Interface\FrameXML\UIParent.xml");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.lua");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.xml");
     load_xml(&s, "Interface\\FrameXML\\GameTooltip.xml");
     load_xml(&s, r"Interface\FrameXML\UIPanelTemplates.lua");
     load_xml(&s, r"Interface\FrameXML\UIPanelTemplates.xml");
+    load_xml(&s, "Interface\\FrameXML\\ItemButtonTemplate.xml");
     load_xml(&s, "Interface\\FrameXML\\CharacterFrameTemplates.xml");
     load_xml(&s, "Interface\\FrameXML\\UIErrorsFrame.xml");
     load_xml(&s, r"Interface\FrameXML\StaticPopup.xml");
     load_xml(&s, r"Interface\FrameXML\MainMenuBarMicroButtons.xml");
     load_xml(&s, "Interface\\FrameXML\\Cooldown.xml");
-    load_xml(&s, "Interface\\FrameXML\\ItemButtonTemplate.xml");
     load_xml(&s, "Interface\\FrameXML\\QuestFrame.xml");
     load_xml(&s, "Interface\\FrameXML\\QuestLogFrame.xml");
     load_xml(&s, "Interface\\FrameXML\\MerchantFrame.xml");

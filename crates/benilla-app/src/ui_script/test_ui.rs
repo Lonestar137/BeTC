@@ -480,17 +480,16 @@ pub(super) const MERCHANT_UI: &[&str] = &[
     "Interface\\FrameXML\\GlobalStrings.lua",
     "Interface\\FrameXML\\Fonts.xml",
     "Interface\\FrameXML\\BasicControls.xml", // TEXT()
-    "Interface\\FrameXML\\LocaleProperties.lua",
     r"Interface\FrameXML\UIParent.xml",
     r"Interface\FrameXML\MoneyFrame.lua",
     r"Interface\FrameXML\MoneyFrame.xml",
     "Interface\\FrameXML\\GameTooltip.xml", // app load order: tooltip before merchant
     r"Interface\FrameXML\UIPanelTemplates.lua",
     r"Interface\FrameXML\UIPanelTemplates.xml",
+    "Interface\\FrameXML\\ItemButtonTemplate.xml",
     // The stock window tab, whose `<OnShow>` needs the `UIPanelTemplates` pair above it.
     r"Interface\FrameXML\CharacterFrameTemplates.xml",
     "Interface\\FrameXML\\StaticPopup.xml",
-    "Interface\\FrameXML\\ItemButtonTemplate.xml",
     "ScrollTemplates.xml",
 ];
 
@@ -500,7 +499,6 @@ pub(super) const MERCHANT_UI: &[&str] = &[
 pub(crate) const GOSSIP_UI: &[&str] = &[
     r"Interface\FrameXML\GlobalStrings.lua",
     r"Interface\FrameXML\BasicControls.xml",
-    r"Interface\FrameXML\LocaleProperties.lua",
     r"Interface\FrameXML\UIParent.xml",
     r"Interface\FrameXML\MoneyFrame.lua",
     r"Interface\FrameXML\MoneyFrame.xml",
@@ -518,7 +516,6 @@ pub(crate) const LOOT_UI: &[&str] = &[
     "Interface\\FrameXML\\GlobalStrings.lua",
     "Interface\\FrameXML\\Fonts.xml",
     "Interface\\FrameXML\\BasicControls.xml", // `TEXT`, which UnitPopup.lua reads at file scope
-    "Interface\\FrameXML\\LocaleProperties.lua",
     r"Interface\FrameXML\UIParent.xml", // UIParent.lua: the panel slot manager and the fades
     r"Interface\FrameXML\MoneyFrame.lua",
     r"Interface\FrameXML\MoneyFrame.xml",
@@ -526,6 +523,7 @@ pub(crate) const LOOT_UI: &[&str] = &[
     "Interface\\FrameXML\\UIDropDownMenu.xml", // GroupLootDropDown's OnLoad calls UIDropDownMenu_Initialize
     r"Interface\FrameXML\UIPanelTemplates.lua",
     r"Interface\FrameXML\UIPanelTemplates.xml",
+    "Interface\\FrameXML\\ItemButtonTemplate.xml",
     "Interface\\FrameXML\\StaticPopup.xml",
     // Each `PartyMemberFrame<N>` and its pet frame run `UnitFrame_Initialize` (UnitFrame.lua) at
     // OnLoad, which calls `SetTextStatusBarText` (TextStatusBar.lua).
@@ -539,7 +537,6 @@ pub(crate) const LOOT_UI: &[&str] = &[
     "Interface\\FrameXML\\UnitPopup.xml",
     "Interface\\FrameXML\\UnitFrame.xml",
     "Interface\\FrameXML\\PartyFrame.xml",
-    "Interface\\FrameXML\\ItemButtonTemplate.xml",
 ];
 
 /// What stock `CharacterFrame.xml`, `PaperDollFrame.xml` and `PetPaperDollFrame.xml` need to load
@@ -553,7 +550,6 @@ pub(super) const CHARACTER_UI: &[&str] = &[
     "Interface\\FrameXML\\Fonts.xml",
     "Interface\\FrameXML\\BasicControls.xml", // TEXT(), which those labels go through
     // `GetText`, the gendered-string helper `ReputationFrame.lua:65` calls for each standing.
-    r"Interface\FrameXML\LocaleProperties.lua",
     r"Interface\FrameXML\UIParent.xml", // Model_OnLoad/_Rotate*/_OnUpdate: the model turntable
     r"Interface\FrameXML\MoneyFrame.lua",
     r"Interface\FrameXML\MoneyFrame.xml",
@@ -564,6 +560,7 @@ pub(super) const CHARACTER_UI: &[&str] = &[
     "Interface\\FrameXML\\UIDropDownMenu.xml",
     r"Interface\FrameXML\UIPanelTemplates.lua",
     r"Interface\FrameXML\UIPanelTemplates.xml",
+    "Interface\\FrameXML\\ItemButtonTemplate.xml", // PaperDollItemSlotButtonTemplate's base
     // ReputationFrame's detail check boxes inherit its `OptionsCheckButtonTemplate`.
     "Interface\\FrameXML\\OptionsFrameTemplates.xml",
     // The stock window tab, whose `<OnShow>` needs the `UIPanelTemplates` pair above it.
@@ -585,7 +582,6 @@ pub(super) const CHARACTER_UI: &[&str] = &[
     // manifest reaches this file only through `PartyFrame.xml`'s `<Include>`.
     "Interface\\FrameXML\\PartyFrameTemplates.xml",
     "Interface\\FrameXML\\PetFrame.xml",
-    "Interface\\FrameXML\\ItemButtonTemplate.xml", // PaperDollItemSlotButtonTemplate's base
     // Every page must exist before the window opens: `CharacterFrame_ShowSubFrame` hides each
     // `CHARACTERFRAME_SUBFRAMES` page it is not showing, unguarded (`CharacterFrame.lua:25-32`).
     "Interface\\FrameXML\\CharacterFrame.xml",
@@ -607,7 +603,6 @@ pub(super) const SOCIAL_UI: &[&str] = &[
     "Interface\\FrameXML\\GlobalStrings.lua",
     "Interface\\FrameXML\\Fonts.xml",
     "Interface\\FrameXML\\BasicControls.xml",
-    "Interface\\FrameXML\\LocaleProperties.lua",
     r"Interface\FrameXML\UIParent.xml",
     r"Interface\FrameXML\MoneyFrame.lua",
     r"Interface\FrameXML\MoneyFrame.xml",
@@ -662,7 +657,6 @@ pub(super) const BAG_UI: &[&str] = &[
     "Interface\\FrameXML\\Fonts.xml",
     // `TEXT()`, which the backpack button's OnEnter and `BagSlotButton_OnEnter` call.
     "Interface\\FrameXML\\BasicControls.xml",
-    "Interface\\FrameXML\\LocaleProperties.lua",
     // `UIParent`: the twelve `ContainerFrame`s are its children, `updateContainerFrameAnchors`
     // anchors each open bag to its parent, and `OpenAllBags` returns unless `UIParent` is visible.
     r"Interface\FrameXML\UIParent.xml",
@@ -673,6 +667,7 @@ pub(super) const BAG_UI: &[&str] = &[
     "Interface\\FrameXML\\UIDropDownMenu.xml",
     r"Interface\FrameXML\UIPanelTemplates.lua",
     r"Interface\FrameXML\UIPanelTemplates.xml",
+    "Interface\\FrameXML\\ItemButtonTemplate.xml",
     // The dialog engine, after the `UIPanelCloseButton` it inherits.
     r"Interface\FrameXML\StaticPopup.xml",
     // `ContainerFrameItemButton_OnClick` hides `StackSplitFrame` on every plain click
@@ -693,7 +688,6 @@ pub(super) const BAG_UI: &[&str] = &[
     // (`ContainerFrame.lua:568`) to choose between linking the item and splitting the stack.
     "Interface\\FrameXML\\ChatFrame.xml",
     "Interface\\FrameXML\\FloatingChatFrame.xml",
-    "Interface\\FrameXML\\ItemButtonTemplate.xml",
     // `BagSlotButtonTemplate` inherits `PaperDollItemSlotButtonTemplate`, and its OnLoad
     // (`PaperDollItemSlotButton_OnLoad`) gives each bag button its inventory-slot id, 20..23.
     // `CharacterFrame.xml` stays out: a missing `parent=` only warns.
@@ -867,14 +861,12 @@ mod tests {
             super::production_order(&[
                 &["ScrollTemplates.xml", r"Interface\FrameXML\UIParent.xml"],
                 &[
-                    r"Interface\FrameXML\LocaleProperties.lua",
                     r"Interface\FrameXML\GlobalStrings.lua",
                     r"Interface\FrameXML\UIParent.xml",
                 ],
             ]),
             [
                 r"Interface\FrameXML\GlobalStrings.lua",
-                r"Interface\FrameXML\LocaleProperties.lua",
                 r"Interface\FrameXML\UIParent.xml",
                 "ScrollTemplates.xml",
             ]

@@ -33,7 +33,6 @@ fn shipped_gossip_frame_drives_end_to_end() {
     s.set_text_measurer(Box::new(super::FixedWidthFont(6.0)));
     load_xml(&s, r"Interface\FrameXML\GlobalStrings.lua");
     load_xml(&s, r"Interface\FrameXML\BasicControls.xml");
-    load_xml(&s, r"Interface\FrameXML\LocaleProperties.lua");
     load_xml(&s, r"Interface\FrameXML\UIParent.xml");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.lua");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.xml");
@@ -199,7 +198,6 @@ fn shipped_gossip_frame_renders_quest_rows_above_options() {
     s.set_screen_size(1024.0, 768.0);
     load_xml(&s, r"Interface\FrameXML\GlobalStrings.lua");
     load_xml(&s, r"Interface\FrameXML\BasicControls.xml");
-    load_xml(&s, r"Interface\FrameXML\LocaleProperties.lua");
     load_xml(&s, r"Interface\FrameXML\UIParent.xml");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.lua");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.xml");
@@ -322,7 +320,6 @@ fn shipped_gossip_rows_grow_to_their_wrapped_labels() {
     s.set_text_measurer(Box::new(super::FixedWidthFont(6.0)));
     load_xml(&s, r"Interface\FrameXML\GlobalStrings.lua");
     load_xml(&s, r"Interface\FrameXML\BasicControls.xml");
-    load_xml(&s, r"Interface\FrameXML\LocaleProperties.lua");
     load_xml(&s, r"Interface\FrameXML\UIParent.xml");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.lua");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.xml");
@@ -422,7 +419,6 @@ fn gossip_show_hide_plays_open_and_close_kits() {
     s.set_screen_size(1024.0, 768.0);
     load_xml(&s, r"Interface\FrameXML\GlobalStrings.lua");
     load_xml(&s, r"Interface\FrameXML\BasicControls.xml");
-    load_xml(&s, r"Interface\FrameXML\LocaleProperties.lua");
     load_xml(&s, r"Interface\FrameXML\UIParent.xml");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.lua");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.xml");
@@ -468,7 +464,6 @@ fn shipped_panel_slot_replaces_gossip_with_merchant() {
         &[
             r"Interface\FrameXML\GlobalStrings.lua",
             r"Interface\FrameXML\BasicControls.xml",
-            r"Interface\FrameXML\LocaleProperties.lua",
             r"Interface\FrameXML\UIParent.xml",
             r"Interface\FrameXML\UIPanelTemplates.lua",
             r"Interface\FrameXML\UIPanelTemplates.xml",
@@ -553,7 +548,6 @@ fn displacing_an_npc_window_ends_the_displaced_session() {
         &[
             r"Interface\FrameXML\GlobalStrings.lua",
             r"Interface\FrameXML\BasicControls.xml",
-            r"Interface\FrameXML\LocaleProperties.lua",
             r"Interface\FrameXML\UIParent.xml",
             r"Interface\FrameXML\UIPanelTemplates.lua",
             r"Interface\FrameXML\UIPanelTemplates.xml",
@@ -606,7 +600,6 @@ fn shipped_panel_slot_pushable_promotes_to_center() {
         &[
             r"Interface\FrameXML\GlobalStrings.lua",
             r"Interface\FrameXML\BasicControls.xml",
-            r"Interface\FrameXML\LocaleProperties.lua",
             r"Interface\FrameXML\UIParent.xml",
             r"Interface\FrameXML\UIPanelTemplates.lua",
             r"Interface\FrameXML\UIPanelTemplates.xml",
@@ -699,7 +692,6 @@ fn gossip_bank_option_hands_the_left_slot_to_the_bank() {
         load_xml(&s, r"Interface\FrameXML\GlobalStrings.lua");
         load_xml(&s, "Interface\\FrameXML\\Fonts.xml");
         load_xml(&s, r"Interface\FrameXML\BasicControls.xml");
-        load_xml(&s, r"Interface\FrameXML\LocaleProperties.lua");
         load_xml(&s, r"Interface\FrameXML\UIParent.xml");
         load_xml(&s, r"Interface\FrameXML\MoneyFrame.lua");
         load_xml(&s, r"Interface\FrameXML\MoneyFrame.xml");
@@ -707,9 +699,9 @@ fn gossip_bank_option_hands_the_left_slot_to_the_bank() {
         // Before BankFrame: its buttons inherit these templates, and `inherits=` resolves at load.
         load_xml(&s, r"Interface\FrameXML\UIPanelTemplates.lua");
         load_xml(&s, r"Interface\FrameXML\UIPanelTemplates.xml");
+        load_xml(&s, "Interface\\FrameXML\\ItemButtonTemplate.xml"); // the bank slots inherit it
         load_xml(&s, r"Interface\FrameXML\StaticPopup.xml");
         load_xml(&s, "Interface\\FrameXML\\Cooldown.xml");
-        load_xml(&s, "Interface\\FrameXML\\ItemButtonTemplate.xml"); // the bank slots inherit it
         load_xml(&s, "Interface\\FrameXML\\BankFrame.xml");
         load_xml(&s, "Interface\\FrameXML\\GossipFrame.xml");
         load_xml(&s, "ScrollTemplates.xml");
@@ -771,7 +763,6 @@ fn an_overflowing_gossip_menu_scrolls_instead_of_spilling() {
     s.set_text_measurer(Box::new(super::FixedWidthFont(6.0)));
     load_xml(&s, r"Interface\FrameXML\GlobalStrings.lua");
     load_xml(&s, r"Interface\FrameXML\BasicControls.xml");
-    load_xml(&s, r"Interface\FrameXML\LocaleProperties.lua");
     load_xml(&s, r"Interface\FrameXML\UIParent.xml");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.lua");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.xml");
@@ -905,7 +896,6 @@ fn an_addons_own_frame_registered_in_uipanelwindows_takes_the_left_slot() {
     s.set_screen_size(1024.0, 768.0);
     load_xml(&s, r"Interface\FrameXML\GlobalStrings.lua");
     load_xml(&s, r"Interface\FrameXML\BasicControls.xml");
-    load_xml(&s, r"Interface\FrameXML\LocaleProperties.lua");
     load_xml(&s, r"Interface\FrameXML\UIParent.xml");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.lua");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.xml");
@@ -972,7 +962,6 @@ fn the_panel_registry_rows_match_the_reference_bytes() {
     let s = UiScript::new().unwrap();
     load_xml(&s, r"Interface\FrameXML\GlobalStrings.lua");
     load_xml(&s, r"Interface\FrameXML\BasicControls.xml");
-    load_xml(&s, r"Interface\FrameXML\LocaleProperties.lua");
     load_xml(&s, r"Interface\FrameXML\UIParent.xml");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.lua");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.xml");
@@ -1013,7 +1002,6 @@ fn a_dead_player_opens_only_whiledead_windows() {
     s.set_screen_size(1024.0, 768.0);
     load_xml(&s, r"Interface\FrameXML\GlobalStrings.lua");
     load_xml(&s, r"Interface\FrameXML\BasicControls.xml");
-    load_xml(&s, r"Interface\FrameXML\LocaleProperties.lua");
     load_xml(&s, r"Interface\FrameXML\UIParent.xml");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.lua");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.xml");
@@ -1080,7 +1068,6 @@ fn a_frame_arriving_at_center_puts_the_child_windows_away() {
     s.set_screen_size(1024.0, 768.0);
     load_xml(&s, r"Interface\FrameXML\GlobalStrings.lua");
     load_xml(&s, r"Interface\FrameXML\BasicControls.xml");
-    load_xml(&s, r"Interface\FrameXML\LocaleProperties.lua");
     load_xml(&s, r"Interface\FrameXML\UIParent.xml");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.lua");
     load_xml(&s, r"Interface\FrameXML\MoneyFrame.xml");

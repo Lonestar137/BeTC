@@ -11,7 +11,6 @@ fn harness() -> UiScript {
     load_xml(&s, r"Interface\FrameXML\GlobalStrings.lua");
     load_xml(&s, "Interface\\FrameXML\\Fonts.xml");
     load_xml(&s, r"Interface\FrameXML\BasicControls.xml");
-    load_xml(&s, r"Interface\FrameXML\LocaleProperties.lua");
     // `UIParent_OnEvent`'s `MIRROR_TIMER_START` arm calls `MirrorTimer_Show` (`UIParent.lua:374`).
     load_xml(&s, r"Interface\FrameXML\UIParent.xml");
     // `MirrorTimer_Show` bounds its free-bar search by `STATICPOPUP_NUMDIALOGS`
